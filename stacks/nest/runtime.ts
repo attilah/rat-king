@@ -34,7 +34,11 @@ import { preflightRestore, restoreSnapshot } from "./restore.ts";
 import { announceRestart } from "./ship-notice.ts";
 import { sendShipNotification } from "./ship-notify.ts";
 import { recoverStorageUnits } from "./ship-recover.ts";
-import { appendRestartEvent, guardRestartPlan } from "./ship-restart.ts";
+import {
+  appendRestartEvent,
+  guardRestartPlan,
+  observeShipDeploy,
+} from "./ship-restart.ts";
 import { stageShipUnits } from "./ship-unit-stage.ts";
 import { connection, nestStack, nest } from "./stack.ts";
 import { StageConfig, FleetError } from "./stage-config.ts";
@@ -507,6 +511,7 @@ export const run = (action: Action) =>
 
     return yield* Effect.void;
   }).pipe(
+    observeShipDeploy(action === "deploy"),
     provideFreshArtifactStore,
     Effect.provide(
       Layer.mergeAll(

@@ -1,8 +1,12 @@
 import { Config, Effect, FileSystem, Option, Schema } from "effect";
 
-import { HostError } from "../../packages/alchemy-nest/src/host-shell.ts";
+import {
+  HostError,
+  HostShell,
+} from "../../packages/alchemy-nest/src/host-shell.ts";
 import type { Interface } from "../../packages/alchemy-nest/src/host-shell.ts";
 import { RestartEvent, ShipAttempt } from "./ship-config.ts";
+import { observedRestartEvent, ProcessStart } from "./ship-observation.ts";
 
 export const restartScript = String.raw`
 import datetime, fcntl, json, os, pathlib, subprocess, sys, tempfile, time
@@ -83,6 +87,38 @@ const attempt = Config.option(
   Config.schema(Schema.fromJsonString(ShipAttempt), "RAT_KING_SHIP_ATTEMPT")
 );
 
+const processStartScript = String.raw`
+import json, subprocess, sys
+result = subprocess.run(['systemctl','--user','show',sys.argv[1],'-p','ActiveState','-p','MainPID','-p','ActiveEnterTimestampMonotonic','-p','ActiveExitTimestampMonotonic'], capture_output=True, text=True)
+if result.returncode != 0: sys.exit(2)
+fields = dict(line.split('=',1) for line in result.stdout.splitlines() if '=' in line)
+print(json.dumps(dict(active=fields['ActiveState']=='active',pid=int(fields['MainPID']),enteredMicros=int(fields['ActiveEnterTimestampMonotonic']),exitedMicros=int(fields['ActiveExitTimestampMonotonic']))))
+`;
+
+const readProcessStart = Effect.fn("Ship.readProcessStart")(
+  function* readProcessStart(shell: Interface, unit: string) {
+    const result = yield* shell.exec([
+      "python3",
+      "-c",
+      processStartScript,
+      unit,
+    ]);
+
+    if (result.code !== 0) {
+      return null;
+    }
+
+    return yield* Schema.decodeEffect(Schema.fromJsonString(ProcessStart))(
+      result.stdout
+    );
+  },
+  (effect) =>
+    effect.pipe(
+      Effect.timeout("10 seconds"),
+      Effect.orElseSucceed(() => null)
+    )
+);
+
 const DeferredResult = Schema.Struct({ retryAt: Schema.Number });
 
 const RestartResult = Schema.Struct({
@@ -104,6 +140,47 @@ export const appendRestartEvent = Effect.fn("Ship.appendRestartEvent")(
     );
   }
 );
+
+export const observeShipDeploy =
+  (enabled: boolean) =>
+  <A, E, R>(deployment: Effect.Effect<A, E, R>) =>
+    Effect.gen(function* observeAttempt() {
+      if (!enabled) {
+        return yield* deployment;
+      }
+
+      const settings = yield* attempt;
+
+      if (Option.isNone(settings)) {
+        return yield* deployment;
+      }
+
+      const target = settings.value;
+      const shell = yield* HostShell;
+      const before = yield* readProcessStart(shell, target.restart.unit);
+
+      return yield* deployment.pipe(
+        Effect.onExit(() =>
+          Effect.gen(function* recordObservation() {
+            const after = yield* readProcessStart(shell, target.restart.unit);
+            const fs = yield* FileSystem.FileSystem;
+
+            const events = yield* Effect.forEach(
+              (yield* fs.readFileString(target.events))
+                .split("\n")
+                .filter((line) => line !== ""),
+              (line) =>
+                Schema.decodeEffect(Schema.fromJsonString(RestartEvent))(line)
+            );
+
+            yield* appendRestartEvent(
+              target,
+              observedRestartEvent(events, before, after)
+            );
+          })
+        )
+      );
+    });
 
 const deferred = Effect.fn("Ship.recordDeferred")(function* recordDeferred(
   settings: typeof ShipAttempt.Type,

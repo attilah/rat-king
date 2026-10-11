@@ -134,9 +134,7 @@ const trackSources = (
   const explains = (instant: number) =>
     facts.receipts.some(
       (receipt) =>
-        receipt.celldRestarted === true &&
-        receipt.start * 1000 <= instant &&
-        receipt.end * 1000 >= instant
+        receipt.start * 1000 <= instant && receipt.end * 1000 >= instant
     );
 
   const unexplained = prior.unexplained.filter(
