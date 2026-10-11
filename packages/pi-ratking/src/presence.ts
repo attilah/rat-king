@@ -8,6 +8,7 @@ export const PresenceTimeout = Context.Reference<Duration.Duration>(
 );
 
 export interface PresenceValue {
+  readonly renders?: readonly string[];
   readonly held: boolean;
   readonly lastHeldAt?: string;
 }

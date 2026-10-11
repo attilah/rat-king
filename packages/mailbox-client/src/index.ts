@@ -43,6 +43,12 @@ export type {
   SendResult,
 } from "./prepare.ts";
 
+export {
+  lookupPresence,
+  readerCannotRender,
+  recordType,
+} from "./record-visibility.ts";
+
 export { consumerMachine } from "./consume.ts";
 
 export type { ConsumeOptions, MessageMeta, Skipped } from "./consume.ts";

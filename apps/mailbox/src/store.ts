@@ -21,6 +21,7 @@ const LegacyLease = Schema.Struct({
     Schema.isLessThanOrEqualTo(Number.MAX_SAFE_INTEGER)
   ),
   leaseId: Schema.String,
+  renders: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 
 export const Lease = Schema.Union([

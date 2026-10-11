@@ -9,6 +9,7 @@ import {
   RatKingMailbox,
   layer,
   transportLayer,
+  recordType,
 } from "@rat-king/mailbox-client";
 import type { OpenedMessage, SendOptions } from "@rat-king/mailbox-client";
 import {
@@ -161,6 +162,10 @@ const sendCommand = Command.make(
       }
 
       const opts: MutableSendOptions = {};
+
+      if (Option.isSome(args.record)) {
+        opts.recordType = recordType(body);
+      }
 
       if (args.urgent) {
         opts.urgent = true;

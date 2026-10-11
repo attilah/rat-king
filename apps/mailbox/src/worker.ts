@@ -1033,6 +1033,10 @@ const presenceRequest = Effect.fn("Mailbox.presence")(function* presenceRequest(
 
   const encoded = { did: params.did, held: presence.held };
 
+  if (presence.renders !== undefined) {
+    Object.assign(encoded, { renders: presence.renders });
+  }
+
   if (presence.lastHeldAt !== undefined) {
     Object.assign(encoded, { lastHeldAt: isoTime(presence.lastHeldAt) });
   }

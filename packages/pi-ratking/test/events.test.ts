@@ -941,9 +941,9 @@ it.live.prop(
         ]);
         expect(received).toEqual([]);
 
-        if (mode === "agentgraph") {
-          expect(messages).toHaveLength(1);
+        expect(messages).toHaveLength(1);
 
+        if (mode === "agentgraph") {
           const message = yield* Schema.decodeUnknownEffect(
             Schema.Struct({ content: Schema.String })
           )(messages[0]);
@@ -955,7 +955,12 @@ it.live.prop(
             { deliverAs: "followUp", triggerTurn: true },
           ]);
         } else {
-          expect(messages).toEqual([]);
+          expect(messages[0]).toMatchObject({
+            content: `📦 record sh.example.desk.answer from handset (id ${envelope.aad.messageId}), not rendered by this reader`,
+          });
+          expect(deliveries).toEqual([
+            { deliverAs: "followUp", triggerTurn: false },
+          ]);
         }
       } else if (mode === "agentgraph-data") {
         expect(records).toEqual([]);

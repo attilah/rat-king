@@ -85,9 +85,14 @@ const presenceDetails = (delivered: Delivered) =>
   delivered.presence === undefined ? {} : { presence: delivered.presence };
 
 export const notDeliveredText = (error: NotDelivered) =>
-  error.code === "Partial"
-    ? `PARTIAL DELIVERY: ${error.reason}`
-    : `NOT DELIVERED: ${error.code}. ${error.reason}. No intercom fallback; nothing reached the recipient.`;
+  Match.value(error.code).pipe(
+    Match.when("ReaderCannotRender", () => error.reason),
+    Match.when("Partial", () => `PARTIAL DELIVERY: ${error.reason}`),
+    Match.orElse(
+      () =>
+        `NOT DELIVERED: ${error.code}. ${error.reason}. No intercom fallback; nothing reached the recipient.`
+    )
+  );
 
 export const description = (tool: string) =>
   `Rat King messaging: signed mail between named agents on any machine. Every message goes to a name's durable mailbox; whoever holds that name's lease reads it. A failed send is an error, never a silent fallback.

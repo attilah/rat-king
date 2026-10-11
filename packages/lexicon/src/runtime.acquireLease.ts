@@ -175,6 +175,12 @@ export const Input = Schema.StructWithRest(
         Schema.brand("Lexicon:tid")
       )
     ),
+    renders: Schema.optionalKey(
+      Schema.Array(Runtime.lexString({ type: "string" })).check(
+        Schema.isMinLength(0),
+        Schema.isMaxLength(9_007_199_254_740_991)
+      )
+    ),
   }),
   [Schema.Record(Schema.String, Runtime.Data)]
 );

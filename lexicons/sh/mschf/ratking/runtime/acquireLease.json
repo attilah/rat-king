@@ -15,8 +15,15 @@
             "expiresAt"
           ],
           "properties": {
-            "leaseId": { "type": "string", "format": "tid" },
-            "generation": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+            "leaseId": {
+              "type": "string",
+              "format": "tid"
+            },
+            "generation": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
             "did": {
               "type": "string",
               "format": "did"
@@ -35,6 +42,13 @@
             "expiresAt": {
               "type": "string",
               "format": "datetime"
+            },
+            "renders": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Record NSIDs or namespace prefixes ending in .* rendered by this reader."
             }
           }
         }

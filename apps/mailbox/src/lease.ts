@@ -137,6 +137,10 @@ const makeLeases = (store: typeof MailboxStore.Service): LeaseInterface =>
           leaseId: tid(now, crypto.getRandomValues(new Uint16Array(1))[0] ?? 0),
         };
 
+        if (input.renders !== undefined) {
+          Object.assign(lease, { renders: input.renders });
+        }
+
         tx.setLease(lease);
         tx.setRetirement(undefined);
 
@@ -194,6 +198,10 @@ const makeLeases = (store: typeof MailboxStore.Service): LeaseInterface =>
           ...validLease(tx, input, now),
           expiresAt: expiry(now, input.expiresAt),
         };
+
+        if (input.renders !== undefined) {
+          Object.assign(lease, { renders: input.renders });
+        }
 
         const result = fullLease(lease);
         tx.setLease(lease);
