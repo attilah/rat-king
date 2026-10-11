@@ -3,6 +3,7 @@ import { Config, Effect, FileSystem, Path, Schema } from "effect";
 
 import { refuse } from "../../src/files.ts";
 import { runInstanceProbe } from "../../src/instance-probe-runtime.ts";
+import { probeTeardown } from "../../src/probe-receipts.ts";
 
 const Actions = Schema.Literals([
   "plan",
@@ -48,4 +49,6 @@ const program = Effect.gen(function* launcher() {
   return yield* runInstanceProbe(action);
 });
 
-NodeRuntime.runMain(program.pipe(Effect.provide(NodeServices.layer)));
+NodeRuntime.runMain(program.pipe(Effect.provide(NodeServices.layer)), {
+  teardown: probeTeardown,
+});

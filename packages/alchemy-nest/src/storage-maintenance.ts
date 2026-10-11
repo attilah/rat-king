@@ -20,7 +20,9 @@ export const storageRetentionUnit = (
       lines: [
         [
           "Description",
-          "Rat King filer metadata log retention and storage alarm",
+          layout === undefined || layout.instance === "rat-king"
+            ? "Rat King filer metadata log retention and storage alarm"
+            : `${layout.instance} filer metadata log retention and storage alarm`,
         ],
         ["Requires", layout?.storeUnit ?? "rat-king-seaweedfs.service"],
         ["After", layout?.storeUnit ?? "rat-king-seaweedfs.service"],
@@ -60,7 +62,14 @@ export const storageRetentionTimer = (
   scope: "user",
   sections: [
     {
-      lines: [["Description", "Rat King hourly filer log retention"]],
+      lines: [
+        [
+          "Description",
+          layout === undefined || layout.instance === "rat-king"
+            ? "Rat King hourly filer log retention"
+            : `${layout.instance} hourly filer log retention`,
+        ],
+      ],
       name: "Unit",
     },
     {

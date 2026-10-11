@@ -58,7 +58,8 @@ export const NodeProvider = () =>
       const startup = yield* Effect.serviceOption(UnitStartup);
 
       return NodeResource.Provider.of({
-        delete: ({ output }) => deleteUnit(shell, output),
+        delete: ({ output }) =>
+          output === undefined ? Effect.void : deleteUnit(shell, output),
         diff: Effect.fn("Celld.Node.diff")(function* operation({
           olds,
           news,

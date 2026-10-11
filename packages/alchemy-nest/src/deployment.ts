@@ -14,6 +14,7 @@ import {
 } from "./deployment-config.ts";
 import { AbsolutePath, digest, textDigest } from "./files.ts";
 import { HostShell, must } from "./host-shell.ts";
+import type { Interface } from "./host-shell.ts";
 import { deleteDirectory } from "./instance-files.ts";
 import { shellQuote } from "./ssh.ts";
 
@@ -171,6 +172,34 @@ const validate = Effect.fn("Celld.Deployment.validate")(function* validate(
   return yield* Effect.void;
 });
 
+export const deleteDeployment = Effect.fn("Celld.Deployment.delete")(
+  function* remove(
+    shell: Interface,
+    input: {
+      readonly olds?: Partial<DeploymentProps>;
+      readonly output?: Pick<DeploymentAttributes, "directory">;
+    }
+  ) {
+    if (input.output === undefined) {
+      return yield* Effect.void;
+    }
+
+    const root = deploymentDeleteRoot(shell, input.output.directory);
+
+    if (root === undefined) {
+      return yield* new DeploymentError({
+        reason: "Deployment delete escapes owned configuration",
+      });
+    }
+
+    return yield* deleteDirectory(shell, {
+      mode: 0o700,
+      path: input.output.directory,
+      purgeRoot: root,
+    });
+  }
+);
+
 export const DeploymentProvider = () =>
   Provider.effect(
     Deployment,
@@ -233,23 +262,7 @@ export const DeploymentProvider = () =>
       );
 
       return Deployment.Provider.of({
-        delete: Effect.fn("Celld.Deployment.delete")(function* remove({
-          output,
-        }) {
-          const root = deploymentDeleteRoot(shell, output.directory);
-
-          if (root === undefined) {
-            return yield* new DeploymentError({
-              reason: "Deployment delete escapes owned configuration",
-            });
-          }
-
-          return yield* deleteDirectory(shell, {
-            mode: 0o700,
-            path: output.directory,
-            purgeRoot: root,
-          });
-        }),
+        delete: ({ olds, output }) => deleteDeployment(shell, { olds, output }),
         diff: Effect.fn("Celld.Deployment.diff")(function* diff({
           news,
           output,

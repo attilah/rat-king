@@ -194,7 +194,8 @@ export const RuntimeFilesProvider = () =>
       });
 
       return RuntimeFiles.Provider.of({
-        delete: ({ output }) => remove(output),
+        delete: ({ output }) =>
+          output === undefined ? Effect.void : remove(output),
         diff: Effect.fn("AgentRuntimeFiles.diff")(function* diff({
           news,
           output,

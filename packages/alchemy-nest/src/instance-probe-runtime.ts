@@ -1,9 +1,9 @@
 import { NodeServices } from "@effect/platform-node";
 import { Stack, localState } from "alchemy";
 import { AlchemyContextLive } from "alchemy/AlchemyContext";
+import * as Apply from "alchemy/Apply";
 import { provideFreshArtifactStore } from "alchemy/Artifacts";
 import { deploy } from "alchemy/Deploy";
-import { destroy } from "alchemy/Destroy";
 import { layerNonInteractive } from "alchemy/Interaction";
 import * as Plan from "alchemy/Plan";
 import { evalStack } from "alchemy/Stack";
@@ -19,10 +19,7 @@ import { Celld } from "./celld.ts";
 import { refuse } from "./files.ts";
 import { HostShell, must } from "./host-shell.ts";
 import { Host, layer as inventoryLayer } from "./host.ts";
-import {
-  instanceGoneScript,
-  mailboxPidScript,
-} from "./instance-probe-scripts.ts";
+import { mailboxPidScript } from "./instance-probe-scripts.ts";
 import {
   instanceProbeProgram,
   probeIdentity,
@@ -32,6 +29,7 @@ import {
 import { startupLayer } from "./instance-startup-contract.ts";
 import { validateInstance } from "./instance.ts";
 import { ObjectStore } from "./object-store.ts";
+import { verifyInstanceGone, withDestroyReceipt } from "./probe-receipts.ts";
 import { sourceLayer } from "./release.ts";
 import { layer as sshLayer } from "./ssh.ts";
 
@@ -204,18 +202,13 @@ export const runInstanceProbe = (
 
       if (action === "verify-gone") {
         const saved = yield* readBaseline;
-        yield* Effect.log(
-          yield* must(shell, [
-            "python3",
-            "-c",
-            instanceGoneScript,
-            host.home,
-            dataRoot,
-            JSON.stringify(saved.pids),
-          ])
-        );
 
-        return yield* Effect.void;
+        return yield* verifyInstanceGone(
+          shell,
+          host.home,
+          dataRoot,
+          saved.pids
+        );
       }
 
       if (action === "health") {
@@ -291,7 +284,18 @@ export const runInstanceProbe = (
       }
 
       yield* readBaseline;
-      yield* destroy({ stack, stage: "rollback-proof" });
+      yield* evalStack(
+        stack,
+        (compiled) =>
+          Plan.destroy(compiled).pipe(
+            Effect.flatMap((plan) =>
+              withDestroyReceipt(Object.keys(plan.deletions), (session) =>
+                Apply.apply(plan, { session })
+              )
+            )
+          ),
+        { stage: "rollback-proof" }
+      );
 
       return yield* Effect.log("INSTANCE_DESTROYED_RUN_VERIFY_GONE");
     }

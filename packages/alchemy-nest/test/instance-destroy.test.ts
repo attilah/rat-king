@@ -15,17 +15,20 @@ import {
   deploymentDeleteRoot,
   instanceDeleteCustody,
 } from "../src/delete-custody.ts";
+import { deleteDeployment } from "../src/deployment.ts";
 import { makeFakeShell } from "../src/fake-shell.ts";
 import { textDigest } from "../src/files.ts";
 import { HostShell } from "../src/host-shell.ts";
 import { deleteDirectory, deleteFile } from "../src/instance-files.ts";
 import { declaredListeners } from "../src/instance-listener-contract.ts";
+import { instanceGoneScript } from "../src/instance-probe-scripts.ts";
 import {
   instanceProbeProgram,
   probeIdentity,
 } from "../src/instance-probe-stack.ts";
 import { startupLayer } from "../src/instance-startup-contract.ts";
 import { InstanceNameSchema, instanceLayout } from "../src/instance.ts";
+import { localExec } from "../src/local-exec.ts";
 import { ObjectStore } from "../src/object-store.ts";
 import { ReleaseBinary } from "../src/providers.ts";
 import { ReleaseSource } from "../src/release.ts";
@@ -33,6 +36,7 @@ import { s3Script } from "../src/s3-script.ts";
 import { deleteUnit } from "../src/systemd.ts";
 import { storeSocketScript } from "../src/unit-cleanup.ts";
 import { checkedRead, checkedStack } from "./checked-stack.ts";
+import { goneFixture } from "./instance-teardown-model.ts";
 
 const host = {
   dataRoot: "/srv/example/mailbox",
@@ -168,6 +172,31 @@ it.effect.prop(
 );
 
 const probeLayout = layoutFor("mischiefrb");
+
+it.effect.prop(
+  "delete with partial olds and no output is a no-op before any host effect",
+  { directory: Arbitrary.schema(Schema.String) },
+  ({ directory }) =>
+    Effect.gen(function* partialDelete() {
+      const fake = yield* makeFakeShell(
+        instanceDeleteCustody(host.home, probeLayout)
+      );
+
+      yield* deleteDeployment(fake.shell, {
+        olds: {
+          binary: `${probeLayout.bin}/celld`,
+          bundle: "not deployed",
+          commit: "example",
+          configuration: "{}",
+          directory,
+          environmentFile: `${probeLayout.configuration}/celld.env`,
+          version: "example",
+        },
+      });
+
+      expect(yield* fake.calls()).toEqual([]);
+    })
+);
 
 class Fake extends Context.Service<
   Fake,
@@ -647,6 +676,181 @@ test.provider(
               expect(
                 yield* fake.shell.stat(probeLayout.configuration)
               ).toBeUndefined();
+              expect(yield* fake.shell.stat(host.dataRoot)).toBeDefined();
+            }
+
+            return true;
+          }),
+        { runs: 4 }
+      );
+
+      expect(result._tag, Arbitrary.formatCheckFailure(result)).toBe("Passed");
+    })
+);
+
+test.provider(
+  "destroy exact worker and node creating rows from full and independently reduced host sets",
+  (scratch) =>
+    Effect.gen(function* partialHost() {
+      const fake = yield* Fake;
+
+      const stack = checkedStack(scratch);
+
+      const state = yield* State.pipe(
+        Effect.flatten,
+        Effect.provide(scratch.state)
+      );
+
+      const result = yield* Arbitrary.checkEffect(
+        Arbitrary.schema(Schema.String.check(Schema.isUUID(4))),
+        (uuid) =>
+          Effect.gen(function* cycle() {
+            for (const reduced of [false, true]) {
+              yield* stack.destroy();
+
+              const output = yield* stack.deploy(
+                instanceProbeProgram(host, probeLayout.dataRoot)
+              );
+
+              const units = [
+                probeLayout.nodeUnit,
+                ...(reduced
+                  ? [probeLayout.retentionUnit, probeLayout.retentionTimer]
+                  : []),
+              ];
+
+              for (const name of units) {
+                yield* fake.shell.exec(["systemctl", "--user", "stop", name]);
+                yield* fake.shell.exec([
+                  "systemctl",
+                  "--user",
+                  "disable",
+                  name,
+                ]);
+                yield* fake.shell.remove(
+                  `${host.home}/.config/systemd/user/${name}`
+                );
+              }
+
+              yield* fake.shell.exec(["systemctl", "--user", "daemon-reload"]);
+
+              if (reduced) {
+                for (const fqn of [
+                  "store/storage-retention",
+                  "store/storage-retention-timer",
+                ]) {
+                  yield* state.delete({
+                    fqn,
+                    stack: scratch.name,
+                    stage: scratch.stage,
+                  });
+                }
+              }
+
+              const row = {
+                bindings: [],
+                downstream: [],
+                instanceId: uuid.toLowerCase(),
+                namespace: undefined,
+                providerVersion: 0,
+              };
+
+              yield* state.set({
+                fqn: "worker",
+                stack: scratch.name,
+                stage: scratch.stage,
+                value: {
+                  ...row,
+                  fqn: "worker",
+                  logicalId: "worker",
+                  props: {
+                    binary: output.binary,
+                    bundle: output.bundle,
+                    commit: output.commit,
+                    configuration: output.configuration,
+                    directory: output.directory,
+                    environmentFile: output.environmentFile,
+                    version: output.version,
+                  },
+                  resourceType: "Celld.Deployment",
+                  status: "creating",
+                },
+              });
+              yield* state.set({
+                fqn: "celld/node",
+                stack: scratch.name,
+                stage: scratch.stage,
+                value: {
+                  ...row,
+                  fqn: "celld/node",
+                  logicalId: "node",
+                  props: {
+                    home: host.home,
+                    name: probeLayout.nodeUnit,
+                    scope: "user",
+                  },
+                  resourceType: "Celld.Node",
+                  status: "creating",
+                },
+              });
+
+              const plan = yield* Plan.destroy({
+                name: scratch.name,
+                stage: scratch.stage,
+              }).pipe(Effect.provide(scratch.state));
+
+              expect(Object.keys(plan.deletions).length).toBe(
+                reduced ? 22 : 24
+              );
+              yield* stack.destroy();
+
+              for (const path of [
+                ...instanceDeleteCustody(host.home, probeLayout).files,
+                ...instanceDeleteCustody(host.home, probeLayout).directories,
+              ]) {
+                expect(yield* fake.shell.stat(path)).toBeUndefined();
+              }
+
+              const world = {
+                commands: false,
+                directory: false,
+                inactive: false,
+                link: false,
+                listener: false,
+                loaded: false,
+                pid: false,
+                slice: false,
+                socket: false,
+                units: false,
+              };
+
+              for (const name of instanceDeleteCustody(host.home, probeLayout)
+                .units) {
+                const status = yield* fake.shell.exec([
+                  "systemctl",
+                  "--user",
+                  "show",
+                  name,
+                ]);
+
+                world.loaded ||= status.stdout.includes("LoadState=loaded");
+              }
+
+              const gone = yield* localExec.pipe(
+                Effect.flatMap((executor) =>
+                  executor.exec([
+                    "python3",
+                    "-c",
+                    goneFixture,
+                    JSON.stringify(world),
+                    instanceGoneScript,
+                  ])
+                ),
+                Effect.provide(NodeServices.layer)
+              );
+
+              expect(gone.code, gone.stdout).toBe(0);
+              expect(gone.stdout).not.toContain("FAIL");
               expect(yield* fake.shell.stat(host.dataRoot)).toBeDefined();
             }
 

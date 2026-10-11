@@ -101,7 +101,8 @@ export const RemoteFileProvider = () =>
       const shell = yield* HostShell;
 
       return RemoteFile.Provider.of({
-        delete: ({ output }) => deleteFile(shell, output),
+        delete: ({ output }) =>
+          output === undefined ? Effect.void : deleteFile(shell, output),
         diff: Effect.fn("RemoteFile.provider.diff")(function* operation({
           news,
           output,
@@ -180,7 +181,8 @@ export const HostDirectoryProvider = () =>
       const shell = yield* HostShell;
 
       return HostDirectory.Provider.of({
-        delete: ({ output }) => deleteDirectory(shell, output),
+        delete: ({ output }) =>
+          output === undefined ? Effect.void : deleteDirectory(shell, output),
         diff: Effect.fn("HostDirectory.provider.diff")(function* operation({
           news,
           output,
@@ -274,7 +276,8 @@ export const SystemdUnitProvider = () =>
       const startup = yield* Effect.serviceOption(UnitStartup);
 
       return SystemdUnit.Provider.of({
-        delete: ({ output }) => deleteUnit(shell, output),
+        delete: ({ output }) =>
+          output === undefined ? Effect.void : deleteUnit(shell, output),
         diff: Effect.fn("SystemdUnit.provider.diff")(function* operation({
           olds,
           news,
@@ -415,7 +418,8 @@ export const ReleaseBinaryProvider = () =>
       const source = yield* ReleaseSource;
 
       return ReleaseBinary.Provider.of({
-        delete: ({ output }) => deleteFile(shell, output),
+        delete: ({ output }) =>
+          output === undefined ? Effect.void : deleteFile(shell, output),
         diff: Effect.fn("ReleaseBinary.provider.diff")(function* operation({
           news,
           output,
