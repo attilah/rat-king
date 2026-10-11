@@ -53,6 +53,7 @@ const Frame = Schema.Union([
 ]);
 
 export const Counts = Schema.Struct({
+  failed: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   fallbacks: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   lost: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   quarantined: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
@@ -64,12 +65,18 @@ export const Counts = Schema.Struct({
 
 export type CountsValue = typeof Counts.Type;
 
+export const LEGACY_SENT = "Message sent to ";
+
 export const classify = (text: string | undefined) => {
   if (text === undefined) {
     return "unanswered";
   }
 
-  return text.includes("Rat King") ? "ratking" : "raw";
+  if (text.includes("Rat King")) {
+    return "ratking";
+  }
+
+  return text.startsWith(LEGACY_SENT) ? "raw" : "failed";
 };
 
 export const doneBar = (local: CountsValue, remote: CountsValue) =>
@@ -173,7 +180,7 @@ export const countFrames = <E, R>(
         Match.exhaustive
       )
     );
-    const classified = { ratking: 0, raw: 0, unanswered: 0 };
+    const classified = { failed: 0, ratking: 0, raw: 0, unanswered: 0 };
 
     for (const [file, ids] of calls) {
       for (const id of ids) {

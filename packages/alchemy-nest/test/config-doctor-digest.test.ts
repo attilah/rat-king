@@ -17,6 +17,7 @@ it.effect.prop(
   ([health, reasons]) =>
     Effect.sync(() => {
       const counts = {
+        failed: 0,
         fallbacks: 0,
         lost: 0,
         quarantined: 0,

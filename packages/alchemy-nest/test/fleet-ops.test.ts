@@ -47,8 +47,15 @@ const Call = Schema.Struct({
     "list",
   ]),
   recent: Schema.Boolean,
-  result: Schema.Literals(["raw", "ratking", "missing"]),
+  result: Schema.Literals(["raw", "ratking", "failed", "missing"]),
 });
+
+const resultText = {
+  failed: "NOT DELIVERED: Uncertain. Admission not confirmed after 3 tries",
+  missing: "",
+  ratking: "Delivered over Rat King",
+  raw: "Message sent to peer",
+};
 
 const Route = Schema.Struct({
   failed: Schema.Boolean,
@@ -88,10 +95,7 @@ it.effect.prop(
         const toolResult = {
           content: [
             {
-              text:
-                call.result === "ratking"
-                  ? "Delivered over Rat King"
-                  : "Legacy send",
+              text: resultText[call.result],
               type: "text",
             },
           ],
@@ -149,6 +153,9 @@ it.effect.prop(
       expect(counts.raw).toBe(
         sends.filter((call) => call.result === "raw").length
       );
+      expect(counts.failed).toBe(
+        sends.filter((call) => call.result === "failed").length
+      );
       expect(counts.ratking).toBe(
         sends.filter((call) => call.result === "ratking").length
       );
@@ -180,6 +187,7 @@ it.prop(
   [Thresholds],
   ([counts]) => {
     const other = {
+      failed: 7,
       fallbacks: 3,
       quarantined: 2,
       ratking: 10,
