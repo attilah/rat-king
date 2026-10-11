@@ -23,7 +23,7 @@ it.effect.prop(
           {
             exec: (argv) =>
               Effect.sync(() => {
-                expect(argv.at(-1)).toBe("ready");
+                expect(argv.at(-1)).toBe("writable");
                 calls += 1;
 
                 return {

@@ -167,6 +167,7 @@ export const nodeUnit = (input: {
         ["Nice", "10"],
         ["Restart", "on-failure"],
         ["RestartSec", "10"],
+        ["TimeoutStartSec", "180"],
         ["UMask", "0077"],
       ],
       name: "Service",

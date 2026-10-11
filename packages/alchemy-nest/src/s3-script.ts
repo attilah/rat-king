@@ -43,7 +43,7 @@ def request(method, key='', query='', conditional=False, payload=None, sink=None
         k = hmac.new(k, value.encode(), hashlib.sha256).digest()
     signature = hmac.new(k, string.encode(), hashlib.sha256).hexdigest()
     headers['authorization'] = 'AWS4-HMAC-SHA256 Credential=' + access + '/' + scope + ', SignedHeaders=' + signed + ', Signature=' + signature
-    connection = http.client.HTTPConnection(base.hostname, base.port, timeout=2 if operation == 'ready' else 30)
+    connection = http.client.HTTPConnection(base.hostname, base.port, timeout=2 if operation in ('ready', 'writable') else 30)
     try:
         connection.request(method, path + ('?' + query if query else ''), payload, headers)
         response = connection.getresponse()
@@ -99,6 +99,13 @@ elif operation == 'race':
         status, _ = request('DELETE', key)
         if status != 204:
             raise RuntimeError('probe key cleanup failed')
+elif operation == 'writable':
+    key = 'rat-king-probe/' + str(uuid.uuid4())
+    status, _ = request('PUT', key, conditional=True)
+    if status == 200:
+        cleanup, _ = request('DELETE', key)
+        status = 200 if cleanup == 204 else cleanup
+    print(json.dumps({'status': status, 'version': ''}))
 elif operation == 'purge':
     token = ''
     while True:

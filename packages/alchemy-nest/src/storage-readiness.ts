@@ -23,7 +23,7 @@ export const waitForStorage = Effect.fn("Startup.waitForStorage")(
         `${input.home}/.config/rat-king/s3.json`,
         input.endpoint,
         input.bucket,
-        "ready",
+        "writable",
       ]);
 
       const response = Schema.decodeUnknownOption(
@@ -42,13 +42,13 @@ export const waitForStorage = Effect.fn("Startup.waitForStorage")(
     }
 
     return yield* refuse(
-      "Storage did not serve authenticated bucket requests before node startup"
+      "Storage did not accept an authenticated conditional write before node startup"
     );
   },
   (effect) =>
     effect.pipe(
       Effect.timeoutOrElse({
-        duration: "30 seconds",
+        duration: "120 seconds",
         orElse: () =>
           refuse("Storage readiness deadline exceeded before node startup"),
       })
