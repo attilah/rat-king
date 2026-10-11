@@ -25,6 +25,7 @@ import { commsCounts, digest } from "./digest.ts";
 import { drainCommand } from "./drain.ts";
 import { DigestJson, summarize } from "./health.ts";
 import { mintHost } from "./mint-host.ts";
+import { sealCommand, sealedSendCommand } from "./seal.ts";
 import { sendCommand } from "./send.ts";
 import { launchdPlist, shipCommand } from "./ship-command.ts";
 import { FleetError, loadStageConfig, stageProvider } from "./stage-config.ts";
@@ -227,8 +228,16 @@ const program = Effect.gen(function* launcher() {
 });
 
 const scriptCommand = () => {
+  if (process.argv[2] === "seal") {
+    return sealCommand(process.argv.slice(3));
+  }
+
   if (process.argv[2] === "send") {
-    return sendCommand(process.argv.slice(3));
+    const flags = process.argv.slice(3);
+
+    return flags.includes("--sealed")
+      ? sealedSendCommand(flags)
+      : sendCommand(flags);
   }
 
   if (process.argv[2] === "drain" || process.argv[2] === "ack") {

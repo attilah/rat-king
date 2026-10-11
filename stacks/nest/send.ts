@@ -92,10 +92,13 @@ const isVerdict = (value: unknown): value is Verdict =>
 
 const settle = (verdict: Verdict) => verdict;
 
-const refused = (code: string, reason: string): Verdict =>
+export const refused = (
+  code: string,
+  reason: string
+): Extract<Verdict, { readonly _tag: "Refused" }> =>
   Verdicts.Refused({ code, reason });
 
-const oneLine = (text: string) =>
+export const oneLine = (text: string) =>
   text.replaceAll(/\s+/gu, " ").trim().slice(0, 240);
 
 export const render = (verdict: Verdict) =>
@@ -212,23 +215,31 @@ const partial = (accepted: readonly string[], verdict: Verdict): Verdict =>
           }),
       });
 
-export const scriptSend = Effect.fn("Nest.scriptSend")(
-  function* scriptSend(request: SendRequestValue) {
-    const settings = yield* Settings;
-    const directory = yield* Directory;
+export const leaseScriptIdentity = Effect.fn("Nest.leaseScriptIdentity")(
+  function* leaseScriptIdentity(as: string) {
     const store = yield* SecretStore;
 
     const secret = yield* store
-      .lease(request.as)
+      .lease(as)
       .pipe(Effect.mapError((error) => refused("NoIdentity", error.reason)));
 
     const identity = yield* Schema.decodeEffect(
       Schema.fromJsonString(Identity)
     )(Redacted.value(secret)).pipe(
       Effect.mapError(() =>
-        refused("NoIdentity", `Secret ${request.as} is not a Rat King identity`)
+        refused("NoIdentity", `Secret ${as} is not a Rat King identity`)
       )
     );
+
+    return identity;
+  }
+);
+
+export const prepareScript = Effect.fn("Nest.prepareScript")(
+  function* prepareScript(request: Pick<SendRequestValue, "as" | "to" | "cc">) {
+    const settings = yield* Settings;
+    const directory = yield* Directory;
+    const identity = yield* leaseScriptIdentity(request.as);
 
     const from = yield* Effect.fromOption(
       nameFor(settings.didTemplate, settings.reserved, identity.did)
@@ -317,16 +328,23 @@ export const scriptSend = Effect.fn("Nest.scriptSend")(
       return yield* Effect.fail(refused("NotAttempted", "No recipient"));
     }
 
+    const client = yield* prepare({
+      endpoint: settings.endpoint,
+      own,
+      peers: targets.map((target) => target.document),
+      serviceDid: settings.serviceDid,
+    });
+
+    return { client, from, primary, targets };
+  }
+);
+
+export const scriptSend = Effect.fn("Nest.scriptSend")(
+  function* scriptSend(request: SendRequestValue) {
     const accepted: string[] = [];
 
     return yield* Effect.gen(function* sealAndSend() {
-      const client = yield* prepare({
-        endpoint: settings.endpoint,
-        own,
-        peers: targets.map((target) => target.document),
-        serviceDid: settings.serviceDid,
-      });
-
+      const { client, from, primary, targets } = yield* prepareScript(request);
       let json: string | undefined;
 
       const encodeForId = (id: string) => {
@@ -416,7 +434,7 @@ export const scriptSend = Effect.fn("Nest.scriptSend")(
     )
 );
 
-const readBody = (body: string) =>
+export const readBody = (body: string) =>
   body === "-"
     ? Stdio.Stdio.use((stdio) =>
         stdio.stdin.pipe(Stream.decodeText(), Stream.mkString)
