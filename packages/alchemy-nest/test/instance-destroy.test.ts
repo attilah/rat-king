@@ -2,8 +2,9 @@ import { NodePath, NodeServices } from "@effect/platform-node";
 import { it } from "@effect/vitest";
 import * as Plan from "alchemy/Plan";
 import * as Provider from "alchemy/Provider";
+import { State } from "alchemy/State";
 import * as Test from "alchemy/Test/Vitest";
-import { Arbitrary, Context, Effect, Layer, Schema } from "effect";
+import { Arbitrary, Cause, Context, Effect, Exit, Layer, Schema } from "effect";
 import { HttpClient, HttpClientResponse } from "effect/http";
 import { expect } from "vitest";
 
@@ -31,7 +32,7 @@ import { ReleaseSource } from "../src/release.ts";
 import { s3Script } from "../src/s3-script.ts";
 import { deleteUnit } from "../src/systemd.ts";
 import { storeSocketScript } from "../src/unit-cleanup.ts";
-import { checkedStack } from "./checked-stack.ts";
+import { checkedRead, checkedStack } from "./checked-stack.ts";
 
 const host = {
   dataRoot: "/srv/example/mailbox",
@@ -496,6 +497,162 @@ test.provider(
             return true;
           }),
         { runs: 8 }
+      );
+
+      expect(result._tag, Arbitrary.formatCheckFailure(result)).toBe("Passed");
+    })
+);
+
+test.provider(
+  "exact partial creating worker resumes without output and rejects invalid olds with recorded output",
+  (scratch) =>
+    Effect.gen(function* interruptedWorker() {
+      const fake = yield* Fake;
+      const stack = checkedStack(scratch);
+
+      const state = yield* State.pipe(
+        Effect.flatten,
+        Effect.provide(scratch.state)
+      );
+
+      const program = instanceProbeProgram(host, probeLayout.dataRoot);
+
+      const partial = {
+        binary: `${probeLayout.bin}/celld`,
+        bundle: `export default { fetch() { return Response.json(${JSON.stringify(probeIdentity)}); } };`,
+        commit: probeIdentity.commit,
+        configuration: JSON.stringify({
+          compatibility_date: "2026-10-04",
+          compatibility_flags: [],
+          durable_objects: { bindings: [] },
+          main: "worker.mjs",
+          migrations: [],
+          name: "mischiefrb",
+          no_bundle: true,
+          vars: {},
+        }),
+        directory: `${probeLayout.configuration}/deployment`,
+        environmentFile: `${probeLayout.configuration}/celld.env`,
+        version: probeIdentity.version,
+      };
+
+      const result = yield* Arbitrary.checkEffect(
+        Arbitrary.schema(Schema.String.check(Schema.isUUID(4))),
+        (uuid) =>
+          Effect.gen(function* cycle() {
+            for (const mode of [
+              "resume",
+              "recorded-output",
+              "destroy-creating",
+            ]) {
+              yield* stack.destroy();
+
+              const row = {
+                bindings: [],
+                downstream: [],
+                fqn: "worker",
+                instanceId: uuid.toLowerCase(),
+                logicalId: "worker",
+                namespace: undefined,
+                props: partial,
+                providerVersion: 0,
+                resourceType: "Celld.Deployment",
+              };
+
+              if (mode === "resume") {
+                yield* state.set({
+                  fqn: "worker",
+                  stack: scratch.name,
+                  stage: scratch.stage,
+                  value: { ...row, status: "creating" },
+                });
+                yield* state.set({
+                  fqn: "celld/node",
+                  stack: scratch.name,
+                  stage: scratch.stage,
+                  value: {
+                    ...row,
+                    fqn: "celld/node",
+                    logicalId: "node",
+                    namespace: undefined,
+                    props: {
+                      home: host.home,
+                      name: probeLayout.nodeUnit,
+                      scope: "user",
+                    },
+                    resourceType: "Celld.Node",
+                    status: "creating",
+                  },
+                });
+
+                const plan = yield* stack.plan(program);
+                expect(plan.resources.worker?.action).toBe("create");
+                const output = yield* stack.deploy(program);
+                expect(output.internalUrl).toBe(
+                  `http://127.0.0.1:${probeLayout.ports.internal}`
+                );
+              } else {
+                const output = yield* stack.deploy(program);
+
+                yield* state.set({
+                  fqn: "worker",
+                  stack: scratch.name,
+                  stage: scratch.stage,
+                  value:
+                    mode === "recorded-output"
+                      ? { ...row, attr: output, status: "created" }
+                      : { ...row, status: "creating" },
+                });
+
+                if (mode === "recorded-output") {
+                  const provider = yield* Celld.Deployment.Provider;
+
+                  if (provider.read === undefined) {
+                    return yield* Effect.die("Missing deployment read port");
+                  }
+
+                  const attempt = yield* checkedRead(provider, {
+                    fqn: "worker",
+                    id: "worker",
+                    instanceId: row.instanceId,
+                    olds: { ...output, internalUrl: "invalid" },
+                    output,
+                  }).pipe(Effect.exit);
+
+                  expect(Exit.isFailure(attempt)).toBe(true);
+
+                  if (Exit.isFailure(attempt)) {
+                    expect(
+                      yield* Schema.decodeUnknownEffect(
+                        Schema.Struct({
+                          _tag: Schema.Literal("DeploymentError"),
+                          reason: Schema.Literal(
+                            "Invalid internal listener URL"
+                          ),
+                        })
+                      )(Cause.squash(attempt.cause)).pipe(Effect.isSuccess)
+                    ).toBe(true);
+                  }
+                } else {
+                  const teardown = yield* Plan.destroy({
+                    name: scratch.name,
+                    stage: scratch.stage,
+                  }).pipe(Effect.provide(scratch.state));
+
+                  expect(Object.keys(teardown.deletions).length).toBe(24);
+                }
+              }
+
+              yield* stack.destroy();
+              expect(
+                yield* fake.shell.stat(probeLayout.configuration)
+              ).toBeUndefined();
+              expect(yield* fake.shell.stat(host.dataRoot)).toBeDefined();
+            }
+
+            return true;
+          }),
+        { runs: 4 }
       );
 
       expect(result._tag, Arbitrary.formatCheckFailure(result)).toBe("Passed");

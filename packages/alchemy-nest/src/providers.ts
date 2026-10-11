@@ -14,6 +14,7 @@ import {
   deleteFile,
   fileText,
   FileSchema,
+  DirectorySchema,
   directoryPolicy,
   readDirectory,
   readFile,
@@ -30,6 +31,7 @@ import type {
   FileProps,
 } from "./instance-files.ts";
 import {
+  BinarySchema,
   binaryDigest,
   reconcileBinary,
   ReleaseSource,
@@ -213,6 +215,10 @@ export const HostDirectoryProvider = () =>
           olds,
           output,
         }) {
+          if (output === undefined && !Schema.is(DirectorySchema)(olds)) {
+            return absent;
+          }
+
           yield* validateDirectory(olds);
           const observed = yield* readDirectory(shell, olds.path);
 
@@ -443,6 +449,10 @@ export const ReleaseBinaryProvider = () =>
           olds,
           output,
         }) {
+          if (output === undefined && !Schema.is(BinarySchema)(olds)) {
+            return absent;
+          }
+
           yield* validateBinary(olds);
           const live = yield* readFile(shell, olds.path);
 
