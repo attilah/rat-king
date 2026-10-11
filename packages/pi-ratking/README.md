@@ -97,6 +97,12 @@ Custom producers can still emit `ratking/send` with `{ requestId, to: record.fro
 
 The routing model covers generated inbound, handled, failed-forward, clock and restart commands. The EA model covers verified-desk admission, wrong sender/receiver rejection, original-field projection, direct reply hints and compact via markers; removing model delivery falsifies it. The recipient-view test also checks a turn-starting EA message, an encrypted original-id reply to the sender, and its automatic handled record. Removing startup recovery falsifies the property on an overdue original. Completed-command restarts are covered. An abrupt crash between Pi injection and its journal checkpoint can replay that injection: Pi has no transactional/idempotent injection port. Terminal journal entries remain to deduplicate recovered originals; journal compaction is not implemented. The accepted policy is at-least-once across abrupt crashes and exactly-once after completed operations: replay is preferable to losing mail. `front` remains a later desk-controlled config change. To disable front routing safely, switch to copy while pending originals recover, then remove the config only after the pending set is empty. Removing the config or reverting the reader before draining pending mail would strand already-acked originals.
 
+## Scheduled drain
+
+`nest drain --as <identity-secret>` prints pending mail as JSONL without acknowledging it. Consumers ack after successful processing. See [drain and ack](../../stacks/nest/DRAIN.md) for lease fencing, batch limits, consumer execution and exit codes.
+
+`acceptedAt` is server admission time, taken from the initial message receipt’s `recordedAt`. It is absent on mail admitted before server commit `3f3430a`. Later receipt transitions record their own time without changing admission time. Drain never substitutes sender time, a later transition time or its own clock.
+
 ## Typed agent-graph records
 
 `intercom({ action: "record", to: "acme/desk", type: "sh.mschf.agentgraph.checkin", record, summary? })` validates content before sealing or contacting the mailbox. The supported types are `sh.mschf.agentgraph.checkin`, `sh.mschf.agentgraph.plan` and `sh.mschf.agentgraph.outcome`. Content may omit `$type`; if present it must match `type`. Unknown top-level keys are refused, with the offending key and allowed set. Other decode failures name the failing path. Refusals start with `NOT SENT: InvalidRecord.`

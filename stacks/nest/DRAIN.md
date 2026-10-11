@@ -46,7 +46,7 @@ A Mischief consumer acks on success and on `ReplyRefused`, and retries only on t
 
 For an unopenable signed-plaintext message, the untrusted plaintext body is retained for logging. An unopenable encrypted or malformed envelope has an empty body, not invented or decoded ciphertext. The sender DID and message ID still identify the failed verification. A failed peer-directory transport stops the batch with exit 3 rather than disguising an outage as an unverified signature.
 
-**`acceptedAt` is present only when the server supplies it.** The initial admission event or a later receipt event may supply `recordedAt` or `time`. Missing server time is omitted, never replaced with sender time or the drain clock. This pilot exception is approved by the desk; server timestamp emission belongs to the later receipts packet.
+**`acceptedAt` is server admission time.** Server commit `3f3430a` stamps `recordedAt` on the initial admission receipt from its Clock. Drain projects that timestamp unchanged. Mail admitted before this server change has no `acceptedAt`, even if a later receipt transition records its own time. Drain never substitutes sender time, a later transition time or its own clock.
 
 The seam fixture pins Mischief `7198ad0c123baba516cf11b42705fb6e233a3084`. Its `deliverReplyContract.input` uses `ReplyLineSchema`: `body` and `replyTo` are required; `from`, `messageId`, and `acceptedAt` are optional; extra fields are ignored. Signature trust is enforced by presence of `from`, not by a `verified` field in that pinned schema. The property test imports the vendored JSON schema and decodes serialized drain lines without reshaping. Set `MISCHIEF_CONTRACT_REPO` to a local Mischief checkout to check the fixture against that exact Git object.
 
