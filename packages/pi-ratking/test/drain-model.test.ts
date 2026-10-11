@@ -290,6 +290,21 @@ it.prop(
   }
 );
 
+it("plain drain, bounded drain, exec drain and ack parse from argv", () => {
+  expect(Result.isSuccess(parseDrain("drain", ["--as", request.as]))).toBe(
+    true
+  );
+  expect(
+    Result.isSuccess(parseDrain("drain", ["--as", request.as, "--max", "10"]))
+  ).toBe(true);
+  expect(
+    Result.isSuccess(parseDrain("drain", ["--as", request.as, "--exec", "cat"]))
+  ).toBe(true);
+  expect(Result.isSuccess(parseDrain("ack", ["--as", request.as, ID]))).toBe(
+    true
+  );
+});
+
 const ReplyInput = SchemaRepresentation.fromJsonSchemaDocument(
   JsonSchema.fromSchemaDraft2020_12(pinned.schema)
 );

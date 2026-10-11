@@ -171,13 +171,18 @@ export const parseDrain = (mode: "drain" | "ack", argv: readonly string[]) => {
       : Number.NaN;
   };
 
-  return Schema.decodeUnknownResult(Request)({
+  const input = {
     as: values.get("--as"),
-    exec: values.get("--exec"),
     ids,
     max: number("--max", 100),
     wait: number("--wait", 0),
-  }).pipe(
+  };
+
+  if (values.has("--exec")) {
+    Object.assign(input, { exec: values.get("--exec") });
+  }
+
+  return Schema.decodeUnknownResult(Request)(input).pipe(
     Result.mapError(() =>
       failure(2, `Invalid identity, id or bounds. Usage: ${usage}`)
     )
