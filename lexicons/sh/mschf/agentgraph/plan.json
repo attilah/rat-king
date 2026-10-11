@@ -1,0 +1,173 @@
+{
+  "lexicon": 1,
+  "id": "sh.mschf.agentgraph.plan",
+  "defs": {
+    "cleanupItem": {
+      "type": "object",
+      "required": [
+        "owner",
+        "what"
+      ],
+      "properties": {
+        "owner": {
+          "type": "string",
+          "x-minCodeUnits": 1
+        },
+        "what": {
+          "type": "string",
+          "x-minCodeUnits": 1
+        }
+      },
+      "x-strict": true
+    },
+    "packetsItem": {
+      "type": "object",
+      "required": [
+        "gates",
+        "model",
+        "order",
+        "parallelWith",
+        "thinking",
+        "workType",
+        "writeScope",
+        "writer"
+      ],
+      "properties": {
+        "gates": {
+          "type": "array",
+          "minLength": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "model": {
+          "type": "string",
+          "x-pattern": "^[a-z0-9][a-z0-9._-]*(?:\\/[a-z0-9][a-z0-9._-]*)?$"
+        },
+        "order": {
+          "type": "integer",
+          "minimum": 1,
+          "x-unboundedInteger": true
+        },
+        "parallelWith": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "x-unboundedInteger": true
+          }
+        },
+        "thinking": {
+          "type": "string",
+          "enum": [
+            "off",
+            "minimal",
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ]
+        },
+        "workType": {
+          "type": "string",
+          "enum": [
+            "bugfix",
+            "refactor",
+            "investigation",
+            "scan",
+            "gather",
+            "ui",
+            "feature"
+          ]
+        },
+        "writeScope": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "writer": {
+          "type": "string"
+        }
+      },
+      "x-strict": true
+    },
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "description": "Private envelope plaintext only; agent-graph content pinned to 53702c1 (Effect 4.0.1).",
+      "record": {
+        "type": "object",
+        "required": [
+          "checkIn",
+          "cleanup",
+          "constraints",
+          "packets",
+          "version",
+          "why",
+          "verdict"
+        ],
+        "properties": {
+          "checkIn": {
+            "type": "string"
+          },
+          "cleanup": {
+            "type": "array",
+            "minLength": 1,
+            "items": {
+              "type": "ref",
+              "ref": "#cleanupItem"
+            }
+          },
+          "constraints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "packets": {
+            "type": "array",
+            "minLength": 1,
+            "items": {
+              "type": "ref",
+              "ref": "#packetsItem"
+            }
+          },
+          "version": {
+            "type": "string",
+            "enum": [
+              "0.2"
+            ]
+          },
+          "why": {
+            "type": "string",
+            "x-minCodeUnits": 1
+          },
+          "releaseWhen": {
+            "type": "string",
+            "x-minCodeUnits": 1
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "go-as-proposed",
+              "go-with-changes",
+              "hold"
+            ]
+          }
+        },
+        "x-strict": true,
+        "x-requiredWhen": {
+          "field": "verdict",
+          "value": "hold",
+          "required": "releaseWhen"
+        },
+        "x-allowedWhen": {
+          "field": "verdict",
+          "value": "hold",
+          "property": "releaseWhen"
+        }
+      }
+    }
+  }
+}

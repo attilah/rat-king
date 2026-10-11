@@ -5,6 +5,7 @@ import {
   Data,
   Duration,
   Effect,
+  FileSystem,
   Layer,
   Option,
   Predicate,
@@ -23,6 +24,10 @@ import {
   SendOutcomes,
 } from "../../packages/mailbox-client/src/index.ts";
 import type { SendOutcome } from "../../packages/mailbox-client/src/index.ts";
+import {
+  recordSummary,
+  validateRecord,
+} from "../../packages/pi-ratking/src/agentgraph.ts";
 import {
   loadSettings,
   Settings,
@@ -76,11 +81,14 @@ export const SendRequest = Schema.Struct({
   ),
   body: Schema.String,
   cc: Schema.Array(AgentName),
+  kind: Schema.optionalKey(Schema.Literal("data")),
+  record: Schema.optionalKey(Schema.String),
   summary: Schema.String.check(
     Schema.isMinLength(1),
     Schema.isMaxLength(SUMMARY_MAX)
   ),
   to: AgentName,
+  type: Schema.optionalKey(Schema.String),
 });
 
 export type SendRequestValue = typeof SendRequest.Type;
@@ -107,7 +115,10 @@ export const render = (verdict: Verdict) =>
     }),
     Refused: ({ code, reason }) => ({
       code: 2,
-      stderr: `NOT DELIVERED: ${code}. ${oneLine(reason)}`,
+      stderr:
+        code === "InvalidRecord"
+          ? `NOT SENT: InvalidRecord. ${reason}`
+          : `NOT DELIVERED: ${code}. ${oneLine(reason)}`,
       stdout: undefined,
     }),
     Uncertain: ({ reason, sent }) => ({
@@ -120,7 +131,7 @@ export const render = (verdict: Verdict) =>
   });
 
 const usage =
-  "send --as <identity-secret> --to <name> [--cc <name>]... --summary <line> --body <text | ->";
+  "send --as <identity-secret> --to <name> [--cc <name>]... [--summary <line>] (--body <text | -> | --record <file.json> --type <nsid>)";
 
 export const parseSend = (
   argv: readonly string[]
@@ -142,7 +153,9 @@ export const parseSend = (
       (flag === "--as" ||
         flag === "--to" ||
         flag === "--summary" ||
-        flag === "--body") &&
+        flag === "--body" ||
+        flag === "--record" ||
+        flag === "--type") &&
       !values.has(flag)
     ) {
       values.set(flag, value);
@@ -151,13 +164,33 @@ export const parseSend = (
     }
   }
 
-  return Schema.decodeUnknownResult(SendRequest)({
+  if (
+    values.has("--body") === values.has("--record") ||
+    values.has("--record") !== values.has("--type")
+  ) {
+    return Result.fail(
+      `Supply exactly one of --body or --record; --record requires --type. Usage: ${usage}`
+    );
+  }
+
+  const input = {
     as: values.get("--as"),
-    body: values.get("--body"),
+    body: values.get("--body") ?? "",
     cc,
-    summary: oneLine(values.get("--summary") ?? ""),
+    summary: oneLine(
+      values.get("--summary") ?? (values.has("--record") ? "record" : "")
+    ),
     to: values.get("--to"),
-  }).pipe(
+  };
+
+  if (values.has("--record")) {
+    Object.assign(input, {
+      record: values.get("--record"),
+      type: values.get("--type"),
+    });
+  }
+
+  return Schema.decodeUnknownResult(SendRequest)(input).pipe(
     Result.mapError(
       () =>
         `Missing or invalid flag (names are project/row, summary 1-${SUMMARY_MAX} chars). Usage: ${usage}`
@@ -335,7 +368,7 @@ export const scriptSend = Effect.fn("Nest.scriptSend")(
             body: request.body,
             cc: targets.slice(1).map((target) => target.name),
             from,
-            kind: "message",
+            kind: request.kind ?? "message",
             summary: request.summary,
             thread: id,
             to: primary.name,
@@ -427,6 +460,46 @@ const readBody = (body: string) =>
       )
     : Effect.succeed(body);
 
+export const resolveSendRecord = Effect.fn("Nest.resolveSendRecord")(
+  function* resolveSendRecord(
+    request: SendRequestValue,
+    explicitSummary: boolean
+  ) {
+    if (request.record === undefined) {
+      return { ...request, body: yield* readBody(request.body) };
+    }
+
+    const fs = yield* FileSystem.FileSystem;
+
+    const raw = yield* fs
+      .readFileString(request.record)
+      .pipe(
+        Effect.mapError(() =>
+          refused("InvalidRecord", "record: supply a readable JSON file")
+        )
+      );
+
+    const json = yield* Schema.decodeUnknownEffect(
+      Schema.fromJsonString(Schema.Json)
+    )(raw).pipe(
+      Effect.mapError(() =>
+        refused("InvalidRecord", "record: supply valid JSON")
+      )
+    );
+
+    const value = yield* validateRecord(request.type, json).pipe(
+      Effect.mapError((error) => refused("InvalidRecord", error.reason))
+    );
+
+    return {
+      ...request,
+      body: JSON.stringify(value),
+      kind: "data" as const,
+      summary: explicitSummary ? request.summary : recordSummary(value),
+    };
+  }
+);
+
 export const sendCommand = Effect.fn("Nest.send")(function* sendCommand(
   argv: readonly string[]
 ) {
@@ -437,10 +510,10 @@ export const sendCommand = Effect.fn("Nest.send")(function* sendCommand(
       return yield* Effect.fail(refused("Usage", parsed.failure));
     }
 
-    const request = {
-      ...parsed.success,
-      body: yield* readBody(parsed.success.body),
-    };
+    const request = yield* resolveSendRecord(
+      parsed.success,
+      argv.includes("--summary")
+    );
 
     const settings = yield* loadSettings().pipe(
       Effect.mapError((error) => refused("NotConfigured", error.reason))

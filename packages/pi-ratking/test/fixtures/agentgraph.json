@@ -1,0 +1,631 @@
+{
+  "sha": "53702c1",
+  "commit": "53702c1f7c985a4879207986be6a3d81045a8200",
+  "path": "prototype/src/checkin.ts",
+  "effect": "4.0.1",
+  "sourceSha256": "d3b5833de47133aee15a1260f1189ba72d965659b6ff4f4e378f5e382488beff",
+  "schemas": {
+    "CheckIn": {
+      "dialect": "draft-2020-12",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "brief": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^\\/[^\\s]*$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "briefMachine": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,31}$"
+          },
+          "cleanup": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "critical": {
+            "type": "boolean"
+          },
+          "goal": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 280
+          },
+          "guess": {
+            "type": "object",
+            "properties": {
+              "model": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]*(?:\\/[a-z0-9][a-z0-9._-]*)?$"
+              },
+              "packets": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "thinking": {
+                "type": "string",
+                "enum": ["off", "minimal", "low", "medium", "high", "xhigh"]
+              },
+              "workType": {
+                "type": "string",
+                "enum": [
+                  "bugfix",
+                  "refactor",
+                  "investigation",
+                  "scan",
+                  "gather",
+                  "ui",
+                  "feature"
+                ]
+              }
+            },
+            "required": ["model", "packets", "thinking", "workType"],
+            "additionalProperties": false
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["ask", "fyi"]
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "project": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,63}$"
+          },
+          "repo": {
+            "type": "string",
+            "minLength": 1
+          },
+          "row": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,31}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "supersedes": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string",
+            "enum": ["0.1"]
+          },
+          "writeScope": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "brief",
+          "briefMachine",
+          "critical",
+          "goal",
+          "guess",
+          "mode",
+          "project",
+          "repo",
+          "row",
+          "version",
+          "writeScope"
+        ],
+        "additionalProperties": false
+      },
+      "definitions": {}
+    },
+    "Plan": {
+      "dialect": "draft-2020-12",
+      "schema": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "checkIn": {
+                "type": "string"
+              },
+              "cleanup": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "owner": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "what": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["owner", "what"],
+                    "additionalProperties": false
+                  }
+                ],
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "owner": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "what": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": ["owner", "what"],
+                  "additionalProperties": false
+                }
+              },
+              "constraints": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "packets": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "gates": {
+                        "type": "array",
+                        "prefixItems": [
+                          {
+                            "type": "string"
+                          }
+                        ],
+                        "minItems": 1,
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "model": {
+                        "type": "string",
+                        "pattern": "^[a-z0-9][a-z0-9._-]*(?:\\/[a-z0-9][a-z0-9._-]*)?$"
+                      },
+                      "order": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "parallelWith": {
+                        "type": "array",
+                        "items": {
+                          "type": "integer",
+                          "minimum": 1
+                        }
+                      },
+                      "thinking": {
+                        "type": "string",
+                        "enum": [
+                          "off",
+                          "minimal",
+                          "low",
+                          "medium",
+                          "high",
+                          "xhigh"
+                        ]
+                      },
+                      "workType": {
+                        "type": "string",
+                        "enum": [
+                          "bugfix",
+                          "refactor",
+                          "investigation",
+                          "scan",
+                          "gather",
+                          "ui",
+                          "feature"
+                        ]
+                      },
+                      "writeScope": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "writer": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "gates",
+                      "model",
+                      "order",
+                      "parallelWith",
+                      "thinking",
+                      "workType",
+                      "writeScope",
+                      "writer"
+                    ],
+                    "additionalProperties": false
+                  }
+                ],
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "gates": {
+                      "type": "array",
+                      "prefixItems": [
+                        {
+                          "type": "string"
+                        }
+                      ],
+                      "minItems": 1,
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "model": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9][a-z0-9._-]*(?:\\/[a-z0-9][a-z0-9._-]*)?$"
+                    },
+                    "order": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "parallelWith": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer",
+                        "minimum": 1
+                      }
+                    },
+                    "thinking": {
+                      "type": "string",
+                      "enum": [
+                        "off",
+                        "minimal",
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh"
+                      ]
+                    },
+                    "workType": {
+                      "type": "string",
+                      "enum": [
+                        "bugfix",
+                        "refactor",
+                        "investigation",
+                        "scan",
+                        "gather",
+                        "ui",
+                        "feature"
+                      ]
+                    },
+                    "writeScope": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "writer": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "gates",
+                    "model",
+                    "order",
+                    "parallelWith",
+                    "thinking",
+                    "workType",
+                    "writeScope",
+                    "writer"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "version": {
+                "type": "string",
+                "enum": ["0.2"]
+              },
+              "why": {
+                "type": "string",
+                "minLength": 1
+              },
+              "verdict": {
+                "type": "string",
+                "enum": ["go-as-proposed", "go-with-changes"]
+              }
+            },
+            "required": [
+              "checkIn",
+              "cleanup",
+              "constraints",
+              "packets",
+              "version",
+              "why",
+              "verdict"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "checkIn": {
+                "type": "string"
+              },
+              "cleanup": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "owner": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "what": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["owner", "what"],
+                    "additionalProperties": false
+                  }
+                ],
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "owner": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "what": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": ["owner", "what"],
+                  "additionalProperties": false
+                }
+              },
+              "constraints": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "packets": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "gates": {
+                        "type": "array",
+                        "prefixItems": [
+                          {
+                            "type": "string"
+                          }
+                        ],
+                        "minItems": 1,
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "model": {
+                        "type": "string",
+                        "pattern": "^[a-z0-9][a-z0-9._-]*(?:\\/[a-z0-9][a-z0-9._-]*)?$"
+                      },
+                      "order": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "parallelWith": {
+                        "type": "array",
+                        "items": {
+                          "type": "integer",
+                          "minimum": 1
+                        }
+                      },
+                      "thinking": {
+                        "type": "string",
+                        "enum": [
+                          "off",
+                          "minimal",
+                          "low",
+                          "medium",
+                          "high",
+                          "xhigh"
+                        ]
+                      },
+                      "workType": {
+                        "type": "string",
+                        "enum": [
+                          "bugfix",
+                          "refactor",
+                          "investigation",
+                          "scan",
+                          "gather",
+                          "ui",
+                          "feature"
+                        ]
+                      },
+                      "writeScope": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "writer": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "gates",
+                      "model",
+                      "order",
+                      "parallelWith",
+                      "thinking",
+                      "workType",
+                      "writeScope",
+                      "writer"
+                    ],
+                    "additionalProperties": false
+                  }
+                ],
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "gates": {
+                      "type": "array",
+                      "prefixItems": [
+                        {
+                          "type": "string"
+                        }
+                      ],
+                      "minItems": 1,
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "model": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9][a-z0-9._-]*(?:\\/[a-z0-9][a-z0-9._-]*)?$"
+                    },
+                    "order": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "parallelWith": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer",
+                        "minimum": 1
+                      }
+                    },
+                    "thinking": {
+                      "type": "string",
+                      "enum": [
+                        "off",
+                        "minimal",
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh"
+                      ]
+                    },
+                    "workType": {
+                      "type": "string",
+                      "enum": [
+                        "bugfix",
+                        "refactor",
+                        "investigation",
+                        "scan",
+                        "gather",
+                        "ui",
+                        "feature"
+                      ]
+                    },
+                    "writeScope": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "writer": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "gates",
+                    "model",
+                    "order",
+                    "parallelWith",
+                    "thinking",
+                    "workType",
+                    "writeScope",
+                    "writer"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "version": {
+                "type": "string",
+                "enum": ["0.2"]
+              },
+              "why": {
+                "type": "string",
+                "minLength": 1
+              },
+              "releaseWhen": {
+                "type": "string",
+                "minLength": 1
+              },
+              "verdict": {
+                "type": "string",
+                "enum": ["hold"]
+              }
+            },
+            "required": [
+              "checkIn",
+              "cleanup",
+              "constraints",
+              "packets",
+              "version",
+              "why",
+              "releaseWhen",
+              "verdict"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "definitions": {}
+    },
+    "Outcome": {
+      "dialect": "draft-2020-12",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "checkIn": {
+            "type": "string"
+          },
+          "gate": {
+            "type": "string",
+            "enum": ["pass", "fail", "skip"]
+          },
+          "landedAs": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": ["committed", "rejected", "no_changes"]
+          },
+          "version": {
+            "type": "string",
+            "enum": ["0.1"]
+          }
+        },
+        "required": ["checkIn", "gate", "outcome", "version"],
+        "additionalProperties": false
+      },
+      "definitions": {}
+    }
+  }
+}

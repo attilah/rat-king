@@ -1,8 +1,11 @@
 {
   "effect": "4.0.1",
   "generatorVersion": "0.1.0",
-  "sourceDigest": "eb1d44743005f4713b36e94614ef851fc0000a1d53b213803fae63557ffc25fb",
+  "sourceDigest": "96866e0bf43f0e8708549b89719e3527a1ed51c828e676c94923868838fd6213",
   "sources": [
+    "lexicons/sh/mschf/agentgraph/checkin.json",
+    "lexicons/sh/mschf/agentgraph/outcome.json",
+    "lexicons/sh/mschf/agentgraph/plan.json",
     "lexicons/sh/mschf/ratking/admin/putDidDocument.json",
     "lexicons/sh/mschf/ratking/agent/profile.json",
     "lexicons/sh/mschf/ratking/defs.json",

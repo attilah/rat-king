@@ -6,6 +6,8 @@ The official parser validates each document before refs are resolved. Unsupporte
 
 Generated objects use checked recursive rest maps to preserve extra fields, including nested bytes and links; signed data must use that retained data rather than a stripped projection.
 
+Private agent-graph records use additive `x-` codec constraints: `x-pattern`, `x-minCodeUnits` and `x-maxCodeUnits` preserve Effect string checks without confusing UTF-8 byte limits with JavaScript string length. `x-strict` rejects extra object keys. `x-requiredWhen` requires a property for a discriminator value; `x-allowedWhen` limits that property to the matching variant. `x-unboundedInteger` preserves the source schema's finite integer range. Standard Lexicon shapes remain available to older clients; generated codecs enforce these additional private-record constraints. Existing Rat King schemas retain their checked recursive rest maps unchanged.
+
 Open unions dispatch by fully qualified $type: known tags have only their strict variant branch, while the unknown branch explicitly excludes every known tag.
 
 The manifest hashes sorted source paths and exact document bytes. Output is formatted with the pinned formatter and has no clock-dependent fields. The source digest covers Lexicon documents; fixture-byte pins remain independent.
