@@ -33,6 +33,7 @@ import type { Inbound } from "./payload.ts";
 import { NotDelivered, RatKing, ratKingLayer } from "./ratking.ts";
 import type { Deliver, SendOptions } from "./ratking.ts";
 import { secretStoreLayer } from "./secrets.ts";
+import { callView, resultView } from "./tool-view.ts";
 import {
   description,
   notConfiguredText,
@@ -582,6 +583,21 @@ export const ratkingExtension = (options: ExtensionOptions) =>
       name: tool,
       parameters,
       promptSnippet: promptSnippet(tool),
+      renderCall: (args, theme) => callView(tool, args, theme),
+      renderResult: (result, { expanded, isPartial }, theme, context) =>
+        resultView(
+          {
+            action: context.args.action,
+            details: result.details,
+            expanded,
+            isError: context.isError,
+            isPartial,
+            text: result.content
+              .flatMap((part) => (part.type === "text" ? [part.text] : []))
+              .join("\n"),
+          },
+          theme
+        ),
     });
 
     const forward = async (request: typeof SendRequest.Type) => {

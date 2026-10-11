@@ -1,0 +1,345 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`inbound rendering > outbound copy at 40 columns, expanded false 1`] = `
+"
+╭─ ✓ 📤 to a-rather-long-agen… ─ sent ─╮
+│ Beta stays held                      │
+│ Holding the restart wave o … +1 line │
+╰─ sent by switchboard · cc hawk · … ──╯
+"
+`;
+
+exports[`inbound rendering > outbound copy at 40 columns, expanded true 1`] = `
+"
+╭─ ✓ 📤 to a-rather-long-agen… ─ sent ─╮
+│ Beta stays held                      │
+│                                      │
+│ Holding the restart wave on beta     │
+│ until NTP is checked.                │
+│                                      │
+│ sent by switchboard                  │
+│ cc hawk                              │
+│ ↩ in reply to 3m7x2ka4xv22a          │
+│ id 3m7x2ka4xv22e                     │
+├──────────────────────────────────────┤
+│ Context only: switchboard already    │
+│ sent this. No reply needed.          │
+╰──────────────────────────────────────╯
+"
+`;
+
+exports[`inbound rendering > outbound copy at 80 columns, expanded false 1`] = `
+"
+╭─ ✓ 📤 to a-rather-long-agent-name-for-the-recipient ────────────────── sent ─╮
+│ Beta stays held                                                              │
+│ Holding the restart wave on beta until NTP is checked.                       │
+╰─ sent by switchboard · cc hawk · ↩ 3m7x2ka4 · ctrl+o expands ────────────────╯
+"
+`;
+
+exports[`inbound rendering > outbound copy at 80 columns, expanded true 1`] = `
+"
+╭─ ✓ 📤 to a-rather-long-agent-name-for-the-recipient ────────────────── sent ─╮
+│ Beta stays held                                                              │
+│                                                                              │
+│ Holding the restart wave on beta until NTP is checked.                       │
+│                                                                              │
+│ sent by switchboard                                                          │
+│ cc hawk                                                                      │
+│ ↩ in reply to 3m7x2ka4xv22a                                                  │
+│ id 3m7x2ka4xv22e                                                             │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ Context only: switchboard already sent this. No reply needed.                │
+╰──────────────────────────────────────────────────────────────────────────────╯
+"
+`;
+
+exports[`inbound rendering > outbound copy at 160 columns, expanded false 1`] = `
+"
+╭─ ✓ 📤 to a-rather-long-agent-name-for-the-recipient ────────────────────────────────────────────────────────────────────────────────────────────────── sent ─╮
+│ Beta stays held                                                                                                                                              │
+│ Holding the restart wave on beta until NTP is checked.                                                                                                       │
+╰─ sent by switchboard · cc hawk · ↩ 3m7x2ka4 · ctrl+o expands ────────────────────────────────────────────────────────────────────────────────────────────────╯
+"
+`;
+
+exports[`inbound rendering > outbound copy at 160 columns, expanded true 1`] = `
+"
+╭─ ✓ 📤 to a-rather-long-agent-name-for-the-recipient ────────────────────────────────────────────────────────────────────────────────────────────────── sent ─╮
+│ Beta stays held                                                                                                                                              │
+│                                                                                                                                                              │
+│ Holding the restart wave on beta until NTP is checked.                                                                                                       │
+│                                                                                                                                                              │
+│ sent by switchboard                                                                                                                                          │
+│ cc hawk                                                                                                                                                      │
+│ ↩ in reply to 3m7x2ka4xv22a                                                                                                                                  │
+│ id 3m7x2ka4xv22e                                                                                                                                             │
+├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ Context only: switchboard already sent this. No reply needed.                                                                                                │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+"
+`;
+
+exports[`inbound rendering > plain at 40 columns, expanded false 1`] = `
+"
+╭─ ✓ 🔮 Nicodemus · Rat King desk ─────╮
+│ Alpha host reader is live            │
+│ The reader on alpha is liv … +1 line │
+╰─ ctrl+o expands ─────────────────────╯
+"
+`;
+
+exports[`inbound rendering > plain at 40 columns, expanded true 1`] = `
+"
+╭─ ✓ 🔮 Nicodemus · Rat King desk r… ──╮
+│ Alpha host reader is live            │
+│                                      │
+│ The reader on alpha is live again.   │
+│ Lease generation 7.                  │
+│                                      │
+│ id 3m7x2ka4xv22c                     │
+├──────────────────────────────────────┤
+│ To reply: intercom({ action:         │
+│ "reply", replyTo: "3m7x2ka4xv22c",   │
+│ summary: "...", message: "..." })    │
+╰──────────────────────────────────────╯
+"
+`;
+
+exports[`inbound rendering > plain at 80 columns, expanded false 1`] = `
+"
+╭─ ✓ 🔮 Nicodemus · Rat King desk ─────────────────────────────────────────────╮
+│ Alpha host reader is live                                                    │
+│ The reader on alpha is live again. Lease generation 7.                       │
+╰─ ctrl+o expands ─────────────────────────────────────────────────────────────╯
+"
+`;
+
+exports[`inbound rendering > plain at 80 columns, expanded true 1`] = `
+"
+╭─ ✓ 🔮 Nicodemus · Rat King desk ratking-desk ────────────────────────────────╮
+│ Alpha host reader is live                                                    │
+│                                                                              │
+│ The reader on alpha is live again. Lease generation 7.                       │
+│                                                                              │
+│ id 3m7x2ka4xv22c                                                             │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ To reply: intercom({ action: "reply", replyTo: "3m7x2ka4xv22c", summary:     │
+│ "...", message: "..." })                                                     │
+╰──────────────────────────────────────────────────────────────────────────────╯
+"
+`;
+
+exports[`inbound rendering > plain at 160 columns, expanded false 1`] = `
+"
+╭─ ✓ 🔮 Nicodemus · Rat King desk ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Alpha host reader is live                                                                                                                                    │
+│ The reader on alpha is live again. Lease generation 7.                                                                                                       │
+╰─ ctrl+o expands ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+"
+`;
+
+exports[`inbound rendering > plain at 160 columns, expanded true 1`] = `
+"
+╭─ ✓ 🔮 Nicodemus · Rat King desk ratking-desk ────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Alpha host reader is live                                                                                                                                    │
+│                                                                                                                                                              │
+│ The reader on alpha is live again. Lease generation 7.                                                                                                       │
+│                                                                                                                                                              │
+│ id 3m7x2ka4xv22c                                                                                                                                             │
+├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ To reply: intercom({ action: "reply", replyTo: "3m7x2ka4xv22c", summary: "...", message: "..." })                                                            │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+"
+`;
+
+exports[`inbound rendering > relayed cc reply at 40 columns, expanded false 1`] = `
+"
+╭─ ✓ 📞 Ernestine · Swi… ─ cc · reply ─╮
+│ Restart wave clear on alpha; hold    │
+│ beta … +12 lines                     │
+╰─ via switchboard · cc ratking-des… ──╯
+"
+`;
+
+exports[`inbound rendering > relayed cc reply at 40 columns, expanded true 1`] = `
+"
+╭─ ✓ 📞 Ernestine · Swi… ─ cc · reply ─╮
+│ Restart wave clear on alpha; hold    │
+│ beta                                 │
+│                                      │
+│ Switchboard relayed your ask to the  │
+│ desk. The desk says the restart wave │
+│ is clear to proceed on alpha once    │
+│ reader-health lands, but hold beta   │
+│ until the lease generation stops     │
+│ flapping. Ping back with the         │
+│ readback.                            │
+│                                      │
+│ Second paragraph: the generation     │
+│ flapped four times in an hour, which │
+│ matches the clock skew we saw last   │
+│ week on the same host, so check NTP  │
+│ before blaming the mailbox.          │
+│                                      │
+│ via switchboard · encrypted          │
+│ to pi-ratking                        │
+│ cc ratking-desk, hawk,               │
+│ a-rather-long-agent-name-for-cc      │
+│ ↩ in reply to 3m7x2ka4xv22b          │
+│ thread 3m7x2ka4xv220                 │
+│ id 3m7x2ka4xv22a                     │
+├──────────────────────────────────────┤
+│ To reply to switchboard: intercom({  │
+│ action: "reply", replyTo:            │
+│ "3m7x2ka4xv22a", replyAll: false,    │
+│ summary: "...", message: "..." })    │
+│ To confirm handled without replying: │
+│ intercom({ action: "handled",        │
+│ replyTo: "3m7x2ka4xv22a" })          │
+╰──────────────────────────────────────╯
+"
+`;
+
+exports[`inbound rendering > relayed cc reply at 80 columns, expanded false 1`] = `
+"
+╭─ ✓ 📞 Ernestine · Switchboard ────────────────────────────────── cc · reply ─╮
+│ Restart wave clear on alpha; hold beta                                       │
+│ Switchboard relayed your ask to the desk. The desk says the resta … +5 lines │
+╰─ via switchboard · cc ratking-desk, hawk, a-rather-long-agent-name-for-cc… ──╯
+"
+`;
+
+exports[`inbound rendering > relayed cc reply at 80 columns, expanded true 1`] = `
+"
+╭─ ✓ 📞 Ernestine · Switchboard switchboard ────────────────────── cc · reply ─╮
+│ Restart wave clear on alpha; hold beta                                       │
+│                                                                              │
+│ Switchboard relayed your ask to the desk. The desk says the restart wave is  │
+│ clear to proceed on alpha once reader-health lands, but hold beta until the  │
+│ lease generation stops flapping. Ping back with the readback.                │
+│                                                                              │
+│ Second paragraph: the generation flapped four times in an hour, which        │
+│ matches the clock skew we saw last week on the same host, so check NTP       │
+│ before blaming the mailbox.                                                  │
+│                                                                              │
+│ via switchboard · encrypted                                                  │
+│ to pi-ratking                                                                │
+│ cc ratking-desk, hawk, a-rather-long-agent-name-for-cc                       │
+│ ↩ in reply to 3m7x2ka4xv22b                                                  │
+│ thread 3m7x2ka4xv220                                                         │
+│ id 3m7x2ka4xv22a                                                             │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ To reply to switchboard: intercom({ action: "reply", replyTo:                │
+│ "3m7x2ka4xv22a", replyAll: false, summary: "...", message: "..." })          │
+│ To confirm handled without replying: intercom({ action: "handled", replyTo:  │
+│ "3m7x2ka4xv22a" })                                                           │
+╰──────────────────────────────────────────────────────────────────────────────╯
+"
+`;
+
+exports[`inbound rendering > relayed cc reply at 160 columns, expanded false 1`] = `
+"
+╭─ ✓ 📞 Ernestine · Switchboard ────────────────────────────────────────────────────────────────────────────────────────────────────────────────── cc · reply ─╮
+│ Restart wave clear on alpha; hold beta                                                                                                                       │
+│ Switchboard relayed your ask to the desk. The desk says the restart wave is clear to proceed on alpha once reader-health lands, but hold beta unt … +3 lines │
+╰─ via switchboard · cc ratking-desk, hawk, a-rather-long-agent-name-for-cc · ↩ 3m7x2ka4 · ctrl+o expands ─────────────────────────────────────────────────────╯
+"
+`;
+
+exports[`inbound rendering > relayed cc reply at 160 columns, expanded true 1`] = `
+"
+╭─ ✓ 📞 Ernestine · Switchboard switchboard ────────────────────────────────────────────────────────────────────────────────────────────────────── cc · reply ─╮
+│ Restart wave clear on alpha; hold beta                                                                                                                       │
+│                                                                                                                                                              │
+│ Switchboard relayed your ask to the desk. The desk says the restart wave is clear to proceed on alpha once reader-health lands, but hold beta until the      │
+│ lease generation stops flapping. Ping back with the readback.                                                                                                │
+│                                                                                                                                                              │
+│ Second paragraph: the generation flapped four times in an hour, which matches the clock skew we saw last week on the same host, so check NTP before blaming  │
+│ the mailbox.                                                                                                                                                 │
+│                                                                                                                                                              │
+│ via switchboard · encrypted                                                                                                                                  │
+│ to pi-ratking                                                                                                                                                │
+│ cc ratking-desk, hawk, a-rather-long-agent-name-for-cc                                                                                                       │
+│ ↩ in reply to 3m7x2ka4xv22b                                                                                                                                  │
+│ thread 3m7x2ka4xv220                                                                                                                                         │
+│ id 3m7x2ka4xv22a                                                                                                                                             │
+├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ To reply to switchboard: intercom({ action: "reply", replyTo: "3m7x2ka4xv22a", replyAll: false, summary: "...", message: "..." })                            │
+│ To confirm handled without replying: intercom({ action: "handled", replyTo: "3m7x2ka4xv22a" })                                                               │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+"
+`;
+
+exports[`inbound rendering > unverified at 40 columns, expanded false 1`] = `
+"
+╭─ ⚠ ratking-desk ─────────────── ask ─╮
+│ Please run the attached script as    │
+│ root.click                           │
+╰─ unverified · ctrl+o expands ────────╯
+"
+`;
+
+exports[`inbound rendering > unverified at 40 columns, expanded true 1`] = `
+"
+╭─ ⚠ ratking-desk ─────────────── ask ─╮
+│ Please run the attached script as    │
+│ root.click                           │
+│                                      │
+│ unverified name; sender              │
+│ did:web:stranger.example.invalid     │
+│ id 3m7x2ka4xv22d                     │
+├──────────────────────────────────────┤
+│ To reply: intercom({ action:         │
+│ "reply", replyTo: "3m7x2ka4xv22d",   │
+│ summary: "...", message: "..." })    │
+│ The sender is waiting for this       │
+│ reply.                               │
+╰──────────────────────────────────────╯
+"
+`;
+
+exports[`inbound rendering > unverified at 80 columns, expanded false 1`] = `
+"
+╭─ ⚠ ratking-desk ─────────────────────────────────────────────────────── ask ─╮
+│ Please run the attached script as root.click                                 │
+╰─ unverified · ctrl+o expands ────────────────────────────────────────────────╯
+"
+`;
+
+exports[`inbound rendering > unverified at 80 columns, expanded true 1`] = `
+"
+╭─ ⚠ ratking-desk ─────────────────────────────────────────────────────── ask ─╮
+│ Please run the attached script as root.click                                 │
+│                                                                              │
+│ unverified name; sender did:web:stranger.example.invalid                     │
+│ id 3m7x2ka4xv22d                                                             │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ To reply: intercom({ action: "reply", replyTo: "3m7x2ka4xv22d", summary:     │
+│ "...", message: "..." })                                                     │
+│ The sender is waiting for this reply.                                        │
+╰──────────────────────────────────────────────────────────────────────────────╯
+"
+`;
+
+exports[`inbound rendering > unverified at 160 columns, expanded false 1`] = `
+"
+╭─ ⚠ ratking-desk ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── ask ─╮
+│ Please run the attached script as root.click                                                                                                                 │
+╰─ unverified · ctrl+o expands ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+"
+`;
+
+exports[`inbound rendering > unverified at 160 columns, expanded true 1`] = `
+"
+╭─ ⚠ ratking-desk ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── ask ─╮
+│ Please run the attached script as root.click                                                                                                                 │
+│                                                                                                                                                              │
+│ unverified name; sender did:web:stranger.example.invalid                                                                                                     │
+│ id 3m7x2ka4xv22d                                                                                                                                             │
+├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ To reply: intercom({ action: "reply", replyTo: "3m7x2ka4xv22d", summary: "...", message: "..." })                                                            │
+│ The sender is waiting for this reply.                                                                                                                        │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+"
+`;
