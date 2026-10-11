@@ -14,6 +14,7 @@ struct DeskInboxView: View {
                     HStack {
                         Text(archived ? "[ARCHIVED]" : "[INBOX]").foregroundStyle(TUITheme.accent)
                         Spacer()
+                        if store.presentation.syncing { Text("SYNCING \(store.presentation.progress)").foregroundStyle(TUITheme.warn).font(TUITheme.microFont).accessibilityIdentifier("inbox-syncing") }
                     }.padding(.vertical, 8)
                     TerminalHints(text: archived ? "tap → thread · swipe right → restore" : "tap → thread · ← archive · snooze →")
                     TerminalFilterBar(filter: $filter, projects: store.presentedThreads.flatMap { threadFacts($0, unread: 0, callsign: nil).projects })
