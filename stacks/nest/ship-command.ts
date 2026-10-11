@@ -146,6 +146,30 @@ const requireSuccess = Effect.fn("Ship.requireSuccess")(
   }
 );
 
+const installDependencies = Effect.fn("Ship.installDependencies")(
+  function* installDependencies(pnpm: string, cwd: string) {
+    yield* requireSuccess(
+      pnpm,
+      ["install", "--frozen-lockfile", "--offline"],
+      cwd
+    ).pipe(
+      Effect.timeout("5 minutes"),
+      Effect.catch(() =>
+        requireSuccess(pnpm, ["install", "--frozen-lockfile"], cwd).pipe(
+          Effect.timeout("5 minutes")
+        )
+      ),
+      Effect.mapError(
+        () =>
+          new FleetError({
+            reason:
+              "Candidate pnpm install failed or hung (offline, then online, 5 minutes each)",
+          })
+      )
+    );
+  }
+);
+
 const escapeXml = (text: string) =>
   text
     .replaceAll("&", "&amp;")
@@ -333,11 +357,7 @@ export const shipCommand = Effect.fn("Ship.command")(
             });
           }
 
-          yield* requireSuccess(
-            ship.launchd.pnpm,
-            ["install", "--frozen-lockfile"],
-            release
-          );
+          yield* installDependencies(ship.launchd.pnpm, release);
 
           const attemptDirectory = yield* fs.makeTempDirectory({
             directory: ship.releases,
