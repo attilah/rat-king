@@ -1,10 +1,11 @@
 import { it } from "@effect/vitest";
+import * as Defs from "@rat-king/lexicon/defs";
 import { MailboxHandlers } from "@rat-king/lexicon/mailbox-handlers";
 import * as Ack from "@rat-king/lexicon/mailbox.ack";
 import * as List from "@rat-king/lexicon/mailbox.list";
 import * as Acquire from "@rat-king/lexicon/runtime.acquireLease";
 import * as Renew from "@rat-king/lexicon/runtime.renewLease";
-import { Clock, DateTime, Effect, Layer, Schema } from "effect";
+import { Arbitrary, Clock, DateTime, Effect, Layer, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { expect } from "vitest";
 
@@ -22,9 +23,14 @@ import {
 } from "../src/mailbox.ts";
 import { documents, testStore, unleasedSender } from "./helpers.ts";
 
-it.effect(
+it.effect.prop(
   "SQL admission, canonical idempotency, snapshots, lease fencing and ack durability",
-  () =>
+  [
+    Arbitrary.schema(
+      Schema.Int.check(Schema.isBetween({ maximum: 100, minimum: 1 }))
+    ),
+  ],
+  ([elapsed]) =>
     Effect.gen(function* mailboxProof() {
       const sample = yield* sealed();
 
@@ -61,7 +67,10 @@ it.effect(
         return yield* LeaseAuthority;
       }).pipe(Effect.provide(leaseLayer.pipe(Layer.provide(storage.layer))));
 
+      yield* TestClock.setTime(1_791_676_800_000);
       const first = yield* sender.send({ envelope: sample.envelope });
+      expect(first.receipt.recordedAt).toBe("2026-10-11T00:00:00.000Z");
+      yield* TestClock.adjust(elapsed);
       expect(yield* sender.send({ envelope: sample.envelope })).toEqual(first);
       expect(
         (yield* sender
@@ -83,6 +92,11 @@ it.effect(
       const read = yield* recipient.list(params);
       expect(read.throughSeq).toBe(1);
       expect(read.events.length).toBe(1);
+      expect(
+        (yield* Schema.decodeUnknownEffect(Schema.toType(Defs.MessageEvent))(
+          read.events[0]
+        )).receipt.recordedAt
+      ).toBe(first.receipt.recordedAt);
       expect(read.cursor).toBeUndefined();
 
       const input = yield* Schema.decodeUnknownEffect(Acquire.Input)({
@@ -109,7 +123,13 @@ it.effect(
       expect((yield* recipient.ack(ack).pipe(Effect.exit))._tag).toBe(
         "Failure"
       );
-      yield* recipient.deliver(ack);
+      const delivered = yield* recipient.deliver(ack);
+
+      const transitionTime = DateTime.formatIso(
+        DateTime.makeUnsafe(1_791_676_800_000 + elapsed)
+      );
+
+      expect(delivered.receipt.recordedAt).toBe(transitionTime);
       const page1 = yield* recipient.list(params);
       expect(page1.throughSeq).toBe(3);
       expect(page1.cursor).toBeDefined();
@@ -130,8 +150,12 @@ it.effect(
         leaseId: rebound.leaseId,
       };
 
+      yield* TestClock.adjust(elapsed);
       const acknowledged = yield* recipient.ack(valid);
       expect(acknowledged.receipt.state).toBe("acked");
+      expect(acknowledged.receipt.recordedAt).toBe(
+        DateTime.formatIso(DateTime.makeUnsafe(1_791_676_800_000 + elapsed * 2))
+      );
       expect(yield* recipient.ack(valid)).toEqual(acknowledged);
       expect(yield* sender.send({ envelope: sample.envelope })).toEqual(first);
 
@@ -144,6 +168,11 @@ it.effect(
       const page2 = yield* recipient.list(nextParams);
       expect(page2.throughSeq).toBe(3);
       expect(page2.events[0]?.seq).toBe(2);
+      expect(
+        (yield* Schema.decodeUnknownEffect(Schema.toType(Defs.ReceiptEvent))(
+          page2.events[0]
+        )).receipt.recordedAt
+      ).toBe(transitionTime);
 
       const page3 = yield* recipient.list({
         ...nextParams,
