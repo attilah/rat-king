@@ -2,6 +2,7 @@ import { it } from "@effect/vitest";
 import { Arbitrary, Schema } from "effect";
 import { expect } from "vitest";
 
+import { deploymentStageLayout } from "../src/deployment-stage.ts";
 import { declaredListeners } from "../src/instance-listener-contract.ts";
 import { assessListeners } from "../src/instance-listeners.ts";
 import { InstanceNameSchema, instanceLayout } from "../src/instance.ts";
@@ -31,6 +32,8 @@ const ancestors = (slice: string) =>
     .map((_, index, parts) => `${parts.slice(0, index + 1).join("-")}.slice`);
 
 const surface = (layout: InstanceLayout) => {
+  const stage = deploymentStageLayout(host.home, layout);
+
   const units = [
     nodeUnit({
       binary: `${layout.bin}/celld`,
@@ -62,12 +65,21 @@ const surface = (layout: InstanceLayout) => {
   const text = units.map(renderUnit).join("\n");
 
   return {
-    names: units.map(({ name }) => name),
+    names: [
+      ...units.map(({ name }) => name),
+      ...["directory", "worker", "configuration"].map(
+        (kind) => `${stage.idPrefix}-${kind}`
+      ),
+    ],
     paths: [
       ...units.map(unitPath),
       layout.binaryRoot,
       layout.bin,
       layout.configuration,
+      stage.directory,
+      `${stage.directory}/worker.mjs`,
+      `${stage.directory}/wrangler.json`,
+      `${stage.directory}/wrangler.public.json`,
       layout.dataRoot,
       `${layout.dataRoot}/celld`,
       `${layout.dataRoot}/seaweedfs`,
@@ -95,7 +107,10 @@ it.prop(
   "distinct instances have disjoint rendered units, ports, paths, slices and data",
   {
     names: Arbitrary.schema(
-      Schema.Tuple([InstanceNameSchema, InstanceNameSchema])
+      Schema.Tuple([
+        Schema.Union([InstanceNameSchema, Schema.Literal("mailbox")]),
+        InstanceNameSchema,
+      ])
     ).pipe(
       Arbitrary.filter(
         ([a, b]) => a !== b && a !== "rat-king" && b !== "rat-king"
@@ -108,7 +123,7 @@ it.prop(
   },
   ({ names: [a, b], slot, withDefault }) => {
     const first = instanceLayout(host, {
-      dataRoot: `/srv/example/${a}`,
+      dataRoot: `/srv/example/named/${a}`,
       instance: a,
       portBase: 30_000 + slot * 100,
     });
@@ -116,7 +131,7 @@ it.prop(
     const second = withDefault
       ? instanceLayout(host, {})
       : instanceLayout(host, {
-          dataRoot: `/srv/example/${b}`,
+          dataRoot: `/srv/example/named/${b}`,
           instance: b,
           portBase: 50_000 + slot * 100,
         });

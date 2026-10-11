@@ -1,0 +1,166 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`default staging paths, ids and bytes preserve main 920884e 1`] = `
+{
+  "mailbox-stage-configuration": {
+    "action": "create",
+    "bindings": [],
+    "deferredAdoption": {
+      "adopt": false,
+    },
+    "downstream": [],
+    "props": {
+      "content": "{"name":"invented"}",
+      "mode": 384,
+    },
+    "provider": {},
+  },
+  "mailbox-stage-directory": {
+    "action": "create",
+    "bindings": [],
+    "downstream": [
+      "mailbox-stage-worker",
+      "mailbox-stage-configuration",
+    ],
+    "props": {
+      "mode": 448,
+      "path": "/home/example/.config/rat-king/mailbox-deployment",
+    },
+    "provider": {},
+  },
+  "mailbox-stage-worker": {
+    "action": "create",
+    "bindings": [],
+    "deferredAdoption": {
+      "adopt": false,
+    },
+    "downstream": [],
+    "props": {
+      "content": "export default {};",
+      "mode": 384,
+    },
+    "provider": {},
+  },
+}
+`;
+
+exports[`default staging paths, ids and bytes preserve main 920884e 2`] = `
+{
+  "directories": [
+    "/home/example/.config/rat-king/mailbox-deployment",
+  ],
+  "files": {
+    "/home/example/.config/rat-king/mailbox-deployment/worker.mjs": "export default {};",
+    "/home/example/.config/rat-king/mailbox-deployment/wrangler.json": "{"name":"invented"}",
+  },
+}
+`;
+
+exports[`default staging paths, ids and bytes preserve main 920884e 3`] = `
+{
+  "mailbox-stage-configuration": {
+    "action": "update",
+    "adopting": false,
+    "bindings": [],
+    "downstream": [],
+    "props": {
+      "content": "{"name":"invented"}",
+      "mode": 384,
+      "path": "/home/example/.config/rat-king/mailbox-deployment/wrangler.public.json",
+    },
+    "provider": {},
+    "state": {
+      "attr": {
+        "mode": 384,
+        "path": "/home/example/.config/rat-king/mailbox-deployment/wrangler.json",
+        "sha256": "b2aedbcfbae0ea02ac38b3d043864f42765c31adcdaf0f717ca98184ca54f3ab",
+      },
+      "bindings": [],
+      "downstream": [],
+      "fqn": "mailbox-stage-configuration",
+      "instanceId": "scratch",
+      "logicalId": "mailbox-stage-configuration",
+      "props": {
+        "content": "{"name":"invented"}",
+        "mode": 384,
+        "path": "/home/example/.config/rat-king/mailbox-deployment/wrangler.json",
+      },
+      "providerVersion": 0,
+      "removalPolicy": "destroy",
+      "resourceType": "RatsNest.RemoteFile",
+      "status": "created",
+    },
+  },
+  "mailbox-stage-directory": {
+    "action": "noop",
+    "bindings": [],
+    "downstream": [
+      "mailbox-stage-worker",
+      "mailbox-stage-configuration",
+    ],
+    "provider": {},
+    "state": {
+      "attr": {
+        "mode": 448,
+        "path": "/home/example/.config/rat-king/mailbox-deployment",
+      },
+      "bindings": [],
+      "downstream": [
+        "mailbox-stage-worker",
+        "mailbox-stage-configuration",
+      ],
+      "fqn": "mailbox-stage-directory",
+      "instanceId": "scratch",
+      "logicalId": "mailbox-stage-directory",
+      "props": {
+        "mode": 448,
+        "path": "/home/example/.config/rat-king/mailbox-deployment",
+      },
+      "providerVersion": 0,
+      "removalPolicy": "destroy",
+      "resourceType": "RatsNest.HostDirectory",
+      "status": "created",
+    },
+  },
+  "mailbox-stage-worker": {
+    "action": "noop",
+    "bindings": [],
+    "downstream": [],
+    "provider": {},
+    "state": {
+      "attr": {
+        "mode": 384,
+        "path": "/home/example/.config/rat-king/mailbox-deployment/worker.mjs",
+        "sha256": "9f085b1079ab38f776bbb3930dfd067a838ca3e0483aff8625f88837e8ed964c",
+      },
+      "bindings": [],
+      "downstream": [],
+      "fqn": "mailbox-stage-worker",
+      "instanceId": "scratch",
+      "logicalId": "mailbox-stage-worker",
+      "props": {
+        "content": "export default {};",
+        "mode": 384,
+        "path": "/home/example/.config/rat-king/mailbox-deployment/worker.mjs",
+      },
+      "providerVersion": 0,
+      "removalPolicy": "destroy",
+      "resourceType": "RatsNest.RemoteFile",
+      "status": "created",
+    },
+  },
+}
+`;
+
+exports[`default staging paths, ids and bytes preserve main 920884e 4`] = `
+{
+  "directories": [
+    "/home/example/.config/rat-king/mailbox-deployment",
+  ],
+  "files": {
+    "/home/example/.config/rat-king/mailbox-deployment/worker.mjs": "export default {};",
+    "/home/example/.config/rat-king/mailbox-deployment/wrangler.json": "{"name":"invented"}",
+    "/home/example/.config/rat-king/mailbox-deployment/wrangler.public.json": "{"name":"invented"}",
+  },
+}
+`;

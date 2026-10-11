@@ -54,7 +54,7 @@ Opt-in purge drains paginated bucket objects before DeleteBucket. Alchemy depend
 
 The live provider layer installs `UnitStartup` checks in both SystemdUnit and Celld.Node create/update reconciliation. Only missing allowed sockets may wait for up to ten seconds; any extra port, wrong process or wrong bind stops both units immediately and fails the reconcile. Store startup requires its exact eight ports; node startup requires the final ten. No diagnose runs before that gate. Probe diagnostics retain at most 16 KiB of stderr, redact generated credentials and host facts, and drain the stream.
 
-`Celld.Deployment` accepts optional `secretNames: readonly string[]`. Omit it to keep the mailbox allowlist: `AGENT_IDENTITIES_CREDENTIAL`, `MODEL_GATEWAY_CREDENTIAL` and `CLAUDE_SIDECAR_CREDENTIAL`. Custom deployments supply their own names; binding generation still refuses undeclared names and collisions with public vars.
+`Celld.Deployment` accepts optional `secretNames: readonly string[]`. Omit it to keep the mailbox allowlist: `AGENT_IDENTITIES_CREDENTIAL`, `MODEL_GATEWAY_CREDENTIAL` and `CLAUDE_SIDECAR_CREDENTIAL`. Custom deployments supply their own names; binding generation still refuses undeclared names and collisions with public vars. For named staging, pass the layout as the fourth argument: `stageDeploymentFiles(host.home, prepared, mailboxOnly, cells.layout)`. Named files stay under `${cells.layout.configuration}/deployment` with instance-scoped resource ids. Omitting the layout preserves the mailbox paths and ids.
 
 ## Live probes
 
