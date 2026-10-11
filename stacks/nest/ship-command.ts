@@ -147,18 +147,23 @@ const requireSuccess = Effect.fn("Ship.requireSuccess")(
 );
 
 const installDependencies = Effect.fn("Ship.installDependencies")(
-  function* installDependencies(pnpm: string, cwd: string) {
-    yield* requireSuccess(
-      pnpm,
-      ["install", "--frozen-lockfile", "--offline"],
-      cwd
-    ).pipe(
-      Effect.timeout("5 minutes"),
-      Effect.catch(() =>
-        requireSuccess(pnpm, ["install", "--frozen-lockfile"], cwd).pipe(
-          Effect.timeout("5 minutes")
-        )
-      ),
+  function* installDependencies(pnpm: string, cwd: string, log: string) {
+    const toLog = (args: readonly string[]) =>
+      requireSuccess(
+        "/bin/sh",
+        [
+          "-c",
+          'log="$1"; shift; exec "$@" >>"$log" 2>&1',
+          "sh",
+          log,
+          pnpm,
+          ...args,
+        ],
+        cwd
+      ).pipe(Effect.timeout("5 minutes"));
+
+    yield* toLog(["install", "--frozen-lockfile", "--offline"]).pipe(
+      Effect.catch(() => toLog(["install", "--frozen-lockfile"])),
       Effect.mapError(
         () =>
           new FleetError({
@@ -357,7 +362,11 @@ export const shipCommand = Effect.fn("Ship.command")(
             });
           }
 
-          yield* installDependencies(ship.launchd.pnpm, release);
+          yield* installDependencies(
+            ship.launchd.pnpm,
+            release,
+            `${release}.install.log`
+          );
 
           const attemptDirectory = yield* fs.makeTempDirectory({
             directory: ship.releases,
