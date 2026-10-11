@@ -364,7 +364,10 @@ export const prepare = Effect.fn("Mailbox.prepare")(function* prepare(
       .pipe(Effect.mapError(clientError));
 
     if (response.kind !== "json" || response.status !== 200) {
-      return yield* failure("Peer directory request refused");
+      return yield* new MailboxClientError({
+        reason: "Peer directory request refused",
+        status: response.status,
+      });
     }
 
     const output = yield* Schema.decodeUnknownEffect(Peer.Output)(

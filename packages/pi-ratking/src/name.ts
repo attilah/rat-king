@@ -74,6 +74,36 @@ export const didFor = (
   reserved[canonicalName(reserved, name)]?.did ??
   template.replace("{agent}", provisionLabel(name));
 
+export const nameFor = (
+  template: string,
+  reserved: ReservedValue,
+  did: string
+): Option.Option<string> => {
+  const fixed = Object.entries(reserved).find(([, entry]) => entry.did === did);
+
+  if (fixed !== undefined) {
+    return Option.some(fixed[0]);
+  }
+
+  const [prefix = "", suffix = ""] = template.split("{agent}");
+
+  if (
+    !did.startsWith(prefix) ||
+    !did.endsWith(suffix) ||
+    did.length <= prefix.length + suffix.length
+  ) {
+    return Option.none();
+  }
+
+  const name = did
+    .slice(prefix.length, did.length - suffix.length)
+    .replace(".", "/");
+
+  return isName(name) && didFor(template, reserved, name) === did
+    ? Option.some(name)
+    : Option.none();
+};
+
 export const deriveName = (
   request: NameRequest
 ): Result.Result<OwnName, NameError> => {

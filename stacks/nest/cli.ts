@@ -24,6 +24,7 @@ import { configDoctor } from "./config-doctor.ts";
 import { commsCounts, digest } from "./digest.ts";
 import { DigestJson, summarize } from "./health.ts";
 import { mintHost } from "./mint-host.ts";
+import { sendCommand } from "./send.ts";
 import { launchdPlist, shipCommand } from "./ship-command.ts";
 import { FleetError, loadStageConfig, stageProvider } from "./stage-config.ts";
 
@@ -224,4 +225,7 @@ const program = Effect.gen(function* launcher() {
   );
 });
 
-NodeRuntime.runMain(program.pipe(Effect.provide(NodeServices.layer)));
+const main =
+  process.argv[2] === "send" ? sendCommand(process.argv.slice(3)) : program;
+
+NodeRuntime.runMain(main.pipe(Effect.provide(NodeServices.layer)));
