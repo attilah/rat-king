@@ -48,6 +48,10 @@ Declare `ObjectStore.Slice(host.home)` once per stack. Pass its `sha256` output 
 
 `Celld.Node(id, { host, bucket, purgeOnDelete? })` composes celld v0.6.1, a mode-600 environment file and a `Celld.Node` user-unit resource. Register `ObjectStore.providers()` and `Celld.providers()`. Outputs are `publicUrl`, `internalUrl`, `version` and the unit attributes. The public listener uses the inventory's address; the internal listener stays on loopback. Credentials never enter unit text. Telemetry is disabled.
 
+`CELLD_TEST_DATA_DIR` is celld's production data-directory knob despite its name.
+
+`Celld.Node` and `ObjectStore.Bucket` accept optional `memoryMax`, `cpuQuota` and `oomPolicy` service settings. Their memory/CPU defaults remain `3G`/`200%` and `2G`/`100%`, respectively. Set `oomPolicy` on each service, not on `ObjectStore.Slice`.
+
 The node uses systemd's default `Type=simple`: an active unit is not a health proof. celld v0.6.1 binds listeners before waiting for a deployment pointer, so open sockets are not an application health proof. The live node lifecycle checks pointer existence and seeds the approved fixed-body bootstrap only if it is absent, then starts the node. The bootstrap probe publishes the fixed-body module fixture with a generated temporary `no_bundle` configuration; it leaves the deployment pointer for the next application to replace.
 
 Opt-in purge drains paginated bucket objects before DeleteBucket. Alchemy dependencies then stop the store and remove its dedicated data directory. The node stops before its work directory is purged. The proof stack opts in; normal resource declarations do not. Never run destroy without separate authorization.

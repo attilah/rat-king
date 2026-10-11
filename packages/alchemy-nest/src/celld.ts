@@ -12,12 +12,13 @@ import type { BucketOutput } from "./object-store.ts";
 import { celldBinary } from "./pins.ts";
 import { HostDirectory, ReleaseBinary, RemoteFile } from "./providers.ts";
 import { nodeUnit } from "./service-units.ts";
+import type { ServiceLimits } from "./service-units.ts";
 import { renderUnit } from "./systemd.ts";
 
 const envQuote = (value: string): string =>
   `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("\n", "\\n")}"`;
 
-export interface CelldProps extends InstanceProps {
+export interface CelldProps extends InstanceProps, ServiceLimits {
   readonly bucket: BucketOutput;
   readonly host: HostNode;
   readonly prepared?: readonly Output.Output<string>[];
@@ -63,10 +64,13 @@ export const Node = (id: string, props: CelldProps) =>
 
     const declaration = nodeUnit({
       binary: `${layout.bin}/celld`,
+      cpuQuota: props.cpuQuota,
       data: `${layout.dataRoot}/celld`,
       environment: `${layout.configuration}/celld.env`,
       host,
       layout,
+      memoryMax: props.memoryMax,
+      oomPolicy: props.oomPolicy,
       restartGate:
         bucket.restartGate === undefined
           ? undefined
