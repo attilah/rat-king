@@ -22,6 +22,7 @@ const Details = Schema.Struct({
   label: Schema.optional(Schema.String),
   relay: Schema.optional(RelaySource),
   replyTo: Schema.optional(Schema.String),
+  sentBy: Schema.optional(Schema.String),
   summary: Schema.optional(Schema.String),
   thread: Schema.optional(Schema.String),
   to: Schema.optional(Schema.String),
@@ -45,7 +46,9 @@ export const compactLines = (
     readonly from: string;
     readonly label?: string | undefined;
     readonly replyTo?: string | undefined;
+    readonly sentBy?: string | undefined;
     readonly summary?: string | undefined;
+    readonly to?: string | undefined;
     readonly verified: boolean;
   },
   width: number
@@ -59,18 +62,25 @@ export const compactLines = (
   const markers = [
     ...(value.verified ? [] : ["unverified"]),
     ...(value.relay === undefined ? [] : [`via ${oneLine(value.relay.name)}`]),
+    ...(value.sentBy === undefined ? [] : [`sent by ${oneLine(value.sentBy)}`]),
     ...ccMarker,
     ...(value.replyTo === undefined ? [] : ["↩"]),
   ];
 
   const markerText = markers.map((marker) => ` · ${marker}`).join("");
 
+  const icon = value.sentBy === undefined ? "📨 " : "📤 to ";
+
   const sender = truncateToWidth(
-    oneLine(value.label ?? value.from),
-    Math.max(1, width - visibleWidth("📨 ") - visibleWidth(markerText))
+    oneLine(
+      value.sentBy === undefined
+        ? (value.label ?? value.from)
+        : (value.to ?? "unknown")
+    ),
+    Math.max(1, width - visibleWidth(icon) - visibleWidth(markerText))
   );
 
-  const heading = truncateToWidth(`📨 ${sender}${markerText}`, width);
+  const heading = truncateToWidth(`${icon}${sender}${markerText}`, width);
 
   const source = plain(value.summary ?? value.body).trim();
 
@@ -132,6 +142,10 @@ export const messageView = (input: {
 
       if (value.ccNames !== undefined) {
         Object.assign(inbound, { ccNames: value.ccNames });
+      }
+
+      if (value.sentBy !== undefined) {
+        Object.assign(inbound, { sentBy: value.sentBy });
       }
 
       if (value.thread !== undefined) {

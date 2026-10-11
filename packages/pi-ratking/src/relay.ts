@@ -23,6 +23,30 @@ export const RelayRecord = Schema.Struct({
   verified: Schema.Boolean,
 });
 
+export const RelayOutbound = Schema.Struct({
+  $type: Schema.Literal("sh.mschf.ratking.relay#outbound"),
+  body: Schema.String,
+  cc: Schema.Array(Schema.String),
+  encrypted: Schema.Boolean,
+  id: Schema.String,
+  kind: Kind,
+  replyTo: Schema.NullOr(Schema.String),
+  summary: Schema.NullOr(Schema.String),
+  thread: Schema.String,
+  to: Schema.String,
+});
+
+export type RelayOutboundValue = typeof RelayOutbound.Type;
+
+export const copiesOutbound = (
+  config: RelaySettingValue | undefined,
+  ownName: string,
+  recipients: readonly string[]
+): config is RelaySettingValue =>
+  config?.copyOutbound === true &&
+  ownName === config.name &&
+  !recipients.includes(config.to);
+
 export const RelayHandled = Schema.Struct({
   $type: Schema.Literal("sh.mschf.ratking.relay#handled"),
   id: Schema.String,
@@ -91,6 +115,26 @@ export const relayedInbound = (record: typeof RelayRecord.Type): Inbound => {
   return inbound;
 };
 
+const sentCopy = (
+  inbound: InboundRecord,
+  record: RelayOutboundValue
+): Inbound => ({
+  body: record.body,
+  cc: false,
+  ccNames: record.cc,
+  did: inbound.did,
+  from: inbound.from,
+  id: record.id,
+  kind: record.kind,
+  label: Option.none(),
+  replyTo: Option.fromNullishOr(record.replyTo),
+  sentBy: inbound.from,
+  summary: Option.fromNullishOr(record.summary),
+  thread: record.thread,
+  to: record.to,
+  verified: true,
+});
+
 export const projectRelay = (
   config: RelaySettingValue,
   ownName: string,
@@ -102,6 +146,12 @@ export const projectRelay = (
     inbound.from !== config.name
   ) {
     return Option.none();
+  }
+
+  const sent = Schema.decodeUnknownOption(RelayOutbound)(inbound.record);
+
+  if (Option.isSome(sent)) {
+    return Option.some(sentCopy(inbound, sent.value));
   }
 
   return Schema.decodeUnknownOption(RelayRecord)(inbound.record).pipe(
@@ -136,7 +186,10 @@ export const deliverRelay = (
       return false;
     }
 
-    yield* ports.remember(original.value);
+    if (original.value.sentBy === undefined) {
+      yield* ports.remember(original.value);
+    }
+
     yield* ports.deliver(original.value, false);
 
     return true;
