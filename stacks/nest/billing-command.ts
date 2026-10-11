@@ -79,6 +79,10 @@ export const billingCommand = Effect.fn("Nest.billing-relay")(
         "RAT_KING_BILLING_RECIPIENT"
       ).pipe(Config.withDefault("switchboard"));
 
+      const identity = yield* Config.String("RAT_KING_BILLING_IDENTITY").pipe(
+        Config.withDefault("rat_king_script_billing-alerts_identity")
+      );
+
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
 
@@ -177,7 +181,7 @@ export const billingCommand = Effect.fn("Nest.billing-relay")(
             ).pipe(Effect.mapError(failure("journal-save"))),
           seal: (alert) =>
             scriptSeal({
-              as: "billing/alerts",
+              as: identity,
               body: billingBody(alert.payload),
               encrypt: true,
               summary: billingSummary(alert.payload),
@@ -205,7 +209,7 @@ export const billingCommand = Effect.fn("Nest.billing-relay")(
                       path.resolve(import.meta.dirname, "cli.ts"),
                       "send",
                       "--as",
-                      "billing/alerts",
+                      identity,
                       "--encrypt",
                       "--sealed",
                       "-",
