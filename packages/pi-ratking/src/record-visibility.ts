@@ -28,6 +28,7 @@ export const recordNotice = (
 
   if (
     settled ||
+    type === "unknown" ||
     SILENT_RECORD_TYPES.includes(type) ||
     Option.isSome(decodeAgentGraphBody(inbound.body))
   ) {

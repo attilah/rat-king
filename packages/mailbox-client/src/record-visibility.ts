@@ -14,6 +14,7 @@ export const readerCannotRender = (
   type: string,
   presence: ReaderPresence | undefined
 ): string | undefined =>
+  type !== "unknown" &&
   presence?.held === true &&
   presence.renders !== undefined &&
   !presence.renders.some((render) =>

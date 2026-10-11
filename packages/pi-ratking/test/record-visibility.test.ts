@@ -1,5 +1,6 @@
 import { NodeServices } from "@effect/platform-node";
 import { it } from "@effect/vitest";
+import { readerCannotRender, recordType } from "@rat-king/mailbox-client";
 import {
   Arbitrary,
   Effect,
@@ -34,9 +35,15 @@ it.prop(
     expect(recordNotice(inbound, false)).toBe(
       `📦 record sh.example.record.item from ${verified ? "peer" : inbound.did} (id ${id}), not rendered by this reader`
     );
-    expect(recordNotice({ ...inbound, body: "not JSON" }, false)).toContain(
-      "record unknown from"
-    );
+    expect(
+      recordNotice({ ...inbound, body: "not JSON" }, false)
+    ).toBeUndefined();
+    expect(
+      recordNotice(
+        { ...inbound, body: JSON.stringify({ item: {}, type: "owner" }) },
+        false
+      )
+    ).toBeUndefined();
     expect(
       recordNotice(
         {
@@ -64,6 +71,21 @@ it.prop(
     expect(recordNotice(inbound, true)).toBeUndefined();
   }
 );
+
+it("untyped data is an app transport, so the guard lets it through", () => {
+  const held = { held: true, renders: [] };
+
+  expect(
+    readerCannotRender(
+      "peer",
+      recordType(JSON.stringify({ item: {}, type: "owner" })),
+      held
+    )
+  ).toBeUndefined();
+  expect(
+    readerCannotRender("peer", "sh.mschf.agentgraph.checkin", held)
+  ).toContain("ReaderCannotRender");
+});
 
 it.live.prop(
   "record sends guard held readers before sealing and reuse one presence lookup",
