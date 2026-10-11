@@ -1,5 +1,6 @@
 import { Effect, Option, Schema } from "effect";
 
+import { renderRecordBody } from "./agentgraph.ts";
 import { AgentName } from "./name.ts";
 
 export const LexiconRecord = Schema.StructWithRest(
@@ -107,7 +108,7 @@ const renderSent = (inbound: Inbound, by: string) =>
       onNone: () => [],
       onSome: (summary) => [`Summary: ${summary}`, ""],
     }),
-    inbound.body,
+    inbound.kind === "data" ? renderRecordBody(inbound.body) : inbound.body,
     "",
     `Context only: ${by} already sent this. Do not reply to it.`,
   ].join("\n");
@@ -143,7 +144,7 @@ export const renderInbound = (tool: string, inbound: Inbound) => {
       onNone: () => [],
       onSome: (summary) => [`Summary: ${summary}`, ""],
     }),
-    inbound.body,
+    inbound.kind === "data" ? renderRecordBody(inbound.body) : inbound.body,
     "",
     replyHint(tool, inbound),
   ].join("\n");

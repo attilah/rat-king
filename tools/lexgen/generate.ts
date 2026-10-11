@@ -34,17 +34,21 @@ const number = (value: number) =>
 const sortedString = (field: LexString) =>
   JSON.stringify(
     Object.fromEntries(
-      Object.entries(field).toSorted(([a], [b]) => a.localeCompare(b))
+      Object.entries(field)
+        .filter(([key]) => !key.startsWith("x-"))
+        .toSorted(([a], [b]) => a.localeCompare(b))
     )
   );
 
 const symbol = (value: string) =>
   value.charAt(0).toUpperCase() + value.slice(1);
 
-const filename = (id: string) => id.slice(namespace.length);
+const filename = (id: string) =>
+  id.startsWith(namespace)
+    ? id.slice(namespace.length)
+    : id.slice("sh.mschf.".length);
 
-const moduleName = (id: string) =>
-  id.slice(namespace.length).split(".").map(symbol).join("");
+const moduleName = (id: string) => filename(id).split(".").map(symbol).join("");
 
 type Field =
   | LexUserType
@@ -74,12 +78,43 @@ const resolve = (id: string, ref: string) => {
   };
 };
 
+const Extensions = Schema.Struct({
+  "x-allowedWhen": Schema.optionalKey(
+    Schema.Struct({
+      field: Schema.String,
+      property: Schema.String,
+      value: Schema.String,
+    })
+  ),
+  "x-maxCodeUnits": Schema.optionalKey(Schema.Finite),
+  "x-minCodeUnits": Schema.optionalKey(Schema.Finite),
+  "x-pattern": Schema.optionalKey(Schema.String),
+  "x-requiredWhen": Schema.optionalKey(
+    Schema.Struct({
+      field: Schema.String,
+      required: Schema.String,
+      value: Schema.String,
+    })
+  ),
+  "x-strict": Schema.optionalKey(Schema.Boolean),
+  "x-unboundedInteger": Schema.optionalKey(Schema.Boolean),
+});
+
+const member = (key: string) =>
+  /^[a-zA-Z_$][a-zA-Z0-9_$]*$/u.test(key) ? `.${key}` : `[${quote(key)}]`;
+
 const integerExpression = (field: LexInteger) => {
   if (
     (field.maximum ?? Number.MAX_SAFE_INTEGER) > Number.MAX_SAFE_INTEGER ||
     (field.minimum ?? Number.MIN_SAFE_INTEGER) < Number.MIN_SAFE_INTEGER
   ) {
     return unsupported("Integer range exceeds the lossless safe-integer codec");
+  }
+
+  if (
+    Schema.decodeUnknownSync(Extensions)(field)["x-unboundedInteger"] === true
+  ) {
+    return `Schema.Finite.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(${number(field.minimum ?? Number.MIN_SAFE_INTEGER)}))`;
   }
 
   let base = "Schema.Int";
@@ -96,7 +131,24 @@ const integerExpression = (field: LexInteger) => {
 };
 
 const stringExpression = (field: LexString) => {
-  const base = `Runtime.lexString(${sortedString(field)})`;
+  const extra = Schema.decodeUnknownSync(Extensions)(field);
+  const checks: string[] = [];
+
+  if (extra["x-pattern"] !== undefined) {
+    checks.push(
+      `Schema.isPattern(${new RegExp(extra["x-pattern"], "u").toString()})`
+    );
+  }
+
+  if (extra["x-minCodeUnits"] !== undefined) {
+    checks.push(`Schema.isMinLength(${extra["x-minCodeUnits"]})`);
+  }
+
+  if (extra["x-maxCodeUnits"] !== undefined) {
+    checks.push(`Schema.isMaxLength(${extra["x-maxCodeUnits"]})`);
+  }
+
+  const base = `Runtime.lexString(${sortedString(field)})${checks.length === 0 ? "" : `.check(${checks.join(", ")})`}`;
 
   if (field.const !== undefined) {
     return `${base}.pipe(Schema.decodeTo(Schema.Literal(${quote(field.const)})))`;
@@ -195,10 +247,35 @@ const renderer = (docs: readonly LexiconDoc[], doc: LexiconDoc) => {
       });
 
     if (tag !== undefined) {
-      fields.unshift(`$type: Schema.Literal(${quote(tag)})`);
+      fields.unshift(`"$type": Schema.Literal(${quote(tag)})`);
     }
 
-    return `Schema.StructWithRest(Schema.Struct({${fields.join(",\n")}}), [Schema.Record(Schema.String, Runtime.Data)])`;
+    const extra = Schema.decodeUnknownSync(Extensions)(field);
+
+    const keys = [
+      ...Object.keys(field.properties),
+      ...(tag === undefined ? [] : ["$type"]),
+    ].toSorted();
+
+    let result = `Schema.StructWithRest(Schema.Struct({${extra["x-strict"] === true ? fields.toSorted().join(",\n") : fields.join(",\n")}}), [Schema.Record(Schema.String, Runtime.Data)])`;
+
+    if (extra["x-strict"] === true) {
+      result += `.check(Schema.makeFilter((value) => Object.keys(value).every((key) => ${JSON.stringify(keys)}.includes(key)), { expected: ${quote(`only allowed keys: ${keys.join(", ")}`)} }))`;
+    }
+
+    const requiredWhen = extra["x-requiredWhen"];
+
+    if (requiredWhen !== undefined) {
+      result += `.check(Schema.makeFilter((value) => value${member(requiredWhen.field)} !== ${quote(requiredWhen.value)} || value${member(requiredWhen.required)} !== undefined, { expected: ${quote(`${requiredWhen.required}: required when ${requiredWhen.field} is ${requiredWhen.value}`)} }))`;
+    }
+
+    const allowedWhen = extra["x-allowedWhen"];
+
+    if (allowedWhen !== undefined) {
+      result += `.check(Schema.makeFilter((value) => !(${quote(allowedWhen.property)} in value) || value${member(allowedWhen.field)} === ${quote(allowedWhen.value)}, { expected: ${quote(`${allowedWhen.property}: allowed only when ${allowedWhen.field} is ${allowedWhen.value}`)} }))`;
+    }
+
+    return result;
   };
 
   const unionExpression = (
@@ -595,7 +672,10 @@ export const generate = Effect.fn("lexgen.generate")(function* generate({
     });
 
     if (
-      !doc.id.startsWith(namespace) ||
+      !(
+        doc.id.startsWith(namespace) ||
+        doc.id.startsWith("sh.mschf.agentgraph.")
+      ) ||
       path
         .relative(path.join(root, "lexicons"), source)
         .split(path.sep)

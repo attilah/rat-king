@@ -2,6 +2,7 @@ import type { Component } from "@earendil-works/pi-tui";
 import { truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { Option, Schema } from "effect";
 
+import { compactRecord } from "./agentgraph.ts";
 import { Kind, RelaySource, replyHint } from "./payload.ts";
 import type { Inbound } from "./payload.ts";
 import {
@@ -120,12 +121,23 @@ const meta = (theme: Paint, value: InboundView, hint: string | undefined) =>
   ].join(theme.fg("dim", " · "));
 
 const preview = (theme: Paint, value: InboundView, width: number) => [
+  ...(value.kind === "data" && Option.isSome(compactRecord(value.body))
+    ? wrapTextWithAnsi(
+        Option.getOrElse(compactRecord(value.body), () => ""),
+        width
+      ).map((line) => theme.bold(line))
+    : []),
   ...(value.summary === undefined
     ? []
     : wrapTextWithAnsi(oneLine(value.summary), width).map((line) =>
         theme.bold(line)
       )),
-  ...paragraphs(value.body, width)
+  ...paragraphs(
+    value.kind === "data" && Option.isSome(compactRecord(value.body))
+      ? ""
+      : value.body,
+    width
+  )
     .filter((line) => line !== "")
     .map((line) => theme.fg("customMessageText", line)),
 ];

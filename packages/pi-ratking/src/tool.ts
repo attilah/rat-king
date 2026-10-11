@@ -1,6 +1,11 @@
 import { Effect, Match, Option, Schema } from "effect";
 import type { Duration } from "effect";
 
+import {
+  invalidRecordText,
+  recordSummary,
+  validateRecord,
+} from "./agentgraph.ts";
 import type { NotConfigured } from "./config.ts";
 import { RatKing, ReaderState } from "./ratking.ts";
 import type {
@@ -14,6 +19,7 @@ export const Action = Schema.Literals([
   "list",
   "list-cwd",
   "send",
+  "record",
   "ask",
   "handover",
   "reply",
@@ -41,6 +47,7 @@ export const ToolParams = Schema.Struct({
   message: Schema.optionalKey(Schema.String),
   messageId: Schema.optionalKey(Schema.String),
   openProjectPaneIfMissing: Schema.optionalKey(Schema.Boolean),
+  record: Schema.optionalKey(Schema.Json),
   replyAll: Schema.optionalKey(Schema.Boolean),
   replyTo: Schema.optionalKey(Schema.String),
   retryOf: Schema.optionalKey(Schema.String),
@@ -48,6 +55,7 @@ export const ToolParams = Schema.Struct({
   summary: Schema.optionalKey(Schema.String),
   supersedes: Schema.optionalKey(Schema.String),
   to: Schema.optionalKey(Schema.String),
+  type: Schema.optionalKey(Schema.String),
 });
 
 export type ToolParamsValue = typeof ToolParams.Type;
@@ -95,6 +103,7 @@ Give every send, ask and reply a summary: one line (at most 280 characters) that
 Usage:
   ${tool}({ action: "send", to: "name", summary: "...", message: "..." }) → Deliver a message
   ${tool}({ action: "send", to: "name", message: "...", encrypt: true }) → Deliver an encrypted message
+  ${tool}({ action: "record", to: "name", type: "sh.mschf.agentgraph.checkin", record: { ... } }) → Validate then send typed data
   ${tool}({ action: "ask", to: "name", summary: "...", message: "..." }) → Ask and wait for the threaded reply
   ${tool}({ action: "reply", replyTo: "<id>", summary: "...", message: "..." }) → Answer a message by its id
   ${tool}({ action: "pending" })                                     → Unanswered inbound asks
@@ -307,6 +316,27 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
             seq: delivered.seq,
             ...presenceDetails(delivered),
           }
+        );
+      })
+    ),
+    Match.when("record", () =>
+      Effect.gen(function* record() {
+        const value = yield* validateRecord(params.type, params.record).pipe(
+          Effect.mapError((error) => loud(invalidRecordText(error)))
+        );
+
+        const to = yield* needTo(params);
+
+        const delivered = yield* ratking.send(to, JSON.stringify(value), {
+          ...encryption,
+          cc: params.cc ?? [],
+          kind: "data",
+          summary: params.summary ?? recordSummary(value),
+        });
+
+        return ok(
+          `Record delivered to ${delivered.to} over Rat King (id ${delivered.id}, seq ${delivered.seq}).`,
+          { id: delivered.id, seq: delivered.seq, to: delivered.to }
         );
       })
     ),

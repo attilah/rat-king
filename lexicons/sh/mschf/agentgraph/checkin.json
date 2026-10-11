@@ -1,0 +1,143 @@
+{
+  "lexicon": 1,
+  "id": "sh.mschf.agentgraph.checkin",
+  "defs": {
+    "guess": {
+      "type": "object",
+      "required": [
+        "model",
+        "packets",
+        "thinking",
+        "workType"
+      ],
+      "properties": {
+        "model": {
+          "type": "string",
+          "x-pattern": "^[a-z0-9][a-z0-9._-]*(?:\\/[a-z0-9][a-z0-9._-]*)?$"
+        },
+        "packets": {
+          "type": "integer",
+          "minimum": 1,
+          "x-unboundedInteger": true
+        },
+        "thinking": {
+          "type": "string",
+          "enum": [
+            "off",
+            "minimal",
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ]
+        },
+        "workType": {
+          "type": "string",
+          "enum": [
+            "bugfix",
+            "refactor",
+            "investigation",
+            "scan",
+            "gather",
+            "ui",
+            "feature"
+          ]
+        }
+      },
+      "x-strict": true
+    },
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "description": "Private envelope plaintext only; agent-graph content pinned to 53702c1 (Effect 4.0.1). Machine identifiers are opaque; inventory membership belongs to intake.",
+      "record": {
+        "type": "object",
+        "required": [
+          "brief",
+          "briefMachine",
+          "critical",
+          "goal",
+          "guess",
+          "mode",
+          "project",
+          "repo",
+          "row",
+          "version",
+          "writeScope"
+        ],
+        "properties": {
+          "brief": {
+            "type": "string",
+            "x-pattern": "^\\/[^\\s]*$"
+          },
+          "briefMachine": {
+            "type": "string",
+            "x-pattern": "^[a-z][a-z0-9-]{0,31}$"
+          },
+          "cleanup": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "x-minCodeUnits": 1
+            }
+          },
+          "critical": {
+            "type": "boolean"
+          },
+          "goal": {
+            "type": "string",
+            "x-minCodeUnits": 1,
+            "x-maxCodeUnits": 280
+          },
+          "guess": {
+            "type": "ref",
+            "ref": "#guess"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "ask",
+              "fyi"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "x-maxCodeUnits": 1000
+          },
+          "project": {
+            "type": "string",
+            "x-pattern": "^[a-z][a-z0-9-]{0,63}$"
+          },
+          "repo": {
+            "type": "string",
+            "x-minCodeUnits": 1
+          },
+          "row": {
+            "type": "string",
+            "x-pattern": "^[a-z][a-z0-9_-]{0,31}$"
+          },
+          "supersedes": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string",
+            "enum": [
+              "0.1"
+            ]
+          },
+          "writeScope": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "x-strict": true,
+        "nullable": [
+          "brief",
+          "row"
+        ]
+      }
+    }
+  }
+}

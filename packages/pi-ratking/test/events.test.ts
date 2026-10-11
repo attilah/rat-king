@@ -539,7 +539,15 @@ it.live.prop(
   "inbound records stay on ratking/record, messages keep their path, and both checkpoint before ack",
   [
     Arbitrary.schema(
-      Schema.Literals(["record", "message", "raw", "relay", "outbound"])
+      Schema.Literals([
+        "record",
+        "agentgraph",
+        "agentgraph-data",
+        "message",
+        "raw",
+        "relay",
+        "outbound",
+      ])
     ),
     Arbitrary.schema(Schema.String),
   ],
@@ -557,6 +565,25 @@ it.live.prop(
 
       const value = Match.value(mode).pipe(
         Match.when("record", () => ({ $type: "sh.example.desk.answer", body })),
+        Match.when("agentgraph", () => ({
+          $type: "sh.mschf.agentgraph.outcome",
+          checkIn: body,
+          gate: "pass",
+          outcome: "committed",
+          version: "0.1",
+        })),
+        Match.when("agentgraph-data", () => ({
+          body: JSON.stringify({
+            $type: "sh.mschf.agentgraph.outcome",
+            checkIn: body,
+            gate: "pass",
+            outcome: "committed",
+            version: "0.1",
+          }),
+          from: "handset",
+          kind: "data",
+          summary: "Outcome from acme",
+        })),
         Match.when("message", () => ({
           $type: "sh.example.extra",
           body,
@@ -901,7 +928,7 @@ it.live.prop(
           details: { sentBy: "handset", to: "person" },
         });
         expect(deliveries).toEqual([{ triggerTurn: false }]);
-      } else if (mode === "record") {
+      } else if (mode === "record" || mode === "agentgraph") {
         expect(records).toEqual([
           {
             did: RECORD_PEER,
@@ -913,7 +940,39 @@ it.live.prop(
           },
         ]);
         expect(received).toEqual([]);
-        expect(messages).toEqual([]);
+
+        if (mode === "agentgraph") {
+          expect(messages).toHaveLength(1);
+
+          const message = yield* Schema.decodeUnknownEffect(
+            Schema.Struct({ content: Schema.String })
+          )(messages[0]);
+
+          expect(message.content).toContain(
+            "sh.mschf.agentgraph.outcome\n\n```json"
+          );
+          expect(deliveries).toEqual([
+            { deliverAs: "followUp", triggerTurn: true },
+          ]);
+        } else {
+          expect(messages).toEqual([]);
+        }
+      } else if (mode === "agentgraph-data") {
+        expect(records).toEqual([]);
+        expect(received).toHaveLength(1);
+        expect(messages).toHaveLength(1);
+
+        const message = yield* Schema.decodeUnknownEffect(
+          Schema.Struct({ content: Schema.String })
+        )(messages[0]);
+
+        expect(message.content).toContain(
+          "sh.mschf.agentgraph.outcome\n\n```json"
+        );
+        expect(message.content).toContain("Outcome from acme");
+        expect(deliveries).toEqual([
+          { deliverAs: "followUp", triggerTurn: true },
+        ]);
       } else if (mode !== "relay") {
         expect(records).toEqual([]);
         expect(received).toHaveLength(1);

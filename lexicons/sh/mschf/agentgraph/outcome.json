@@ -1,0 +1,51 @@
+{
+  "lexicon": 1,
+  "id": "sh.mschf.agentgraph.outcome",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "description": "Work done outside Muster only. Drain never acks; the consumer acks on success and on Mischief ReplyRefused (since 7198ad0: stale or duplicate, terminal).",
+      "record": {
+        "type": "object",
+        "required": [
+          "checkIn",
+          "gate",
+          "outcome",
+          "version"
+        ],
+        "properties": {
+          "checkIn": {
+            "type": "string"
+          },
+          "gate": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "fail",
+              "skip"
+            ]
+          },
+          "landedAs": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "committed",
+              "rejected",
+              "no_changes"
+            ]
+          },
+          "version": {
+            "type": "string",
+            "enum": [
+              "0.1"
+            ]
+          }
+        },
+        "x-strict": true
+      }
+    }
+  }
+}

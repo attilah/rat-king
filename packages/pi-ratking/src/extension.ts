@@ -22,6 +22,7 @@ import {
 import { FetchHttpClient } from "effect/http";
 import { Type } from "typebox";
 
+import { decodeAgentGraphBody } from "./agentgraph.ts";
 import { NotConfigured, settingsLayer, Settings, toolName } from "./config.ts";
 import { directoryLayer } from "./directory.ts";
 import { paneLabel } from "./herdr.ts";
@@ -71,8 +72,14 @@ export const RETIRE_RESULT_EVENT = "ratking/retire:result";
 
 const RELEASE_WAIT_MS = 2000;
 
-export const injects = (inbound: { readonly kind: string }, settled: boolean) =>
-  !settled && inbound.kind !== "data";
+export const injects = (
+  inbound: { readonly kind: string; readonly body?: string },
+  settled: boolean
+) =>
+  !settled &&
+  (inbound.kind !== "data" ||
+    (inbound.body !== undefined &&
+      Option.isSome(decodeAgentGraphBody(inbound.body))));
 
 const sendFields = {
   cc: Schema.optionalKey(Schema.Array(Schema.String)),
@@ -349,6 +356,7 @@ const parameters = Type.Object({
       "list",
       "list-cwd",
       "send",
+      "record",
       "ask",
       "handover",
       "reply",
@@ -403,6 +411,9 @@ const parameters = Type.Object({
   openProjectPaneIfMissing: Type.Optional(
     Type.Boolean({ description: "Not available on Rat King." })
   ),
+  record: Type.Optional(
+    Type.Unknown({ description: "Record content, validated before sending." })
+  ),
   replyAll: Type.Optional(
     Type.Boolean({
       description:
@@ -433,6 +444,9 @@ const parameters = Type.Object({
     Type.String({ description: "Accepted for compatibility; unused." })
   ),
   to: Type.Optional(Type.String({ description: "Target Rat King name." })),
+  type: Type.Optional(
+    Type.String({ description: "Agent-graph NSID for action record." })
+  ),
 });
 
 export const ratkingExtension = (options: ExtensionOptions) =>
@@ -466,6 +480,29 @@ export const ratkingExtension = (options: ExtensionOptions) =>
             }),
             verified: inbound.verified,
           });
+
+          const body = JSON.stringify(inbound.record);
+
+          if (Option.isSome(decodeAgentGraphBody(body))) {
+            const message: Inbound = {
+              ...inbound,
+              body,
+              cc: false,
+              kind: "data",
+              label: Option.none(),
+              summary: Option.none(),
+            };
+
+            pi.sendMessage(
+              {
+                content: renderInbound(tool, message),
+                customType: "ratking_message",
+                details: inboundDetails(message, settled),
+                display: true,
+              },
+              { deliverAs: "followUp", triggerTurn: true }
+            );
+          }
 
           return;
         }
@@ -550,7 +587,9 @@ export const ratkingExtension = (options: ExtensionOptions) =>
       execute: async (_id, params, signal) => {
         const result = await run(
           Effect.gen(function* execute() {
-            const decoded = yield* Schema.decodeEffect(ToolParams)(params);
+            const decoded =
+              yield* Schema.decodeUnknownEffect(ToolParams)(params);
+
             const settings = yield* Settings;
 
             return yield* runAction(tool, settings.askTimeoutMs, decoded);
