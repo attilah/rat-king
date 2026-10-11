@@ -14,6 +14,7 @@ struct ConversationsView: View {
                     HStack {
                         Text(archived ? "[ARCHIVED CHATS]" : "[CHATS]").foregroundStyle(TUITheme.accent)
                         Spacer()
+                        if store.presentation.syncing { Text("SYNCING \(store.presentation.progress)").foregroundStyle(TUITheme.warn).font(TUITheme.microFont) }
                         Button("[+ new message]") { path.append(.picker) }.foregroundStyle(TUITheme.accent).accessibilityIdentifier("new-message")
                     }.padding(.vertical, 8)
                     TerminalHints(text: archived ? "tap → conversation · swipe right → restore" : "tap → conversation · ← archive · + → pick an agent")

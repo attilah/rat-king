@@ -19,6 +19,26 @@ func nextState(_ state: ConnectionState, _ event: ConnectionEvent) -> Connection
     default: return state
     }
 }
+// `through` is the last caught-up mailbox seq. It shares one atomic write with the
+// messages it covers, so the two never disagree. A file without it replays from zero.
+func inboxFile(messages: [MailItem], copies: [CarbonCopy], preferences: [String: ThreadPreferences], through: Int64) -> Value {
+    .map(["messages": .array(messages.map(\.wire)), "copies": .array(copies.map(\.wire)), "preferences": .map(preferences.mapValues(\.wire)), "through": .int(through)])
+}
+func savedThrough(_ inbox: Value) throws -> Int64 { max(0, try inbox["through"]?.number ?? 0) }
+// Pages one mailbox.list snapshot after `saved`, with afterSeq fixed across pages.
+// A first watermark below `saved` means the log was reset: replay once from zero.
+@MainActor func listSnapshot(from saved: Int64, list: (_ afterSeq: Int64, _ cursor: String?) async throws -> Value, page: (_ events: [Value], _ last: Bool) async throws -> Void) async throws -> Int64 {
+    var after = saved, cursor: String?, watermark: Int64?
+    while true {
+        let response = try await list(after, cursor)
+        let high = try response.required("throughSeq").number
+        if watermark == nil, after > 0, high < after { after = 0; continue }
+        guard high >= after, watermark == nil || watermark == high else { throw ProtocolError.invalid("Snapshot watermark changed") }; watermark = high
+        cursor = try response["cursor"]?.text
+        try await page(try response.required("events").list(), cursor == nil)
+        if cursor == nil { return high }
+    }
+}
 struct MailItem: Identifiable {
     let id: String
     let message: Value
@@ -129,6 +149,7 @@ final class InboxStore {
                 messages = try saved.required("messages").list().map(MailItem.init)
                 preferences = try saved.required("preferences").object().mapValues(ThreadPreferences.init)
                 copies = try saved["copies"]?.list().map(CarbonCopy.init) ?? []
+                through = try savedThrough(saved)
             } else {
                 // A fresh transport has no local threads to remind about. Retire
                 // previous-network reminders without deleting its stored inbox.
@@ -175,7 +196,7 @@ final class InboxStore {
     private func current(_ token: UInt64) throws { try Task.checkCancellation(); guard generation == token else { throw CancellationError() } }
     func start() {
         guard run == nil, let client else { return }
-        now = Date(); armSnoozeTimer(); presentation.begin()
+        now = Date(); armSnoozeTimer(); resumePresentation()
         generation &+= 1; let token = generation
         run = Task { [weak self] in await self?.connect(client, token: token) }
     }
@@ -188,11 +209,15 @@ final class InboxStore {
         // Lease expires within five minutes. Retain its fence for a fast foreground
         // resume; no unowned background task or operator credential is needed.
     }
+    private func resumePresentation() {
+        if presentation.visible.isEmpty { presentationPreferences = preferences }
+        presentation.resume(messages.reversed().map(\.id))
+    }
     private func connect(_ client: Mailbox, token: UInt64) async {
         var delay = 1
         while !Task.isCancelled, generation == token {
             do {
-                presentation.begin(); move(.start)
+                resumePresentation(); move(.start)
                 let acquired: Lease
                 if let previous = lease, previous.expiresAt > Date() {
                     acquired = try await client.renew(previous)
@@ -206,7 +231,8 @@ final class InboxStore {
                 _ = try await client.notice(ws); try current(token); move(.socketReady)
                 for did in peers.keys.sorted() { try await refreshPeer(did, client: client, token: token) }
                 try await catchUp(client, lease: lease, token: token); try current(token)
-                presentationPreferences = preferences; presentation.finish(messages.reversed().map(\.id)); move(.caughtUp)
+                if presentation.loading { presentationPreferences = preferences }
+                presentation.settle(messages.reversed().map(\.id)); move(.caughtUp)
                 lastError = nil; delay = 1
                 try await withThrowingTaskGroup(of: Void.self) { group in
                     group.addTask { [weak self] in
@@ -263,22 +289,24 @@ final class InboxStore {
         presentation.update(messages.reversed().map(\.id)); move(.caughtUp)
     }
     private func catchUp(_ client: Mailbox, lease: Lease, token: UInt64) async throws {
-        let after = through; var cursor: String?; var watermark: Int64?
-        repeat {
+        let high = try await listSnapshot(from: through, list: { after, cursor in
             var params = ["recipientDid": client.identity.did, "afterSeq": String(after), "limit": "100"]
             if let cursor { params["cursor"] = cursor }
-            let page = try await client.call("mailbox.list", params: params); try current(token)
-            let high = try page.required("throughSeq").number
-            guard high >= after, watermark == nil || watermark == high else { throw ProtocolError.invalid("Snapshot watermark changed") }; watermark = high
-            for event in try page.required("events").list() {
-                try await process(event, client: client, lease: lease, token: token)
-                presentation.loaded(presentation.progress + 1)
-            }
-            cursor = try page["cursor"]?.text
-        } while cursor != nil
-        try current(token); through = watermark ?? through
-        // Replay encrypted history from zero. The protected local projection
-        // deduplicates it; no decrypted text enters backups or notifications.
+            let page = try await client.call("mailbox.list", params: params); try current(token); return page
+        }, page: { events, last in
+            // One write per page. A failed page still keeps what it processed.
+            do {
+                for event in events {
+                    try await process(event, client: client, lease: lease, token: token)
+                    presentation.loaded(presentation.progress + 1)
+                }
+            } catch { try? saveInbox(); throw error }
+            presentation.update(messages.reversed().map(\.id))
+            if !last { try saveInbox() }
+        })
+        try current(token); through = high
+        // Resume from the saved seq. The protected local projection deduplicates
+        // any replay; no decrypted text enters backups or notifications.
         try saveInbox()
     }
     private func process(_ event: Value, client: Mailbox, lease: Lease, token: UInt64) async throws {
@@ -287,9 +315,9 @@ final class InboxStore {
         let id = sender + "/" + tid, status = try receipt.required("state").text
         let kind = event["$type"]
         guard kind == .string(Mailbox.namespace + "defs#messageEvent") || kind == .string(Mailbox.namespace + "defs#receiptEvent") else { throw ProtocolError.invalid("Unknown mailbox event") }
-        if let index = messages.firstIndex(where: { $0.id == id }) { messages[index].receipt = status; try saveInbox() }
+        if let index = messages.firstIndex(where: { $0.id == id }) { messages[index].receipt = status }
         if let index = copies.firstIndex(where: { $0.id == id }) {
-            copies[index].receipt = status; try saveInbox()
+            copies[index].receipt = status
             try await receiveCopy(copies[index], client: client, lease: lease, token: token)
             return
         }
@@ -320,7 +348,7 @@ final class InboxStore {
         let item: MailItem
         switch routed {
         case let .copy(copy):
-            copies.append(copy); try saveInbox()
+            copies.append(copy)
             try await receiveCopy(copy, client: client, lease: lease, token: token)
             return
         case let .mail(mail): item = mail
@@ -345,7 +373,6 @@ final class InboxStore {
         let address = try inboxThreadAddress(received, messages: messages, preferences: preferences)
         guard try appendInboxMessage(received, messages: &messages, preferences: &preferences) else { return }
         let threadId = try inboxThreadKey(sender: sender, project: address.project, itemId: address.itemId)
-        try saveInbox()
         let center = UNUserNotificationCenter.current()
         center.removePendingNotificationRequests(withIdentifiers: [threadId]); center.removeDeliveredNotifications(withIdentifiers: [threadId])
         now = Date(); armSnoozeTimer(); cancelClosedNotifications()
@@ -362,7 +389,7 @@ final class InboxStore {
         } catch let error as XRPCError where error.code == "InvalidTransition" {
             status = "historical" // Later receipt events establish the real copy state.
         }
-        if let index = copies.firstIndex(where: { $0.id == copy.id }) { copies[index].receipt = status; try saveInbox() }
+        if let index = copies.firstIndex(where: { $0.id == copy.id }) { copies[index].receipt = status }
     }
     func acknowledge(_ item: MailItem) async {
         guard state == .live, let client, let lease else { return }; let token = generation
@@ -376,7 +403,7 @@ final class InboxStore {
         do { try saveInbox(); presentationPreferences[id] = prefs } catch { preferences[id] = previous; throw error }
     }
     private func saveInbox() throws {
-        try writeLocal("inbox.json", Value.map(["messages": .array(messages.map(\.wire)), "copies": .array(copies.map(\.wire)), "preferences": .map(preferences.mapValues(\.wire))]).jsonData())
+        try writeLocal("inbox.json", inboxFile(messages: messages, copies: copies, preferences: preferences, through: through).jsonData())
     }
     func archive(_ thread: InboxThread) async {
         guard state == .live else { return }
