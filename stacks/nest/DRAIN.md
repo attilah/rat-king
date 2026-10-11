@@ -18,6 +18,8 @@ Plain `drain` prints JSONL and **acks nothing**. Every subsequent drain prints u
 
 `--exec` sends the batch's JSONL to a shell command's stdin while retaining the lease. It waits for both stdin completion and process exit. Only exit 0 allows acknowledgement. Nonzero exit propagates unchanged and acks nothing. A signal or interrupted parent leaves the batch pending; dedupe on replay. Interruption closes the scoped child process. A consumer that exits 0 before taking all its input is not successful processing.
 
+The consumer inherits the drain's environment, including `PATH`. Cron and wrapper runs often have a minimal `PATH`, so name interpreters by absolute path (`--exec '/abs/bin/node /abs/cli.js drain'`). A consumer that can't start exits 127, and nothing is acked.
+
 A process failure after consumer success but during acknowledgement can leave a partially acked batch. Consumers must dedupe by `messageId`, including when a side effect succeeded before a crash. Printing or appending a line to a log is not processing. Do not use `--exec 'cat >> file'` to treat a log append as a handled message.
 
 A Mischief consumer acks on success and on `ReplyRefused`, and retries only on transport or process failure. At the pinned version, `deliverReply` holds replies to paused, capped or waiting runs rather than refusing them. `ReplyRefused` means the reply does not answer an open ask: it is stale or duplicate, and terminal. Return 0 after the whole batch is handled. Never convert a transport failure into success.
