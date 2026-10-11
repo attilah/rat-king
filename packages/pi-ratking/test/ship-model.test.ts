@@ -7,14 +7,17 @@ import type { AsyncCommand } from "fast-check";
 import { expect } from "vitest";
 import { initialTransition } from "xstate";
 
+import type { ShipReceipt } from "../../../stacks/nest/ship-config.ts";
 import { shipMachine } from "../../../stacks/nest/ship-machine.ts";
 import { shipCycle, shipLoop } from "../../../stacks/nest/ship.ts";
 import type { ShipPorts, ShipSnapshot } from "../../../stacks/nest/ship.ts";
+import { FleetError } from "../../../stacks/nest/stage-config.ts";
 
 const Cycle = Schema.Struct({
   ci: Schema.Boolean,
   elapsed: Schema.Int.check(Schema.isBetween({ maximum: 100, minimum: 0 })),
   outcome: Schema.Literals(["success", "failed", "deferred"]),
+  recovery: Schema.Literals(["running", "recovered", "failed", "error"]),
   sha: Schema.Literals(["a".repeat(40), "b".repeat(40), "c".repeat(40)]),
 });
 
@@ -29,16 +32,38 @@ interface Real {
   checkpoint: Model;
   deployed: number;
   notes: number;
+  receipt: typeof ShipReceipt.Type | undefined;
   receipts: number;
+  recoveries: number;
   snapshot: ShipSnapshot;
 }
+
+const expectRecovery = (
+  cycle: typeof Cycle.Type,
+  eligible: boolean,
+  recoveries: number,
+  receipt: typeof ShipReceipt.Type | undefined
+) => {
+  const failed = eligible && cycle.outcome === "failed";
+  expect(recoveries).toBe(failed ? 1 : 0);
+
+  if (!eligible) {
+    return;
+  }
+
+  expect(receipt?.recovered).toBe(
+    failed && cycle.recovery !== "running"
+      ? cycle.recovery === "recovered"
+      : undefined
+  );
+};
 
 class ModelFailure extends Schema.TaggedError<ModelFailure>()("ModelFailure", {
   reason: Schema.String,
 }) {}
 
 it.effect.prop(
-  "ship serializes deploys, retries busy maintenance and holds a failed SHA until a new SHA",
+  "ship serializes deploys, retries busy maintenance, holds a failed SHA until a new SHA and tries recovery after every failed deploy",
   [Schema.Array(Cycle)],
   ([cycles]) =>
     Effect.gen(function* modelRun() {
@@ -53,6 +78,7 @@ it.effect.prop(
             yield* TestClock.adjust(Duration.seconds(cycle.elapsed));
             const now = (yield* Clock.currentTimeMillis) / 1000;
             const before = real.deployed;
+            const recoveriesBefore = real.recoveries;
 
             const eligible =
               cycle.ci &&
@@ -97,10 +123,18 @@ it.effect.prop(
                 Effect.sync(() => {
                   real.notes += 1;
                 }),
-              record: () =>
+              record: (receipt) =>
                 Effect.sync(() => {
+                  real.receipt = receipt;
                   real.receipts += 1;
                 }),
+              recover: Effect.suspend(() => {
+                real.recoveries += 1;
+
+                return cycle.recovery === "error"
+                  ? Effect.fail(new FleetError({ reason: "unreachable" }))
+                  : Effect.succeed(cycle.recovery);
+              }),
             };
 
             real.snapshot = yield* shipCycle(real.snapshot, ports);
@@ -120,6 +154,13 @@ it.effect.prop(
             }
 
             expect(real.deployed - before).toBe(eligible ? 1 : 0);
+            expectRecovery(
+              cycle,
+              eligible,
+              real.recoveries - recoveriesBefore,
+              real.receipt
+            );
+
             expect(real.snapshot.context.successful).toBe(model.successful);
             expect(real.snapshot.context.failed).toBe(model.failed);
             expect(real.snapshot.context.deferred).toBe(model.deferred);
@@ -161,7 +202,9 @@ it.effect.prop(
                 },
                 deployed: 0,
                 notes: 0,
+                receipt: undefined,
                 receipts: 0,
+                recoveries: 0,
                 snapshot,
               },
             }),
@@ -196,6 +239,7 @@ it.live.prop(
         }),
         notify: () => Effect.void,
         record: () => Effect.void,
+        recover: Effect.succeed("running"),
       };
 
       yield* shipLoop(

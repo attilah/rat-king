@@ -4,7 +4,11 @@ import { Effect, Layer, Predicate, Result, Schema } from "effect";
 import { refuse } from "./files.ts";
 import { HostShell } from "./host-shell.ts";
 import type { HostError, Interface } from "./host-shell.ts";
-import { assessListeners, readListeners } from "./listeners.ts";
+import {
+  assessListeners,
+  ListenerExposure,
+  readListeners,
+} from "./listeners.ts";
 import { bootstrapProbe, probeEnvironment } from "./probes.ts";
 import type { ProbeRunnerMode } from "./probes.ts";
 import { s3Script } from "./s3-script.ts";
@@ -102,8 +106,12 @@ export const assertStarted = Effect.fn("UnitStartup.assertStarted")(
       }
 
       if (Predicate.isTagged(assessment, "Violation")) {
+        return yield* new ListenerExposure({ receipt: assessment.receipt });
+      }
+
+      if (Predicate.isTagged(assessment, "Early")) {
         return yield* refuse(
-          `Startup listener contract violated; both units must stop.\n${assessment.receipt}`
+          `Declared listener appeared before its unit was expected; units left running.\n${assessment.receipt}`
         );
       }
 
@@ -111,7 +119,7 @@ export const assertStarted = Effect.fn("UnitStartup.assertStarted")(
     }
 
     return yield* refuse(
-      "Startup listener deadline exceeded; both units must stop."
+      "Startup listener deadline exceeded; units left running."
     );
   }
 );
@@ -239,13 +247,20 @@ export const startupLayer = (
                 )
               : readiness;
           }).pipe(
-            Effect.onError(() =>
+            Effect.catchTag("ListenerExposure", ({ receipt }) =>
               stopBoth(shell).pipe(
                 Effect.matchEffect({
                   onFailure: (error) =>
                     Effect.logError("STARTUP_CLEANUP_FAILED", error),
                   onSuccess: () => Effect.void,
-                })
+                }),
+                Effect.andThen(
+                  Effect.fail(
+                    refuse(
+                      `Startup listener contract violated; both units stopped.\n${receipt}`
+                    )
+                  )
+                )
               )
             )
           );

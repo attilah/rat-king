@@ -46,7 +46,10 @@ const program = Effect.gen(function* restartGate() {
     false,
     unit === "store" ? 120 : 40
   ).pipe(
-    Effect.onError(() =>
+    Effect.catchTag("HostError", (error) =>
+      Effect.logError("RESTART_GATE_FAILED_UNITS_LEFT_RUNNING", error)
+    ),
+    Effect.catchTag("ListenerExposure", ({ receipt }) =>
       shell
         .exec([
           "systemctl",
@@ -60,6 +63,13 @@ const program = Effect.gen(function* restartGate() {
           Effect.asVoid,
           Effect.catch((error) =>
             Effect.logError("RESTART_GATE_STOP_FAILED", error)
+          ),
+          Effect.andThen(
+            Effect.fail(
+              refuse(
+                `Startup listener contract violated; both units stopped.\n${receipt}`
+              )
+            )
           )
         )
     ),

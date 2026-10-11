@@ -27,6 +27,11 @@ export interface ShipPorts<R = never> {
     snapshot: Pick<ShipSnapshot["context"], "failed" | "successful"> &
       Partial<Pick<ShipSnapshot["context"], "deferred" | "retryAt">>
   ) => Effect.Effect<void, FleetError, R>;
+  readonly recover: Effect.Effect<
+    "running" | "recovered" | "failed",
+    FleetError,
+    R
+  >;
   readonly record: (
     receipt: typeof ShipReceipt.Type
   ) => Effect.Effect<void, FleetError, R>;
@@ -88,12 +93,22 @@ export const shipCycle = Effect.fn("Ship.cycle")(function* shipCycle<R>(
     )
   );
 
-  const receipt = {
+  const recovery =
+    deployed.result === "failed"
+      ? yield* ports.recover.pipe(Effect.orElseSucceed(() => "failed" as const))
+      : "running";
+
+  const finished = {
     ...deployed,
     end: (yield* Clock.currentTimeMillis) / 1000,
     sha,
     start,
   };
+
+  const receipt =
+    recovery === "running"
+      ? finished
+      : { ...finished, recovered: recovery === "recovered" };
 
   yield* ports.record(receipt);
   current =
