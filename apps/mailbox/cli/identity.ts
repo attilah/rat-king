@@ -12,7 +12,11 @@ export type { IdentityValue } from "@rat-king/mailbox-client";
 
 export class CliError extends Schema.TaggedError<CliError>()("CliError", {
   reason: Schema.String,
-}) {}
+}) {
+  override get message() {
+    return this.reason;
+  }
+}
 
 export const readIdentity = Effect.fn("MailboxCli.readIdentity")(
   function* readIdentity(home: string, agent: string) {
