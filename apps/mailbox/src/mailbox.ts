@@ -3,7 +3,7 @@ import { EnvelopeFailure } from "@rat-king/envelope/failure";
 import { openPlaintext } from "@rat-king/envelope/signed";
 import * as Defs from "@rat-king/lexicon/defs";
 import { MailboxHandlers } from "@rat-king/lexicon/mailbox-handlers";
-import { Clock, Effect, Layer, Schema } from "effect";
+import { Clock, DateTime, Effect, Layer, Schema } from "effect";
 
 import { base64url, DidResolver, Document } from "./auth.ts";
 import { Caller } from "./caller.ts";
@@ -32,6 +32,7 @@ export const transitionMessage = (
   tx: Transaction,
   message: Message,
   command: DeliveryCommand,
+  now: number,
   detail?: string
 ) => {
   const { state } = message.current;
@@ -56,7 +57,12 @@ export const transitionMessage = (
 
   const seq = nextSeq(tx);
 
-  const receipt: Defs.ReceiptValue = { ...message.current, seq, state: next };
+  const receipt = Schema.decodeUnknownSync(Defs.Receipt)({
+    ...message.current,
+    recordedAt: DateTime.formatIso(DateTime.makeUnsafe(now)),
+    seq,
+    state: next,
+  });
 
   if (detail !== undefined) {
     Object.assign(receipt, { detail });
@@ -103,7 +109,7 @@ export const deliverMessage = (
   }
 
   if (expiryDue(message, now)) {
-    return transitionMessage(tx, message, "expire", "Expired message");
+    return transitionMessage(tx, message, "expire", now, "Expired message");
   }
 
   if (pastExpiry(message, now)) {
@@ -111,11 +117,11 @@ export const deliverMessage = (
   }
 
   if (message.current.state === "accepted") {
-    transitionMessage(tx, message, "queue");
+    transitionMessage(tx, message, "queue", now);
     message = findMessage(tx, sender, messageId);
   }
 
-  return transitionMessage(tx, message, "inject");
+  return transitionMessage(tx, message, "inject", now);
 };
 
 export const storeDocument = (
@@ -185,6 +191,7 @@ export const mailboxHandlers = (policy: MailboxPolicy) =>
                   tx,
                   message,
                   "expire",
+                  now,
                   "Expired message"
                 ),
               };
@@ -194,7 +201,7 @@ export const mailboxHandlers = (policy: MailboxPolicy) =>
               throw failure("InvalidTransition", 409, "Expired message");
             }
 
-            return { receipt: transitionMessage(tx, message, "ack") };
+            return { receipt: transitionMessage(tx, message, "ack", now) };
           });
         }),
         acquireLease: Effect.fn("Mailbox.acquireLease")(
@@ -417,15 +424,16 @@ export const mailboxHandlers = (policy: MailboxPolicy) =>
 
             const seq = nextSeq(tx);
 
-            const receipt: Defs.ReceiptValue = {
+            const receipt = Schema.decodeUnknownSync(Defs.Receipt)({
               message: {
                 messageId: envelope.aad.messageId,
                 senderDid: envelope.aad.senderDid,
               },
               recipientDid: envelope.aad.recipientDid,
+              recordedAt: DateTime.formatIso(DateTime.makeUnsafe(now)),
               seq,
               state: "accepted",
-            };
+            });
 
             tx.append({
               $type: "sh.mschf.ratking.defs#messageEvent",

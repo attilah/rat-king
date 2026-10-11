@@ -192,7 +192,6 @@ export const parseDrain = (mode: "drain" | "ack", argv: readonly string[]) => {
 export const unsettled = (events: Batch["events"]) => {
   const messages = new Map<string, Defs.MessageEventValue>();
   const states = new Map<string, string>();
-  const times = new Map<string, string>();
 
   for (const event of events) {
     if (
@@ -212,27 +211,13 @@ export const unsettled = (events: Batch["events"]) => {
     }
 
     states.set(key, event.receipt.state);
-
-    const time = Schema.decodeUnknownOption(Schema.String)(
-      event.receipt.recordedAt ?? event.receipt.time ?? event.time
-    );
-
-    if (!times.has(key) && Option.isSome(time)) {
-      times.set(key, time.value);
-    }
   }
 
   const pending: Defs.MessageEventValue[] = [];
 
   for (const [key, event] of messages) {
     if (!["acked", "expired"].includes(states.get(key) ?? "")) {
-      const time = times.get(key);
-
-      if (time === undefined) {
-        pending.push(event);
-      } else {
-        pending.push({ ...event, receipt: { ...event.receipt, time } });
-      }
+      pending.push(event);
     }
   }
 
@@ -245,8 +230,7 @@ export const projectLine = (
   name: Option.Option<string>
 ): Effect.Effect<Line, DrainFailure> =>
   Effect.gen(function* project() {
-    const acceptedAt =
-      event.receipt.recordedAt ?? event.receipt.time ?? event.time;
+    const acceptedAt = event.receipt.recordedAt;
 
     const body = Option.isSome(opened)
       ? opened.value.body

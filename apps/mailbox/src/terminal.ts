@@ -53,7 +53,7 @@ export const terminalLayer = Layer.effect(
               return message.current;
             }
 
-            return transitionMessage(tx, message, command, detail);
+            return transitionMessage(tx, message, command, now, detail);
           });
         }
       ),

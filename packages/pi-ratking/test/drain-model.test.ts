@@ -26,6 +26,7 @@ import {
   parseDrain,
   projectLine,
   runDrain,
+  unsettled,
 } from "../../../stacks/nest/drain.ts";
 import type {
   DrainPorts,
@@ -320,8 +321,24 @@ it.effect.prop(
         delete input.receipt.recordedAt;
       }
 
+      const pending = unsettled([
+        { ...input, $type: "sh.mschf.ratking.defs#messageEvent" },
+        {
+          $type: "sh.mschf.ratking.defs#receiptEvent",
+          receipt: {
+            ...event.receipt,
+            recordedAt: "2026-10-11T01:00:00.000Z",
+            seq: 2,
+            state: "delivered",
+          },
+          seq: 2,
+        },
+      ]);
+
+      expect(pending).toHaveLength(1);
+
       const line = yield* projectLine(
-        input,
+        pending[0] ?? input,
         Option.some(opened),
         Option.some("acme/writer")
       );
@@ -337,6 +354,10 @@ it.effect.prop(
         replyTo: ID,
       });
       expect(Object.hasOwn(line, "acceptedAt")).toBe(timestamp);
+
+      if (timestamp) {
+        expect(line.acceptedAt).toBe(AT);
+      }
     })
 );
 
