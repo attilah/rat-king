@@ -114,6 +114,17 @@ export type ReaderState = Data.TaggedEnum<{
 
 export const ReaderState = Data.taggedEnum<ReaderState>();
 
+export const ADMISSION_TRIES = 10;
+
+export const admissionBackoff = (count: number) =>
+  Duration.seconds(Math.min(2 ** (count - 1), 15));
+
+export const AdmissionBackoff = Context.Reference<
+  (count: number) => Duration.Duration
+>("RatKing.AdmissionBackoff", {
+  defaultValue: () => admissionBackoff,
+});
+
 export interface Self {
   readonly name: string;
   readonly did: string;
@@ -724,10 +735,14 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
               (SendOutcomes.$is("Uncertain")(outcome) ||
                 (SendOutcomes.$is("Rejected")(outcome) &&
                   outcome.error.error === "LeaseMismatch")) &&
-              count < 3
-                ? Effect.sleep(Duration.seconds(count)).pipe(
-                    Effect.andThen(attempt(count + 1))
-                  )
+              count < ADMISSION_TRIES
+                ? Effect.gen(function* retryAdmission() {
+                    const delay = yield* AdmissionBackoff;
+
+                    yield* Effect.sleep(delay(count));
+
+                    return yield* attempt(count + 1);
+                  })
                 : Effect.succeed(outcome)
             )
           );
@@ -753,7 +768,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
           Uncertain: ({ error }) =>
             Effect.fail(
               refused("Uncertain")(
-                `Admission not confirmed after 3 tries: ${error.reason}`
+                `Admission not confirmed after ${ADMISSION_TRIES} tries over about 90 s: ${error.reason}`
               )
             ),
         });

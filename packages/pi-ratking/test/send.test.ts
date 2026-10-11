@@ -14,7 +14,7 @@ import { expect } from "vitest";
 
 import { document, identity } from "../../mailbox-client/test/identity.ts";
 import { Directory } from "../src/directory.ts";
-import { RatKing } from "../src/ratking.ts";
+import { ADMISSION_TRIES, RatKing } from "../src/ratking.ts";
 import { harness } from "./harness.ts";
 
 const Status = Schema.Literals([400, 403, 409, 500, 503]);
@@ -78,7 +78,7 @@ it.live.prop(
 
         expect(refused.code).toBe(status < 500 ? "Rejected" : "Uncertain");
         expect(submitted.length).toBe(
-          status < 500 && reason === "Conflict" ? 1 : 3
+          status < 500 && reason === "Conflict" ? 1 : ADMISSION_TRIES
         );
         expect(new Set(submitted).size).toBe(1);
       }).pipe(Effect.provide(harness(state, http)));
