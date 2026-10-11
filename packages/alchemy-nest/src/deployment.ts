@@ -282,10 +282,18 @@ export const DeploymentProvider = () =>
           output,
         }) {
           if (olds === undefined) {
-            return absent;
+            return output === undefined
+              ? absent
+              : yield* new DeploymentError({
+                  reason: "Recorded deployment output requires previous props",
+                });
           }
 
-          yield* validate(olds);
+          const valid = yield* validate(olds).pipe(Effect.result);
+
+          if (Result.isFailure(valid)) {
+            return output === undefined ? absent : yield* valid.failure;
+          }
 
           if (!(yield* installed(olds))) {
             if (
