@@ -447,6 +447,7 @@ export const prepare = Effect.fn("Mailbox.prepare")(function* prepare(
     head: mailbox
       .list({ afterSeq: 0, limit: 1 })
       .pipe(Effect.map(({ throughSeq }) => throughSeq)),
+    mailbox,
     open: mailbox.open,
     presence,
     refresh,

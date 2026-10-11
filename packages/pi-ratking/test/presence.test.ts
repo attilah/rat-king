@@ -111,6 +111,12 @@ const expectedLine = (server: Server, now: number) => {
     );
   }
 
+  if (now - server.at <= 900_000) {
+    return Option.some(
+      `No live reader; last read ${Math.floor((now - server.at) / 60_000)} min ago. The mail is queued for batch intake.`
+    );
+  }
+
   return Option.some(
     `No reader holding this name since ${expectedAge(now - server.at)} ago (${iso(server.at)}); the message waits in its mailbox.`
   );

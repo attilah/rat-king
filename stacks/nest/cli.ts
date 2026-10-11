@@ -22,6 +22,7 @@ import {
 import { doneBar } from "./comms.ts";
 import { configDoctor } from "./config-doctor.ts";
 import { commsCounts, digest } from "./digest.ts";
+import { drainCommand } from "./drain.ts";
 import { DigestJson, summarize } from "./health.ts";
 import { mintHost } from "./mint-host.ts";
 import { sendCommand } from "./send.ts";
@@ -225,7 +226,18 @@ const program = Effect.gen(function* launcher() {
   );
 });
 
-const main =
-  process.argv[2] === "send" ? sendCommand(process.argv.slice(3)) : program;
+const scriptCommand = () => {
+  if (process.argv[2] === "send") {
+    return sendCommand(process.argv.slice(3));
+  }
+
+  if (process.argv[2] === "drain" || process.argv[2] === "ack") {
+    return drainCommand(process.argv[2], process.argv.slice(3));
+  }
+
+  return program;
+};
+
+const main = scriptCommand();
 
 NodeRuntime.runMain(main.pipe(Effect.provide(NodeServices.layer)));

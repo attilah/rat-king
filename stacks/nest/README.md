@@ -19,6 +19,12 @@ For an existing P3 deployment, import its resource-state rows into the private `
 
 The launcher refuses state inside the public repository, including through a symlink. The plan refuses delete and replace actions. For an explicitly approved teardown, run `destroy-plan`, inspect the resource list, then `destroy` and `teardown-probe`. Destroy drains the bucket before stopping its server, purges owned data children, removes deployment files and the explicitly owned provisioned remote agents directory, and removes empty roots. Purge refuses symlinks and paths outside inventory-owned roots. The probe is read-only and prints only pass/fail labels. A failed probe means stop, report leftovers and retain state; never hand-clean the host. Local operator keys and state retention remain the operator’s responsibility.
 
+## Scheduled batch intake
+
+[Drain and ack](DRAIN.md) read a dedicated script name in scheduled batches. Plain `nest drain` never acks anything, including unverified lines; the consumer chooses which IDs to `nest ack`. Unverified lines are counted on stderr. `--exec` acknowledges its batch only after its consumer exits 0.
+
+A Mischief consumer acks on success and on `ReplyRefused`, and retries only on transport or process failure. The seam pins Mischief `7198ad0c123baba516cf11b42705fb6e233a3084`, where paused, capped and waiting runs hold replies; `ReplyRefused` is terminal for stale or duplicate replies. Use an example dedicated name such as `acme/inbox`, never a live Pi name.
+
 ## Loopback-only pilot
 
 `RAT_KING_STAGE=pilot` selects a separate `nest/pilot` Alchemy namespace. Give it a fresh private state directory outside the repository and its own isolated Linux VM. Never select an existing proof host for the pilot. The pinned release assets require Linux x86_64; on an ARM host the VM uses amd64 emulation. Install Node 24.18.0 in the VM before preparation. Create the missing user configuration parents (`~/.config`, `~/.config/systemd`, `~/.config/systemd/user`) at mode 700 before deployment; fresh VMs do not have them. Enable lingering for the VM user only so user units return after a VM restart.
