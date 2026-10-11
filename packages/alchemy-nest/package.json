@@ -6,7 +6,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./RatsNest": "./src/host.ts"
+    "./RatsNest": "./src/host.ts",
+    "./offline": "./src/offline.ts"
   },
   "scripts": {
     "live": "ALCHEMY_TELEMETRY_DISABLED=1 node src/live.ts",

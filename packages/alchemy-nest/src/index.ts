@@ -34,3 +34,11 @@ export { ObjectStore } from "./object-store.ts";
 export type { BucketOutput } from "./object-store.ts";
 
 export { Celld } from "./celld.ts";
+
+export { prepareDeployment } from "./deployment-build.ts";
+
+export { stageDeploymentFiles } from "./deployment-stage.ts";
+
+export type { DeploymentProps } from "./deployment.ts";
+
+export type { Declaration, DeploymentBuild } from "./deployment-config.ts";
