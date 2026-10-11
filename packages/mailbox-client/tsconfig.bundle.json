@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "noEmit": false,
+    "rootDir": ".."
+  },
+  "include": [
+    "src/**/*.ts",
+    "../envelope/src/**/*.ts",
+    "../lexicon/src/**/*.ts"
+  ]
+}

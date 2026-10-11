@@ -14,6 +14,7 @@ export default defineConfig({
     ".claude/**",
     "scripts/hooks/**",
     "tools/oxlint/anti-slop/**",
+    "packages/mailbox-client/bundle/**",
   ],
   jsPlugins: [
     "./scripts/oxlint-plugin-xstate-effect.ts",

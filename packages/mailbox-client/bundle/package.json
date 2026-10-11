@@ -1,0 +1,21 @@
+{
+  "name": "@rat-king/mailbox-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./types/mailbox-client/index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "dependencies": {
+    "@atproto/lex-data": "0.1.8",
+    "@atproto/lexicon": "0.7.16",
+    "@hpke/core": "1.9.0",
+    "@ipld/dag-cbor": "10.0.2",
+    "effect": "4.0.1",
+    "xstate": "6.0.0-alpha.59"
+  }
+}

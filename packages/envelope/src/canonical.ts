@@ -40,7 +40,7 @@ export const concatenate = (...parts: readonly Uint8Array[]) => {
   return result;
 };
 
-export const canonical = (value: Runtime.LexValue) => encode(value);
+export const canonical = (value: Runtime.LexValue): Uint8Array => encode(value);
 
 export const canonicalDecode = Effect.fn("Envelope.canonicalDecode")(
   function* canonicalDecode(bytes: Uint8Array) {
