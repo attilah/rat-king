@@ -3,7 +3,10 @@ import type * as Defs from "@rat-king/lexicon/defs";
 import * as Runtime from "@rat-king/lexicon/runtime";
 import { Effect, Schema } from "effect";
 
+import { concatenate } from "./bytes.ts";
 import { EnvelopeFailure } from "./failure.ts";
+
+export { concatenate } from "./bytes.ts";
 
 export const suite = Object.freeze({ aeadId: 1, kdfId: 1, kemId: 16 });
 
@@ -24,21 +27,6 @@ const aadDomain = new TextEncoder().encode("sh.mschf.ratking.aad.v1\0");
 export const equalBytes = (left: Uint8Array, right: Uint8Array) =>
   left.length === right.length &&
   left.every((byte, index) => byte === right[index]);
-
-export const concatenate = (...parts: readonly Uint8Array[]) => {
-  const result = new Uint8Array(
-    parts.reduce((length, part) => length + part.length, 0)
-  );
-
-  let offset = 0;
-
-  for (const part of parts) {
-    result.set(part, offset);
-    offset += part.length;
-  }
-
-  return result;
-};
 
 export const canonical = (value: Runtime.LexValue): Uint8Array => encode(value);
 

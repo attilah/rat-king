@@ -391,6 +391,19 @@ import { Effect as Effect5, Schema as Schema6 } from "effect";
 import { decode, encode } from "@ipld/dag-cbor";
 import { Effect, Schema as Schema4 } from "effect";
 
+// packages/envelope/src/bytes.ts
+var concatenate = (...parts) => {
+  const result = new Uint8Array(
+    parts.reduce((length, part) => length + part.length, 0)
+  );
+  let offset = 0;
+  for (const part of parts) {
+    result.set(part, offset);
+    offset += part.length;
+  }
+  return result;
+};
+
 // packages/envelope/src/failure.ts
 import { Schema as Schema3 } from "effect";
 var EnvelopeFailure = class extends Schema3.TaggedError()(
@@ -412,17 +425,6 @@ var signatureDomain = new TextEncoder().encode(
 );
 var aadDomain = new TextEncoder().encode("sh.mschf.ratking.aad.v1\0");
 var equalBytes = (left, right) => left.length === right.length && left.every((byte, index) => byte === right[index]);
-var concatenate = (...parts) => {
-  const result = new Uint8Array(
-    parts.reduce((length, part) => length + part.length, 0)
-  );
-  let offset = 0;
-  for (const part of parts) {
-    result.set(part, offset);
-    offset += part.length;
-  }
-  return result;
-};
 var canonical = (value) => encode(value);
 var canonicalDecode = Effect.fn("Envelope.canonicalDecode")(
   function* canonicalDecode2(bytes) {
@@ -1843,10 +1845,23 @@ var clientLayer = Layer.effect(
 );
 
 // packages/mailbox-client/src/mailbox.ts
-import { Clock as Clock3, Context as Context6, Effect as Effect15, Layer as Layer4, Option as Option3, Schema as Schema29 } from "effect";
+import { Clock as Clock3, Context as Context6, Effect as Effect15, Layer as Layer4, Option as Option3, Schema as Schema30 } from "effect";
 
 // packages/mailbox-client/src/auth.ts
-import { Context as Context4, Effect as Effect9, Layer as Layer2, Schema as Schema20 } from "effect";
+import { Context as Context4, Effect as Effect9, Layer as Layer2, Schema as Schema21 } from "effect";
+
+// packages/mailbox-client/src/auth-failure.ts
+import { Schema as Schema20 } from "effect";
+var ServiceAuthFailure = class extends Schema20.TaggedError()(
+  "XrpcFailure",
+  {
+    error: Schema20.String,
+    message: Schema20.optionalKey(Schema20.String),
+    response: Schema20.Record(Schema20.String, Schema20.Json),
+    status: Schema20.Int
+  }
+) {
+};
 
 // packages/mailbox-client/src/replay.ts
 import { Context as Context3 } from "effect";
@@ -1856,44 +1871,49 @@ var ReplayAuthority = class extends Context3.Service()("mailbox/ReplayAuthority"
 // packages/mailbox-client/src/auth.ts
 var failure = (error, status, message) => {
   if (message === void 0) {
-    return new XrpcFailure({ error, response: {}, status });
+    return new ServiceAuthFailure({ error, response: {}, status });
   }
-  return new XrpcFailure({ error, message, response: {}, status });
+  return new ServiceAuthFailure({ error, message, response: {}, status });
 };
 var base64url2 = (bytes) => btoa(Array.from(bytes, (byte) => String.fromCodePoint(byte)).join("")).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
 var unbase64url = (text) => Uint8Array.from(
   atob(text.replaceAll("-", "+").replaceAll("_", "/")),
   (character) => character.codePointAt(0) ?? 0
 );
-var Claims = Schema20.Struct({
-  aud: Schema20.String,
-  exp: Schema20.Int,
-  iat: Schema20.Int,
-  iss: Schema20.String,
-  jti: Schema20.String.check(Schema20.isMinLength(16)),
-  lxm: Schema20.String
+var Claims = Schema21.Struct({
+  aud: Schema21.String,
+  exp: Schema21.Int,
+  iat: Schema21.Int,
+  iss: Schema21.String,
+  jti: Schema21.String.check(Schema21.isMinLength(16)),
+  lxm: Schema21.String
 });
-var authFailure = (error, status = 400, message = error) => new XrpcFailure({ error, message, response: { error, message }, status });
-var PublicJwk2 = Schema20.Struct({
-  crv: Schema20.Literal("P-256"),
-  d: Schema20.optionalKey(Schema20.Never),
-  kty: Schema20.Literal("EC"),
-  x: Schema20.String,
-  y: Schema20.String
+var authFailure = (error, status = 400, message = error) => new ServiceAuthFailure({
+  error,
+  message,
+  response: { error, message },
+  status
 });
-var Document = Schema20.Struct({
-  authentication: Schema20.Array(Schema20.String),
-  id: Schema20.String,
-  keyAgreement: Schema20.Array(Schema20.String),
-  verificationMethod: Schema20.Array(
-    Schema20.Struct({
-      controller: Schema20.String,
-      id: Schema20.String,
+var PublicJwk2 = Schema21.Struct({
+  crv: Schema21.Literal("P-256"),
+  d: Schema21.optionalKey(Schema21.Never),
+  kty: Schema21.Literal("EC"),
+  x: Schema21.String,
+  y: Schema21.String
+});
+var Document = Schema21.Struct({
+  authentication: Schema21.Array(Schema21.String),
+  id: Schema21.String,
+  keyAgreement: Schema21.Array(Schema21.String),
+  verificationMethod: Schema21.Array(
+    Schema21.Struct({
+      controller: Schema21.String,
+      id: Schema21.String,
       publicKeyJwk: PublicJwk2
     })
   )
 });
-var Documents = Schema20.Array(Document);
+var Documents = Schema21.Array(Document);
 var DidResolver = class extends Context4.Service()("mailbox/DidResolver") {
 };
 var documentResolver = (lookup) => Layer2.succeed(
@@ -1927,10 +1947,10 @@ var documentResolver = (lookup) => Layer2.succeed(
 var staticResolver = (documents) => documentResolver(
   (did) => Effect9.succeed(documents.find((candidate) => candidate.id === did))
 );
-var Header = Schema20.Struct({
-  alg: Schema20.Literal("ES256"),
-  kid: Schema20.optionalKey(Schema20.String),
-  typ: Schema20.optionalKey(Schema20.Literal("JWT"))
+var Header = Schema21.Struct({
+  alg: Schema21.Literal("ES256"),
+  kid: Schema21.optionalKey(Schema21.String),
+  typ: Schema21.optionalKey(Schema21.Literal("JWT"))
 });
 var json = (text) => Effect9.try({
   catch: () => authFailure("AuthRequired", 401),
@@ -1945,18 +1965,18 @@ var authenticateClaims = Effect9.fn("ServiceAuth.authenticateClaims")(
       return yield* Effect9.fail(authFailure("AuthRequired", 401));
     }
     const [headerText = "", claimsText = "", signatureText = ""] = token.split(".");
-    const header = yield* Schema20.decodeUnknownEffect(
-      Schema20.fromJsonString(Header)
+    const header = yield* Schema21.decodeUnknownEffect(
+      Schema21.fromJsonString(Header)
     )(yield* json(headerText)).pipe(
       Effect9.mapError(() => authFailure("AuthRequired", 401))
     );
-    const claims = yield* Schema20.decodeUnknownEffect(
-      Schema20.fromJsonString(Claims)
+    const claims = yield* Schema21.decodeUnknownEffect(
+      Schema21.fromJsonString(Claims)
     )(yield* json(claimsText)).pipe(
       Effect9.mapError(() => authFailure("AuthRequired", 401))
     );
     const now = Math.floor(request.now / 1e3);
-    if (claims.aud !== request.audience || claims.lxm !== request.nsid || claims.iat > now || claims.exp <= now || claims.exp <= claims.iat || claims.exp - claims.iat > 60 || now - claims.iat > 60) {
+    if (claims.aud !== request.audience || claims.lxm !== request.nsid || claims.iat > now + (request.skewSeconds ?? 0) || claims.exp <= now || claims.exp <= claims.iat || claims.exp - claims.iat > 60 || now - claims.iat > 60) {
       return yield* Effect9.fail(
         authFailure("AuthRequired", 401, "Invalid service-auth claims")
       );
@@ -1996,21 +2016,21 @@ var serviceToken = Effect9.fn("ServiceAuth.sign")(
 );
 
 // packages/mailbox-client/src/error.ts
-import { Schema as Schema21 } from "effect";
-var MailboxClientError = class extends Schema21.TaggedError()(
+import { Schema as Schema22 } from "effect";
+var MailboxClientError = class extends Schema22.TaggedError()(
   "MailboxClientError",
   {
-    error: Schema21.optionalKey(Schema21.String),
-    reason: Schema21.String,
-    status: Schema21.optionalKey(Schema21.Finite)
+    error: Schema22.optionalKey(Schema22.String),
+    reason: Schema22.String,
+    status: Schema22.optionalKey(Schema22.Finite)
   }
 ) {
 };
 var clientError = (failure3) => {
-  if (Schema21.is(MailboxClientError)(failure3)) {
+  if (Schema22.is(MailboxClientError)(failure3)) {
     return failure3;
   }
-  if (Schema21.is(XrpcFailure)(failure3)) {
+  if (Schema22.is(XrpcFailure)(failure3)) {
     return new MailboxClientError({
       error: failure3.error,
       reason: failure3.message ?? "Mailbox XRPC call failed",
@@ -2021,17 +2041,17 @@ var clientError = (failure3) => {
 };
 
 // packages/mailbox-client/src/identity.ts
-import { Schema as Schema22 } from "effect";
-var PrivateJwk = Schema22.Struct({
-  crv: Schema22.Literal("P-256"),
-  d: Schema22.String,
-  kty: Schema22.Literal("EC"),
-  x: Schema22.String,
-  y: Schema22.String
+import { Schema as Schema23 } from "effect";
+var PrivateJwk = Schema23.Struct({
+  crv: Schema23.Literal("P-256"),
+  d: Schema23.String,
+  kty: Schema23.Literal("EC"),
+  x: Schema23.String,
+  y: Schema23.String
 });
-var Identity = Schema22.Struct({
+var Identity = Schema23.Struct({
   agreement: PrivateJwk,
-  did: Schema22.String.check(Schema22.isPattern(/^did:web:/u)),
+  did: Schema23.String.check(Schema23.isPattern(/^did:web:/u)),
   signing: PrivateJwk
 });
 var importSigning = (identity) => cryptoOperation(
@@ -2054,52 +2074,52 @@ var importAgreement = (identity) => cryptoOperation(
 );
 
 // packages/lexicon/src/mailbox.getPresence.ts
-import { Effect as Effect10, Schema as Schema23 } from "effect";
-var Params11 = Schema23.StructWithRest(
-  Schema23.Struct({
+import { Effect as Effect10, Schema as Schema24 } from "effect";
+var Params11 = Schema24.StructWithRest(
+  Schema24.Struct({
     did: lexString({ format: "did", type: "string" }).pipe(
-      Schema23.brand("Lexicon:did")
+      Schema24.brand("Lexicon:did")
     )
   }),
-  [Schema23.Record(Schema23.String, Data)]
+  [Schema24.Record(Schema24.String, Data)]
 );
-var Input10 = Schema23.Undefined;
-var Output10 = Schema23.StructWithRest(
-  Schema23.Struct({
+var Input10 = Schema24.Undefined;
+var Output10 = Schema24.StructWithRest(
+  Schema24.Struct({
     did: lexString({ format: "did", type: "string" }).pipe(
-      Schema23.brand("Lexicon:did")
+      Schema24.brand("Lexicon:did")
     ),
-    held: Schema23.Boolean,
-    lastHeldAt: Schema23.optionalKey(
+    held: Schema24.Boolean,
+    lastHeldAt: Schema24.optionalKey(
       lexString({ format: "datetime", type: "string" }).pipe(
-        Schema23.brand("Lexicon:datetime")
+        Schema24.brand("Lexicon:datetime")
       )
     ),
-    renders: Schema23.optionalKey(
-      Schema23.Array(lexString({ type: "string" })).check(
-        Schema23.isMinLength(0),
-        Schema23.isMaxLength(9007199254740991)
+    renders: Schema24.optionalKey(
+      Schema24.Array(lexString({ type: "string" })).check(
+        Schema24.isMinLength(0),
+        Schema24.isMaxLength(9007199254740991)
       )
     )
   }),
-  [Schema23.Record(Schema23.String, Data)]
+  [Schema24.Record(Schema24.String, Data)]
 );
-var ParamsFromQuery3 = Schema23.StructWithRest(
-  Schema23.Struct({ did: Schema23.String }),
-  [Schema23.Record(Schema23.String, Data)]
-).pipe(Schema23.decodeTo(Params11));
+var ParamsFromQuery3 = Schema24.StructWithRest(
+  Schema24.Struct({ did: Schema24.String }),
+  [Schema24.Record(Schema24.String, Data)]
+).pipe(Schema24.decodeTo(Params11));
 var encodeParams5 = Effect10.fn("lexicon.encodeParams")(
   function* encodeParams6(params) {
     return entries(
-      yield* Schema23.decodeUnknownEffect(Params4)(
-        yield* Schema23.encodeEffect(ParamsFromQuery3)(params)
+      yield* Schema24.decodeUnknownEffect(Params4)(
+        yield* Schema24.encodeEffect(ParamsFromQuery3)(params)
       )
     );
   }
 );
 var decodeParams5 = Effect10.fn("lexicon.decodeParams")(
   function* decodeParams6(entries2) {
-    return yield* Schema23.decodeUnknownEffect(ParamsFromQuery3)(
+    return yield* Schema24.decodeUnknownEffect(ParamsFromQuery3)(
       parameters(entries2)
     );
   }
@@ -2119,13 +2139,13 @@ var Method10 = {
 };
 
 // packages/mailbox-client/src/record-visibility.ts
-import { Effect as Effect11, Option, Schema as Schema24 } from "effect";
+import { Effect as Effect11, Option, Schema as Schema25 } from "effect";
 var readerCannotRender = (name, type, presence) => type !== "unknown" && presence?.held === true && presence.renders !== void 0 && !presence.renders.some(
   (render) => render.endsWith(".*") ? type.startsWith(render.slice(0, -1)) : type === render
 ) ? `NOT SENT: ReaderCannotRender. ${name}'s reader doesn't render ${type} (it predates typed records or doesn't declare it). Send prose instead, or ask them to restart.` : void 0;
 var recordType = (body) => {
-  const result = Schema24.decodeUnknownOption(
-    Schema24.fromJsonString(Schema24.Struct({ $type: Schema24.String }))
+  const result = Schema25.decodeUnknownOption(
+    Schema25.fromJsonString(Schema25.Struct({ $type: Schema25.String }))
   )(body);
   return Option.match(result, {
     onNone: () => "unknown",
@@ -2135,14 +2155,14 @@ var recordType = (body) => {
 var lookupPresence = Effect11.fn("Mailbox.lookupPresence")(
   function* lookupPresence2(did) {
     const transport = yield* Transport;
-    const params = yield* Schema24.decodeUnknownEffect(Params11)({
+    const params = yield* Schema25.decodeUnknownEffect(Params11)({
       did
     }).pipe(Effect11.mapError(clientError));
     const response = yield* transport.request({
       input: void 0,
       method: "GET",
       nsid: Method10.nsid,
-      params: yield* Schema24.encodeEffect(Params11)(params).pipe(
+      params: yield* Schema25.encodeEffect(Params11)(params).pipe(
         Effect11.mapError(clientError)
       )
     }).pipe(Effect11.mapError(clientError));
@@ -2151,7 +2171,7 @@ var lookupPresence = Effect11.fn("Mailbox.lookupPresence")(
         reason: "Presence request refused"
       });
     }
-    return yield* Schema24.decodeUnknownEffect(Output10)(
+    return yield* Schema25.decodeUnknownEffect(Output10)(
       response.body
     ).pipe(Effect11.mapError(clientError));
   }
@@ -2174,15 +2194,15 @@ var randomTid = (millis) => {
 };
 
 // packages/lexicon/src/transport-failure.ts
-import { Schema as Schema25 } from "effect";
-var TransportFailure = class extends Schema25.TaggedError()(
+import { Schema as Schema26 } from "effect";
+var TransportFailure = class extends Schema26.TaggedError()(
   "TransportFailure",
-  { cause: Schema25.Defect(), reason: Schema25.String }
+  { cause: Schema26.Defect(), reason: Schema26.String }
 ) {
 };
 
 // packages/mailbox-client/src/transport.ts
-import { Clock, Effect as Effect12, Layer as Layer3, Result as Result2, Schema as Schema26 } from "effect";
+import { Clock, Effect as Effect12, Layer as Layer3, Result as Result2, Schema as Schema27 } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/http";
 var transportLayer = (endpoint, audience, identity) => Layer3.effect(
   Transport,
@@ -2212,7 +2232,7 @@ var transportLayer = (endpoint, audience, identity) => Layer3.effect(
           );
           if (request.params !== void 0) {
             for (const [name, value] of Object.entries(request.params)) {
-              if (Schema26.is(Schema26.String)(value) || Schema26.is(Schema26.Finite)(value) || Schema26.is(Schema26.Boolean)(value)) {
+              if (Schema27.is(Schema27.String)(value) || Schema27.is(Schema27.Finite)(value) || Schema27.is(Schema27.Boolean)(value)) {
                 url.searchParams.set(name, String(value));
               }
             }
@@ -2228,8 +2248,8 @@ var transportLayer = (endpoint, audience, identity) => Layer3.effect(
           }
           const response = yield* http.execute(outgoing);
           const body = yield* response.text;
-          const json2 = yield* Schema26.decodeUnknownEffect(
-            Schema26.fromJsonString(Schema26.toEncoded(Data))
+          const json2 = yield* Schema27.decodeUnknownEffect(
+            Schema27.fromJsonString(Schema27.toEncoded(Data))
           )(body).pipe(Effect12.result);
           if (Result2.isFailure(json2)) {
             return { body, kind: "text", status: response.status };
@@ -2252,64 +2272,64 @@ var transportLayer = (endpoint, audience, identity) => Layer3.effect(
 );
 
 // packages/lexicon/src/mailbox.subscribe.ts
-import { Effect as Effect13, Schema as Schema27 } from "effect";
-var Auth = Schema27.StructWithRest(
-  Schema27.Struct({ token: lexString({ type: "string" }) }),
-  [Schema27.Record(Schema27.String, Data)]
+import { Effect as Effect13, Schema as Schema28 } from "effect";
+var Auth = Schema28.StructWithRest(
+  Schema28.Struct({ token: lexString({ type: "string" }) }),
+  [Schema28.Record(Schema28.String, Data)]
 );
-var Params12 = Schema27.StructWithRest(
-  Schema27.Struct({
-    generation: Schema27.Int.check(
-      Schema27.isGreaterThanOrEqualTo(1),
-      Schema27.isLessThanOrEqualTo(9007199254740991)
+var Params12 = Schema28.StructWithRest(
+  Schema28.Struct({
+    generation: Schema28.Int.check(
+      Schema28.isGreaterThanOrEqualTo(1),
+      Schema28.isLessThanOrEqualTo(9007199254740991)
     ),
     leaseId: lexString({ format: "tid", type: "string" }).pipe(
-      Schema27.brand("Lexicon:tid")
+      Schema28.brand("Lexicon:tid")
     ),
     recipientDid: lexString({ format: "did", type: "string" }).pipe(
-      Schema27.brand("Lexicon:did")
+      Schema28.brand("Lexicon:did")
     )
   }),
-  [Schema27.Record(Schema27.String, Data)]
+  [Schema28.Record(Schema28.String, Data)]
 );
-var Message = Schema27.Union([
-  Schema27.StructWithRest(
-    Schema27.Struct({
-      $type: Schema27.Literal("sh.mschf.ratking.mailbox.subscribe#notice"),
-      seq: Schema27.Int.check(
-        Schema27.isGreaterThanOrEqualTo(0),
-        Schema27.isLessThanOrEqualTo(9007199254740991)
+var Message = Schema28.Union([
+  Schema28.StructWithRest(
+    Schema28.Struct({
+      $type: Schema28.Literal("sh.mschf.ratking.mailbox.subscribe#notice"),
+      seq: Schema28.Int.check(
+        Schema28.isGreaterThanOrEqualTo(0),
+        Schema28.isLessThanOrEqualTo(9007199254740991)
       )
     }),
-    [Schema27.Record(Schema27.String, Data)]
+    [Schema28.Record(Schema28.String, Data)]
   ),
   TaggedMap.check(
-    Schema27.makeFilter(
+    Schema28.makeFilter(
       (value) => !["sh.mschf.ratking.mailbox.subscribe#notice"].includes(value.$type),
       { expected: "unknown union tag only" }
     )
   )
 ]);
-var ParamsFromQuery4 = Schema27.StructWithRest(
-  Schema27.Struct({
-    generation: Schema27.FiniteFromString,
-    leaseId: Schema27.String,
-    recipientDid: Schema27.String
+var ParamsFromQuery4 = Schema28.StructWithRest(
+  Schema28.Struct({
+    generation: Schema28.FiniteFromString,
+    leaseId: Schema28.String,
+    recipientDid: Schema28.String
   }),
-  [Schema27.Record(Schema27.String, Data)]
-).pipe(Schema27.decodeTo(Params12));
+  [Schema28.Record(Schema28.String, Data)]
+).pipe(Schema28.decodeTo(Params12));
 var encodeParams7 = Effect13.fn("lexicon.encodeParams")(
   function* encodeParams8(params) {
     return entries(
-      yield* Schema27.decodeUnknownEffect(Params4)(
-        yield* Schema27.encodeEffect(ParamsFromQuery4)(params)
+      yield* Schema28.decodeUnknownEffect(Params4)(
+        yield* Schema28.encodeEffect(ParamsFromQuery4)(params)
       )
     );
   }
 );
 var decodeParams7 = Effect13.fn("lexicon.decodeParams")(
   function* decodeParams8(entries2) {
-    return yield* Schema27.decodeUnknownEffect(ParamsFromQuery4)(
+    return yield* Schema28.decodeUnknownEffect(ParamsFromQuery4)(
       parameters(entries2)
     );
   }
@@ -2319,14 +2339,14 @@ var Method11 = {
   params: Params12,
   path: "/xrpc/sh.mschf.ratking.mailbox.subscribe"
 };
-var Notice = Schema27.StructWithRest(
-  Schema27.Struct({
-    seq: Schema27.Int.check(
-      Schema27.isGreaterThanOrEqualTo(0),
-      Schema27.isLessThanOrEqualTo(9007199254740991)
+var Notice = Schema28.StructWithRest(
+  Schema28.Struct({
+    seq: Schema28.Int.check(
+      Schema28.isGreaterThanOrEqualTo(0),
+      Schema28.isLessThanOrEqualTo(9007199254740991)
     )
   }),
-  [Schema27.Record(Schema27.String, Data)]
+  [Schema28.Record(Schema28.String, Data)]
 );
 
 // packages/mailbox-client/src/watch.ts
@@ -2338,7 +2358,7 @@ import {
   Option as Option2,
   Predicate,
   Schedule,
-  Schema as Schema28,
+  Schema as Schema29,
   Stream
 } from "effect";
 import { Socket } from "effect/socket";
@@ -2373,8 +2393,8 @@ var watch = (config, poll, afterSeq, fence) => Stream.suspend(() => {
           reason: "Watch fence DID differs from recipient"
         });
       }
-      const params = yield* Schema28.decodeUnknownEffect(
-        Schema28.toType(Params12)
+      const params = yield* Schema29.decodeUnknownEffect(
+        Schema29.toType(Params12)
       )({
         generation: fence.generation,
         leaseId: fence.leaseId,
@@ -2421,7 +2441,7 @@ var watch = (config, poll, afterSeq, fence) => Stream.suspend(() => {
           Effect14.mapError(clientError)
         )
       ).pipe(Effect14.mapError(clientError));
-      const auth = yield* Schema28.encodeEffect(Auth)({
+      const auth = yield* Schema29.encodeEffect(Auth)({
         $type: "sh.mschf.ratking.mailbox.subscribe#auth",
         token
       }).pipe(Effect14.mapError(clientError));
@@ -2429,10 +2449,10 @@ var watch = (config, poll, afterSeq, fence) => Stream.suspend(() => {
       const receiveNotice = Effect14.gen(function* receiveNotice2() {
         const frames = yield* reader.pull.pipe(Effect14.mapError(socketError));
         for (const frame of frames) {
-          yield* Schema28.decodeUnknownEffect(
-            Schema28.fromJsonString(Notice)
+          yield* Schema29.decodeUnknownEffect(
+            Schema29.fromJsonString(Notice)
           )(
-            Schema28.is(Schema28.String)(frame) ? frame : new TextDecoder().decode(frame)
+            Schema29.is(Schema29.String)(frame) ? frame : new TextDecoder().decode(frame)
           ).pipe(Effect14.mapError(clientError));
         }
       });
@@ -2477,7 +2497,7 @@ var layer = (config, resolverLayer = staticResolver(config.documents)) => Layer4
     const resolver = yield* DidResolver;
     const { identity } = config;
     const list = Effect15.fn("RatKingMailbox.list")(
-      (params) => Schema29.decodeUnknownEffect(Schema29.toType(Params5))({
+      (params) => Schema30.decodeUnknownEffect(Schema30.toType(Params5))({
         ...params,
         recipientDid: identity.did
       }).pipe(Effect15.flatMap(client.list), Effect15.mapError(clientError))
@@ -2500,20 +2520,20 @@ var layer = (config, resolverLayer = staticResolver(config.documents)) => Layer4
     });
     return RatKingMailbox.of({
       ack: Effect15.fn("RatKingMailbox.ack")(
-        (input) => Schema29.decodeUnknownEffect(Schema29.toType(Input2))({
+        (input) => Schema30.decodeUnknownEffect(Schema30.toType(Input2))({
           ...input,
           recipientDid: identity.did
         }).pipe(Effect15.flatMap(client.ack), Effect15.mapError(clientError))
       ),
       deliver: Effect15.fn("RatKingMailbox.deliver")(
-        (input) => Schema29.decodeUnknownEffect(Schema29.toType(Input3))({
+        (input) => Schema30.decodeUnknownEffect(Schema30.toType(Input3))({
           ...input,
           recipientDid: identity.did
         }).pipe(Effect15.flatMap(client.deliver), Effect15.mapError(clientError))
       ),
       lease: {
         acquire: Effect15.fn("RatKingMailbox.lease.acquire")(
-          (input) => Schema29.decodeUnknownEffect(Schema29.toType(Input6))(
+          (input) => Schema30.decodeUnknownEffect(Schema30.toType(Input6))(
             input
           ).pipe(
             Effect15.flatMap(client.acquireLease),
@@ -2522,7 +2542,7 @@ var layer = (config, resolverLayer = staticResolver(config.documents)) => Layer4
           )
         ),
         release: Effect15.fn("RatKingMailbox.lease.release")(
-          (input) => Schema29.decodeUnknownEffect(Schema29.toType(Input7))(
+          (input) => Schema30.decodeUnknownEffect(Schema30.toType(Input7))(
             input
           ).pipe(
             Effect15.flatMap(client.releaseLease),
@@ -2530,14 +2550,14 @@ var layer = (config, resolverLayer = staticResolver(config.documents)) => Layer4
           )
         ),
         renew: Effect15.fn("RatKingMailbox.lease.renew")(
-          (input) => Schema29.decodeUnknownEffect(Schema29.toType(Input8))(input).pipe(
+          (input) => Schema30.decodeUnknownEffect(Schema30.toType(Input8))(input).pipe(
             Effect15.flatMap(client.renewLease),
             Effect15.map((output) => output.lease),
             Effect15.mapError(clientError)
           )
         ),
         resolve: Effect15.fn("RatKingMailbox.lease.resolve")(
-          (did) => Schema29.decodeUnknownEffect(Schema29.toType(Params10))({
+          (did) => Schema30.decodeUnknownEffect(Schema30.toType(Params10))({
             did
           }).pipe(
             Effect15.flatMap(client.resolveLease),
@@ -2548,8 +2568,8 @@ var layer = (config, resolverLayer = staticResolver(config.documents)) => Layer4
       },
       list,
       open: Effect15.fn("RatKingMailbox.open")(function* open3(input) {
-        const envelope = yield* Schema29.decodeUnknownEffect(
-          Schema29.toType(EncryptedEnvelope)
+        const envelope = yield* Schema30.decodeUnknownEffect(
+          Schema30.toType(EncryptedEnvelope)
         )(input);
         const payload = yield* open({
           envelope,
@@ -2571,15 +2591,15 @@ var layer = (config, resolverLayer = staticResolver(config.documents)) => Layer4
             ignoreBOM: false
           }).decode(payload.body)
         });
-        const carbonCopy = yield* Schema29.decodeUnknownEffect(
-          Schema29.fromJsonString(
-            Schema29.Struct({
-              $type: Schema29.Literal("sh.mschf.ratking.mailbox.cc"),
-              body: Schema29.String,
-              primary: Schema29.Struct({
-                messageId: Schema29.String,
-                recipientDid: Schema29.String,
-                senderDid: Schema29.String
+        const carbonCopy = yield* Schema30.decodeUnknownEffect(
+          Schema30.fromJsonString(
+            Schema30.Struct({
+              $type: Schema30.Literal("sh.mschf.ratking.mailbox.cc"),
+              body: Schema30.String,
+              primary: Schema30.Struct({
+                messageId: Schema30.String,
+                recipientDid: Schema30.String,
+                senderDid: Schema30.String
               })
             })
           )
@@ -2610,7 +2630,7 @@ var layer = (config, resolverLayer = staticResolver(config.documents)) => Layer4
       }, Effect15.mapError(clientError)),
       poll,
       putDidDocument: Effect15.fn("RatKingMailbox.putDidDocument")(
-        (document) => Schema29.decodeUnknownEffect(Schema29.toType(Input))({
+        (document) => Schema30.decodeUnknownEffect(Schema30.toType(Input))({
           document
         }).pipe(
           Effect15.flatMap(client.putDidDocument),
@@ -2661,8 +2681,8 @@ var layer = (config, resolverLayer = staticResolver(config.documents)) => Layer4
         if (opts?.urgent !== void 0) {
           raw.urgent = opts.urgent;
         }
-        const payload = yield* Schema29.decodeUnknownEffect(
-          Schema29.toType(SigningPayload)
+        const payload = yield* Schema30.decodeUnknownEffect(
+          Schema30.toType(SigningPayload)
         )(raw);
         const envelope = yield* seal({
           payload,
@@ -2681,7 +2701,7 @@ var layer = (config, resolverLayer = staticResolver(config.documents)) => Layer4
           input.leaseId = opts.fence.leaseId;
         }
         return yield* client.send(
-          yield* Schema29.decodeUnknownEffect(Schema29.toType(Input5))(input)
+          yield* Schema30.decodeUnknownEffect(Schema30.toType(Input5))(input)
         );
       }, Effect15.mapError(clientError)),
       watch: (afterSeq, fence) => watch(config, poll, afterSeq, fence)
@@ -2703,63 +2723,63 @@ var layer = (config, resolverLayer = staticResolver(config.documents)) => Layer4
 );
 
 // packages/mailbox-client/src/payload.ts
-import { Effect as Effect16, Schema as Schema30 } from "effect";
-var AgentName = Schema30.String.check(
-  Schema30.isPattern(/^(?:[a-z0-9]+(?:-[a-z0-9]+)*\/)?[a-z][a-z0-9_-]{0,31}$/u)
+import { Effect as Effect16, Schema as Schema31 } from "effect";
+var AgentName = Schema31.String.check(
+  Schema31.isPattern(/^(?:[a-z0-9]+(?:-[a-z0-9]+)*\/)?[a-z][a-z0-9_-]{0,31}$/u)
 );
 var SUMMARY_MAX = 280;
-var Kind = Schema30.Literals(["message", "ask", "reply", "data"]);
-var Payload = Schema30.Struct({
-  body: Schema30.String,
-  cc: Schema30.optionalKey(Schema30.Array(AgentName)),
+var Kind = Schema31.Literals(["message", "ask", "reply", "data"]);
+var Payload = Schema31.Struct({
+  body: Schema31.String,
+  cc: Schema31.optionalKey(Schema31.Array(AgentName)),
   from: AgentName,
-  kind: Schema30.optionalKey(Kind),
-  label: Schema30.optionalKey(Schema30.String.check(Schema30.isMaxLength(256))),
-  replyTo: Schema30.optionalKey(Schema30.String),
-  summary: Schema30.optionalKey(
-    Schema30.String.check(Schema30.isMaxLength(SUMMARY_MAX))
+  kind: Schema31.optionalKey(Kind),
+  label: Schema31.optionalKey(Schema31.String.check(Schema31.isMaxLength(256))),
+  replyTo: Schema31.optionalKey(Schema31.String),
+  summary: Schema31.optionalKey(
+    Schema31.String.check(Schema31.isMaxLength(SUMMARY_MAX))
   ),
-  thread: Schema30.optionalKey(Schema30.String),
-  to: Schema30.optionalKey(AgentName)
+  thread: Schema31.optionalKey(Schema31.String),
+  to: Schema31.optionalKey(AgentName)
 });
-var PayloadJson = Schema30.fromJsonString(Payload);
+var PayloadJson = Schema31.fromJsonString(Payload);
 var encodePayload = Effect16.fn("RatKing.encodePayload")(
   function* encodePayload2(payload) {
-    return yield* Schema30.encodeEffect(PayloadJson)(payload);
+    return yield* Schema31.encodeEffect(PayloadJson)(payload);
   }
 );
 
 // packages/lexicon/src/mailbox.getPeerDocument.ts
-import { Effect as Effect17, Schema as Schema31 } from "effect";
-var Params13 = Schema31.StructWithRest(
-  Schema31.Struct({
+import { Effect as Effect17, Schema as Schema32 } from "effect";
+var Params13 = Schema32.StructWithRest(
+  Schema32.Struct({
     did: lexString({ format: "did", type: "string" }).pipe(
-      Schema31.brand("Lexicon:did")
+      Schema32.brand("Lexicon:did")
     )
   }),
-  [Schema31.Record(Schema31.String, Data)]
+  [Schema32.Record(Schema32.String, Data)]
 );
-var Input11 = Schema31.Undefined;
-var Output11 = Schema31.StructWithRest(
-  Schema31.Struct({ document: DidDocument }),
-  [Schema31.Record(Schema31.String, Data)]
+var Input11 = Schema32.Undefined;
+var Output11 = Schema32.StructWithRest(
+  Schema32.Struct({ document: DidDocument }),
+  [Schema32.Record(Schema32.String, Data)]
 );
-var ParamsFromQuery5 = Schema31.StructWithRest(
-  Schema31.Struct({ did: Schema31.String }),
-  [Schema31.Record(Schema31.String, Data)]
-).pipe(Schema31.decodeTo(Params13));
+var ParamsFromQuery5 = Schema32.StructWithRest(
+  Schema32.Struct({ did: Schema32.String }),
+  [Schema32.Record(Schema32.String, Data)]
+).pipe(Schema32.decodeTo(Params13));
 var encodeParams9 = Effect17.fn("lexicon.encodeParams")(
   function* encodeParams10(params) {
     return entries(
-      yield* Schema31.decodeUnknownEffect(Params4)(
-        yield* Schema31.encodeEffect(ParamsFromQuery5)(params)
+      yield* Schema32.decodeUnknownEffect(Params4)(
+        yield* Schema32.encodeEffect(ParamsFromQuery5)(params)
       )
     );
   }
 );
 var decodeParams9 = Effect17.fn("lexicon.decodeParams")(
   function* decodeParams10(entries2) {
-    return yield* Schema31.decodeUnknownEffect(ParamsFromQuery5)(
+    return yield* Schema32.decodeUnknownEffect(ParamsFromQuery5)(
       parameters(entries2)
     );
   }
@@ -2788,7 +2808,7 @@ import {
   Match as Match2,
   Predicate as Predicate2,
   Result as Result3,
-  Schema as Schema33
+  Schema as Schema34
 } from "effect";
 
 // packages/mailbox-client/src/consume.ts
@@ -2799,7 +2819,7 @@ import {
   Match,
   Option as Option4,
   Schedule as Schedule2,
-  Schema as Schema32,
+  Schema as Schema33,
   Stream as Stream2
 } from "effect";
 import { createMachine, initialTransition, transition } from "xstate";
@@ -2958,7 +2978,7 @@ var consume = (mailbox, did, handler, options) => Effect18.scoped(
         (batch) => Effect18.forEach(
           batch.events,
           (event) => Effect18.gen(function* accept() {
-            if (!Schema32.is(MessageEvent)(event)) {
+            if (!Schema33.is(MessageEvent)(event)) {
               return;
             }
             const { onSkip, unopenable } = options;
@@ -3009,7 +3029,7 @@ var consume = (mailbox, did, handler, options) => Effect18.scoped(
         )
       ),
       Effect18.catch((error) => {
-        if (Schema32.is(MailboxClientError)(error) && error.error === "LeaseMismatch") {
+        if (Schema33.is(MailboxClientError)(error) && error.error === "LeaseMismatch") {
           return lost(error);
         }
         return Effect18.fail(error);
@@ -3024,7 +3044,7 @@ var ownBrand = /* @__PURE__ */ Symbol("OwnIdentity");
 var identities = /* @__PURE__ */ new WeakMap();
 var ownIdentity = Effect19.fn("Mailbox.ownIdentity")(
   function* ownIdentity2(value) {
-    const identity = yield* Schema33.decodeUnknownEffect(Identity)(value).pipe(
+    const identity = yield* Schema34.decodeUnknownEffect(Identity)(value).pipe(
       Effect19.mapError(clientError)
     );
     yield* importSigning(identity).pipe(Effect19.mapError(clientError));
@@ -3055,7 +3075,7 @@ var prepare = Effect19.fn("Mailbox.prepare")(function* prepare2(options) {
   }
   const peers = /* @__PURE__ */ new Map();
   for (const value of options.peers) {
-    const peer = yield* Schema33.decodeUnknownEffect(Document)(value).pipe(
+    const peer = yield* Schema34.decodeUnknownEffect(Document)(value).pipe(
       Effect19.mapError(clientError)
     );
     const existing = peers.get(peer.id);
@@ -3068,8 +3088,8 @@ var prepare = Effect19.fn("Mailbox.prepare")(function* prepare2(options) {
     (did) => Effect19.sync(() => peers.get(did))
   );
   const config = {
-    documents: yield* Schema33.decodeUnknownEffect(
-      Schema33.Array(Schema33.toType(DidDocument))
+    documents: yield* Schema34.decodeUnknownEffect(
+      Schema34.Array(Schema34.toType(DidDocument))
     )(options.peers).pipe(Effect19.mapError(clientError)),
     endpoint: options.endpoint,
     identity,
@@ -3127,8 +3147,8 @@ var prepare = Effect19.fn("Mailbox.prepare")(function* prepare2(options) {
       if (opts?.urgent !== void 0) {
         Object.assign(raw, { urgent: opts.urgent });
       }
-      const payload = yield* Schema33.decodeUnknownEffect(
-        Schema33.toType(SigningPayload)
+      const payload = yield* Schema34.decodeUnknownEffect(
+        Schema34.toType(SigningPayload)
       )(raw).pipe(Effect19.mapError(clientError));
       const envelope = yield* seal({
         payload,
@@ -3158,8 +3178,8 @@ var prepare = Effect19.fn("Mailbox.prepare")(function* prepare2(options) {
         leaseId: fence.leaseId
       });
     }
-    const decoded = yield* Schema33.decodeUnknownEffect(
-      Schema33.toType(Input5)
+    const decoded = yield* Schema34.decodeUnknownEffect(
+      Schema34.toType(Input5)
     )(raw).pipe(Effect19.mapError(clientError), Effect19.result);
     if (Result3.isFailure(decoded)) {
       return SendOutcomes.NotAttempted({ reason: decoded.failure.reason });
@@ -3210,8 +3230,8 @@ var prepare = Effect19.fn("Mailbox.prepare")(function* prepare2(options) {
             senderDid: identity.did
           }
         });
-        const replyTo = yield* Schema33.decodeUnknownEffect(
-          Schema33.toType(MessageRef)
+        const replyTo = yield* Schema34.decodeUnknownEffect(
+          Schema34.toType(MessageRef)
         )({ messageId: envelope.aad.messageId, senderDid: identity.did }).pipe(
           Effect19.mapError(clientError)
         );
@@ -3253,21 +3273,21 @@ var prepare = Effect19.fn("Mailbox.prepare")(function* prepare2(options) {
         if (opts?.replyTo !== void 0) {
           Object.assign(payload, { replyTo: opts.replyTo.messageId });
         }
-        return Schema33.encodeSync(PayloadJson)(payload);
+        return Schema34.encodeSync(PayloadJson)(payload);
       },
       opts
     ).pipe(Effect19.mapError(clientError));
     return { envelope, messageId: envelope.aad.messageId };
   });
   const refresh = Effect19.fn("Mailbox.refresh")(function* refresh2(did) {
-    const params = yield* Schema33.decodeUnknownEffect(Params13)({ did }).pipe(
+    const params = yield* Schema34.decodeUnknownEffect(Params13)({ did }).pipe(
       Effect19.mapError(clientError)
     );
     const response = yield* transport.request({
       input: void 0,
       method: "GET",
       nsid: Method12.nsid,
-      params: yield* Schema33.encodeEffect(Params13)(params).pipe(
+      params: yield* Schema34.encodeEffect(Params13)(params).pipe(
         Effect19.mapError(clientError)
       )
     }).pipe(Effect19.mapError(clientError));
@@ -3277,10 +3297,10 @@ var prepare = Effect19.fn("Mailbox.prepare")(function* prepare2(options) {
         status: response.status
       });
     }
-    const output = yield* Schema33.decodeUnknownEffect(Output11)(
+    const output = yield* Schema34.decodeUnknownEffect(Output11)(
       response.body
     ).pipe(Effect19.mapError(clientError));
-    const peer = yield* Schema33.decodeUnknownEffect(Document)(
+    const peer = yield* Schema34.decodeUnknownEffect(Document)(
       output.document
     ).pipe(Effect19.mapError(clientError));
     const existing = peers.get(did);

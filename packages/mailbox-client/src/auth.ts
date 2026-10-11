@@ -1,17 +1,34 @@
 /* oxlint-disable promise/prefer-await-to-callbacks, typescript/promise-function-async -- Effect adapters require lazy Promise thunks, not callback-style control flow. */
 import { sign, verify } from "@rat-king/envelope/es256";
 import { cryptoOperation } from "@rat-king/envelope/webcrypto";
-import { XrpcFailure } from "@rat-king/lexicon/xrpc-failure";
+import type { XrpcFailure } from "@rat-king/lexicon/xrpc-failure";
 import { Context, Effect, Layer, Schema } from "effect";
 
+import { ServiceAuthFailure } from "./auth-failure.ts";
 import { ReplayAuthority } from "./replay.ts";
 
-const failure = (error: string, status: number, message?: string) => {
+export {
+  sign,
+  verify,
+  lowS,
+  normalizeSignature,
+  p256Order,
+} from "@rat-king/envelope/es256";
+
+export { ReplayAuthority } from "./replay.ts";
+
+export type { ReplayInterface } from "./replay.ts";
+
+const failure = (
+  error: string,
+  status: number,
+  message?: string
+): XrpcFailure => {
   if (message === undefined) {
-    return new XrpcFailure({ error, response: {}, status });
+    return new ServiceAuthFailure({ error, response: {}, status });
   }
 
-  return new XrpcFailure({ error, message, response: {}, status });
+  return new ServiceAuthFailure({ error, message, response: {}, status });
 };
 
 export const base64url = (bytes: Uint8Array) =>
@@ -37,8 +54,17 @@ export const Claims = Schema.Struct({
 
 export type ClaimsValue = typeof Claims.Type;
 
-const authFailure = (error: string, status = 400, message = error) =>
-  new XrpcFailure({ error, message, response: { error, message }, status });
+const authFailure = (
+  error: string,
+  status = 400,
+  message = error
+): XrpcFailure =>
+  new ServiceAuthFailure({
+    error,
+    message,
+    response: { error, message },
+    status,
+  });
 
 const PublicJwk = Schema.Struct({
   crv: Schema.Literal("P-256"),
@@ -138,6 +164,7 @@ export interface AuthenticateRequest {
   readonly audience: string;
   readonly nsid: string;
   readonly now: number;
+  readonly skewSeconds?: number;
 }
 
 const json = (text: string) =>
@@ -176,7 +203,7 @@ export const authenticateClaims = Effect.fn("ServiceAuth.authenticateClaims")(
     if (
       claims.aud !== request.audience ||
       claims.lxm !== request.nsid ||
-      claims.iat > now ||
+      claims.iat > now + (request.skewSeconds ?? 0) ||
       claims.exp <= now ||
       claims.exp <= claims.iat ||
       claims.exp - claims.iat > 60 ||

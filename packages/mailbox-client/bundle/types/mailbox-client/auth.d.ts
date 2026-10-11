@@ -1,6 +1,9 @@
-import { XrpcFailure } from "../lexicon/xrpc-failure.js";
+import type { XrpcFailure } from "../lexicon/xrpc-failure.js";
 import { Context, Effect, Layer, Schema } from "effect";
 import { ReplayAuthority } from "./replay.js";
+export { sign, verify, lowS, normalizeSignature, p256Order, } from "../envelope/es256.js";
+export { ReplayAuthority } from "./replay.js";
+export type { ReplayInterface } from "./replay.js";
 export declare const base64url: (bytes: Uint8Array) => string;
 export declare const unbase64url: (text: string) => Uint8Array<ArrayBuffer>;
 export declare const Claims: Schema.Struct<{
@@ -57,6 +60,7 @@ export interface AuthenticateRequest {
     readonly audience: string;
     readonly nsid: string;
     readonly now: number;
+    readonly skewSeconds?: number;
 }
 export declare const authenticateClaims: (request: AuthenticateRequest) => Effect.Effect<{
     readonly aud: string;
@@ -74,4 +78,3 @@ export declare const serviceToken: (claims: {
     readonly jti: string;
     readonly lxm: string;
 }, key: CryptoKey, kid?: string | undefined) => Effect.Effect<string, import("../envelope/envelope.js").EnvelopeFailure, never>;
-export {};
