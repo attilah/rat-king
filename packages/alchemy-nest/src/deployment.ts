@@ -26,6 +26,7 @@ export interface DeploymentProps {
   readonly internalUrl: string;
   readonly workerUrl: string;
   readonly bindingsFile?: string;
+  readonly secretNames?: readonly string[];
 }
 
 export interface DeploymentAttributes extends DeploymentProps {
@@ -64,26 +65,59 @@ except Exception:
     sys.exit(1)
 `;
 
+const defaultSecretNames = [
+  "AGENT_IDENTITIES_CREDENTIAL",
+  "MODEL_GATEWAY_CREDENTIAL",
+  "CLAUDE_SIDECAR_CREDENTIAL",
+];
+
+const SecretNames = Schema.Array(
+  Schema.String.check(Schema.isPattern(/^[A-Z][A-Z0-9_]*$/u))
+);
+
+const usesDefaultSecretNames = (names: readonly string[] | undefined) =>
+  names === undefined ||
+  (names.length === defaultSecretNames.length &&
+    defaultSecretNames.every((name) => names.includes(name)));
+
+export const bindingConfigurationScriptFor = (
+  secretNames?: readonly string[]
+) =>
+  usesDefaultSecretNames(secretNames)
+    ? bindingConfigurationScript
+    : bindingConfigurationScript.replace(
+        / {4}allowed = \{[^\n]*\}/u,
+        `    allowed = set(json.loads(${JSON.stringify(JSON.stringify(secretNames))}))`
+      );
+
 const identity = Schema.Struct({
   commit: Schema.String,
   version: Schema.String,
 });
 
-const fingerprint = (props: DeploymentProps) =>
-  textDigest(
-    JSON.stringify([
-      props.bundle,
-      props.configuration,
-      props.version,
-      props.commit,
-      props.directory,
-      props.binary,
-      props.environmentFile,
-      props.internalUrl,
-      props.workerUrl,
-      props.bindingsFile,
-    ])
-  );
+const fingerprint = (props: DeploymentProps) => {
+  const values: (string | readonly string[] | undefined)[] = [
+    props.bundle,
+    props.configuration,
+    props.version,
+    props.commit,
+    props.directory,
+    props.binary,
+    props.environmentFile,
+    props.internalUrl,
+    props.workerUrl,
+    props.bindingsFile,
+  ];
+
+  if (
+    props.secretNames !== undefined &&
+    !usesDefaultSecretNames(props.secretNames)
+  ) {
+    values.push(props.secretNames.toSorted());
+  }
+
+  return textDigest(JSON.stringify(values));
+};
 
 const validate = Effect.fn("Celld.Deployment.validate")(function* validate(
   props: DeploymentProps
@@ -99,6 +133,14 @@ const validate = Effect.fn("Celld.Deployment.validate")(function* validate(
         })
     )
   );
+
+  if (props.secretNames !== undefined) {
+    yield* Schema.decodeEffect(SecretNames)(props.secretNames).pipe(
+      Effect.mapError(
+        () => new DeploymentError({ reason: "Invalid deployment secret names" })
+      )
+    );
+  }
 
   for (const path of [props.directory, props.binary, props.environmentFile]) {
     yield* Schema.decodeEffect(AbsolutePath)(path);
@@ -347,7 +389,7 @@ export const DeploymentProvider = () =>
             yield* must(shell, [
               "python3",
               "-c",
-              bindingConfigurationScript,
+              bindingConfigurationScriptFor(news.secretNames),
               news.directory,
               news.bindingsFile,
             ]);
