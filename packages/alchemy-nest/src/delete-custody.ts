@@ -4,6 +4,13 @@ import { HostError } from "./host-error.ts";
 import type { Interface } from "./host-shell.ts";
 import type { InstanceLayout } from "./instance.ts";
 
+export const bootstrapDirectoryPattern =
+  /^bootstrap-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+
+export const isBootstrapDirectory = (root: string, path: string) =>
+  path.startsWith(`${root}/`) &&
+  bootstrapDirectoryPattern.test(path.slice(root.length + 1));
+
 export const instanceDeleteCustody = (home: string, layout: InstanceLayout) => {
   const units = [
     layout.nodeUnit,
@@ -24,6 +31,7 @@ export const instanceDeleteCustody = (home: string, layout: InstanceLayout) => {
   ];
 
   const files = [
+    `${layout.dataRoot}/.mailbox-restore-objects.tar`,
     ...units.map((name) => `${home}/.config/systemd/user/${name}`),
     ...["celld", "weed", "restart-gate.mjs", "storage-maintenance.py"].map(
       (name) => `${layout.bin}/${name}`
@@ -51,8 +59,23 @@ export const assertDeletePath = (
   shell: Interface,
   path: string,
   kind: "directories" | "files"
-) =>
-  shell.deleteCustody === undefined || shell.deleteCustody[kind].includes(path)
+) => {
+  const custody = shell.deleteCustody;
+
+  const bootstrap =
+    custody !== undefined &&
+    (kind === "directories"
+      ? isBootstrapDirectory(custody.layout.configuration, path)
+      : ["index.js", "wrangler.json"].some(
+          (name) =>
+            path.endsWith(`/${name}`) &&
+            isBootstrapDirectory(
+              custody.layout.configuration,
+              path.slice(0, -(name.length + 1))
+            )
+        ));
+
+  return custody === undefined || custody[kind].includes(path) || bootstrap
     ? Effect.void
     : Effect.fail(
         new HostError({
@@ -60,6 +83,7 @@ export const assertDeletePath = (
           reason: "Delete path escapes its instance custody.",
         })
       );
+};
 
 export const assertDeleteUnit = (
   shell: Interface,

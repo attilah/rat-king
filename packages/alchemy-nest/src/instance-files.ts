@@ -1,5 +1,6 @@
 import { Effect, Redacted, Schema } from "effect";
 
+import { cleanupBootstrapDirectories } from "./bootstrap-cleanup.ts";
 import { assertDeletePath } from "./delete-custody.ts";
 import {
   AbsolutePath,
@@ -42,6 +43,13 @@ export const deleteFile = Effect.fn("InstanceFile.delete")(function* remove(
 export const deleteDirectory = Effect.fn("InstanceDirectory.delete")(
   function* remove(shell: Interface, output: DirectoryAttributes) {
     yield* assertDeletePath(shell, output.path, "directories");
+
+    if (
+      shell.deleteCustody !== undefined &&
+      output.path === shell.deleteCustody.layout.configuration
+    ) {
+      yield* cleanupBootstrapDirectories(shell, output.path);
+    }
 
     return yield* deleteMailboxDirectory(shell, output);
   }
