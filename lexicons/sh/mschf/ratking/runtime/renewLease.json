@@ -32,6 +32,13 @@
             "expiresAt": {
               "type": "string",
               "format": "datetime"
+            },
+            "renders": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Record NSIDs or namespace prefixes ending in .* rendered by this reader."
             }
           }
         }

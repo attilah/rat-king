@@ -55,6 +55,7 @@ export interface Skipped {
 
 export interface ConsumeOptions {
   readonly harness: Lease.MainValue["harness"];
+  readonly renders?: readonly string[];
   readonly resume?: LeaseFence;
   readonly afterSeq?: number;
   readonly onLease?: (lease: Lease.MainValue) => Effect.Effect<void>;
@@ -91,6 +92,10 @@ export const consume = <E, R>(
           expiresAt: DateTime.formatIso(DateTime.makeUnsafe(now + 300_000)),
           harness: options.harness,
         };
+
+        if (options.renders !== undefined) {
+          Object.assign(input, { renders: options.renders });
+        }
 
         if (options.resume !== undefined) {
           if (options.resume.did !== did) {
@@ -222,12 +227,19 @@ export const consume = <E, R>(
 
         yield* Effect.sleep(Math.max(1, Math.floor(remaining / 2)));
         const renewedAt = yield* Clock.currentTimeMillis;
-        current = yield* mailbox.lease.renew({
+
+        const renewal = {
           ...fence(),
           expiresAt: DateTime.formatIso(
             DateTime.makeUnsafe(renewedAt + 300_000)
           ),
-        });
+        };
+
+        if (options.renders !== undefined) {
+          Object.assign(renewal, { renders: options.renders });
+        }
+
+        current = yield* mailbox.lease.renew(renewal);
 
         if (options.onLease !== undefined) {
           yield* options.onLease(current);

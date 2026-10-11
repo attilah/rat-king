@@ -6,6 +6,8 @@ import { Transport } from "@rat-king/lexicon/transport";
 import {
   ownIdentity,
   prepare,
+  readerCannotRender,
+  recordType,
   SendOutcomes,
   transportLayer,
 } from "@rat-king/mailbox-client";
@@ -76,6 +78,7 @@ import { quarantined, recover } from "./quarantine.ts";
 import type { Quarantined } from "./quarantine.ts";
 import { errorTag, HEARTBEAT_EVERY, HeartbeatJson } from "./reader-health.ts";
 import type { ReaderHeartbeatValue } from "./reader-health.ts";
+import { RENDERS } from "./record-visibility.ts";
 import {
   copiesOutbound,
   openRelay,
@@ -99,6 +102,7 @@ export const NotDeliveredCode = Schema.Literals([
   "Refused",
   "Partial",
   "Retired",
+  "ReaderCannotRender",
 ]);
 
 export class NotDelivered extends Schema.TaggedError<NotDelivered>()(
@@ -675,6 +679,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
           ]).pipe(Effect.asVoid),
         onSkip: ({ seq }) =>
           writeCursor(own.name, seq).pipe(Effect.andThen(consumed)),
+        renders: RENDERS,
         unopenable: (event, error) =>
           recover(quarantineDir(own.name), client)(event, error).pipe(
             Effect.provideService(FileSystem.FileSystem, fs),
@@ -764,10 +769,10 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
               )
             );
 
-      return value.pipe(
-        Option.flatMap((presence) => presenceLine(presence, now))
-      );
-    }).pipe(Effect.catchCause(() => Effect.succeed(Option.none<string>())));
+      return value;
+    }).pipe(
+      Effect.catchCause(() => Effect.succeed(Option.none<PresenceValue>()))
+    );
 
   const lookup = Effect.fn("RatKing.lookup")(function* lookup(
     identity: Parameters<typeof ownIdentity>[0],
@@ -849,6 +854,31 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
 
     const accepted: Delivered[] = [];
 
+    const checkReaders = Effect.fn("RatKing.checkReaders")(
+      function* checkReaders(
+        type: string,
+        presence: (
+          did: string
+        ) => Effect.Effect<PresenceValue, MailboxClientError>
+      ) {
+        for (const target of targets) {
+          const current = yield* presenceOf(target.did, presence(target.did));
+
+          const reason = readerCannotRender(
+            target.name,
+            type,
+            Option.getOrUndefined(current)
+          );
+
+          if (reason !== undefined) {
+            return yield* refused("ReaderCannotRender")(reason);
+          }
+        }
+
+        return yield* Effect.void;
+      }
+    );
+
     return yield* Effect.gen(function* sealAndSend() {
       const client = yield* prepare({
         endpoint: settings.endpoint,
@@ -920,6 +950,14 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
 
         return text;
       };
+
+      if (options.kind === "data" || Option.isNone(textBody)) {
+        const type = recordType(
+          Option.getOrElse(json, () => Option.getOrElse(textBody, () => ""))
+        );
+
+        yield* checkReaders(type, client.presence);
+      }
 
       const envelopes: Defs.EncryptedEnvelopeValue[] = [];
 
@@ -1011,10 +1049,12 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
         return yield* refused("NotAttempted")("No delivery");
       }
 
-      const line = yield* presenceOf(
+      const now = yield* Clock.currentTimeMillis;
+
+      const line = (yield* presenceOf(
         admitted.did,
         client.presence(admitted.did)
-      );
+      )).pipe(Option.flatMap((presence) => presenceLine(presence, now)));
 
       const delivered: Delivered = Option.match(line, {
         onNone: () => admitted,

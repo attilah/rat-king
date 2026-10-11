@@ -33,6 +33,7 @@ import { LexiconRecord, renderInbound } from "./payload.ts";
 import type { Inbound } from "./payload.ts";
 import { NotDelivered, RatKing, ratKingLayer } from "./ratking.ts";
 import type { Deliver, SendOptions } from "./ratking.ts";
+import { recordNotice } from "./record-visibility.ts";
 import { secretStoreLayer } from "./secrets.ts";
 import { callView, resultView } from "./tool-view.ts";
 import {
@@ -483,7 +484,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
 
           const body = JSON.stringify(inbound.record);
 
-          if (Option.isSome(decodeAgentGraphBody(body))) {
+          if (!settled && Option.isSome(decodeAgentGraphBody(body))) {
             const message: Inbound = {
               ...inbound,
               body,
@@ -502,6 +503,19 @@ export const ratkingExtension = (options: ExtensionOptions) =>
               },
               { deliverAs: "followUp", triggerTurn: true }
             );
+          } else {
+            const notice = recordNotice({ ...inbound, body }, settled);
+
+            if (notice !== undefined) {
+              pi.sendMessage(
+                {
+                  content: notice,
+                  customType: "ratking_record_notice",
+                  display: true,
+                },
+                { deliverAs: "followUp", triggerTurn: false }
+              );
+            }
           }
 
           return;
@@ -522,6 +536,20 @@ export const ratkingExtension = (options: ExtensionOptions) =>
         }
 
         pi.events.emit(MESSAGE_EVENT, inboundDetails(inbound, settled));
+
+        const notice =
+          inbound.kind === "data" ? recordNotice(inbound, settled) : undefined;
+
+        if (notice !== undefined) {
+          pi.sendMessage(
+            {
+              content: notice,
+              customType: "ratking_record_notice",
+              display: true,
+            },
+            { deliverAs: "followUp", triggerTurn: false }
+          );
+        }
 
         if (injects(inbound, settled)) {
           pi.sendMessage(

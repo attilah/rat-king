@@ -42,6 +42,7 @@ export const markRetired = (
 };
 
 export interface Presence {
+  readonly renders?: readonly string[];
   readonly held: boolean;
   readonly lastHeldAt?: number;
 }
@@ -54,7 +55,15 @@ export const presenceOf = (
     return { held: false };
   }
 
-  return lease.expiresAt > now
-    ? { held: true, lastHeldAt: now }
-    : { held: false, lastHeldAt: lease.expiresAt };
+  if (lease.expiresAt <= now) {
+    return { held: false, lastHeldAt: lease.expiresAt };
+  }
+
+  const presence: Presence = { held: true, lastHeldAt: now };
+
+  if (lease.renders !== undefined) {
+    Object.assign(presence, { renders: lease.renders });
+  }
+
+  return presence;
 };

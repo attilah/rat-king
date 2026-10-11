@@ -18,6 +18,7 @@ import type * as Lease from "@rat-king/lexicon/runtime.lease";
 import * as Release from "@rat-king/lexicon/runtime.releaseLease";
 import * as Renew from "@rat-king/lexicon/runtime.renewLease";
 import * as Resolve from "@rat-king/lexicon/runtime.resolveLease";
+import { Transport } from "@rat-king/lexicon/transport";
 import { Clock, Context, Effect, Layer, Option, Schema } from "effect";
 import type { Stream } from "effect";
 import type { HttpClient } from "effect/http";
@@ -26,6 +27,7 @@ import { DidResolver, staticResolver } from "./auth.ts";
 import { clientError, MailboxClientError } from "./error.ts";
 import { importSigning, importAgreement } from "./identity.ts";
 import type { IdentityValue } from "./identity.ts";
+import { lookupPresence, readerCannotRender } from "./record-visibility.ts";
 import { randomTid } from "./tid.ts";
 import { transportLayer } from "./transport.ts";
 import { watch } from "./watch.ts";
@@ -122,6 +124,7 @@ export interface OpenedMessage {
 }
 
 export interface SendOptions {
+  readonly recordType?: string;
   readonly replyTo?: Defs.MessageRefValue;
   readonly expiresAt?: string;
   readonly fence?: LeaseFence;
@@ -138,6 +141,7 @@ export interface FencedMessage {
 export interface AcquireRequest {
   readonly did: string;
   readonly harness: Lease.MainValue["harness"];
+  readonly renders?: readonly string[];
   readonly expiresAt: string;
   readonly leaseId?: string;
   readonly generation?: number;
@@ -177,7 +181,10 @@ export class RatKingMailbox extends Context.Service<
         input: AcquireRequest
       ) => Effect.Effect<Lease.MainValue, MailboxClientError>;
       readonly renew: (
-        input: LeaseFence & { readonly expiresAt: string }
+        input: LeaseFence & {
+          readonly expiresAt: string;
+          readonly renders?: readonly string[];
+        }
       ) => Effect.Effect<Lease.MainValue, MailboxClientError>;
       readonly resolve: (
         did: string
@@ -200,6 +207,7 @@ export const layer = (
     RatKingMailbox,
     Effect.gen(function* makeMailbox() {
       const client = yield* MailboxClient;
+      const transport = yield* Transport;
       const resolver = yield* DidResolver;
       const { identity } = config;
 
@@ -376,6 +384,24 @@ export const layer = (
           )
         ),
         send: Effect.fn("RatKingMailbox.send")(function* send(to, body, opts) {
+          if (opts?.recordType !== undefined) {
+            const presence = yield* lookupPresence(to).pipe(
+              Effect.provideService(Transport, transport),
+              Effect.timeoutOption("2 seconds"),
+              Effect.orElseSucceed(() => Option.none())
+            );
+
+            const reason = readerCannotRender(
+              to,
+              opts.recordType,
+              Option.getOrUndefined(presence)
+            );
+
+            if (reason !== undefined) {
+              return yield* new MailboxClientError({ reason });
+            }
+          }
+
           if (opts?.fence !== undefined && opts.fence.did !== identity.did) {
             return yield* new MailboxClientError({
               reason: "Send fence DID differs from sender",
@@ -446,7 +472,7 @@ export const layer = (
     Layer.provide([
       resolverLayer,
       clientLayer.pipe(
-        Layer.provide(
+        Layer.provideMerge(
           transportLayer(
             config.endpoint,
             config.serviceDid.replace(/(?:#mailbox)?$/u, "#mailbox"),
