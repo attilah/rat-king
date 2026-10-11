@@ -5,7 +5,7 @@ import { asyncModelRun } from "fast-check";
 import type { AsyncCommand } from "fast-check";
 import { expect } from "vitest";
 
-import { compactLines } from "../src/message-view.ts";
+import { inboundLines } from "../src/message-view.ts";
 import { renderInbound } from "../src/payload.ts";
 import type { Inbound } from "../src/payload.ts";
 import { deliverRelay } from "../src/relay.ts";
@@ -133,19 +133,30 @@ it.effect.prop(
               expect(text).toContain("sent by desk");
               expect(text).not.toContain('action: "reply"');
               expect(text).not.toContain('action: "handled"');
-              expect(
-                compactLines(
-                  {
+
+              const shown = [false, true].map((expanded) =>
+                inboundLines({
+                  expanded,
+                  theme: { bold: (line) => line, fg: (_colour, line) => line },
+                  tool: "intercom",
+                  value: {
                     body: copy.body,
                     cc: false,
+                    did: copy.did,
                     from: copy.from,
+                    id: copy.id,
+                    kind: copy.kind,
                     sentBy: copy.sentBy,
                     to: copy.to,
                     verified: copy.verified,
                   },
-                  80
-                )[0]
-              ).toContain("sent by desk");
+                  width: 80,
+                }).join("\n")
+              );
+
+              expect(shown[0]).toContain("📤 to person");
+              expect(shown[0]).toContain("sent by desk");
+              expect(shown[1]).not.toContain('action: "reply"');
             } else if (accepted) {
               model.deliveries += 1;
               model.remembered += 1;
@@ -169,19 +180,25 @@ it.effect.prop(
               );
               expect(text).toContain(`action: "handled", replyTo: "${id}"`);
 
-              const compact = compactLines(
-                {
+              const compact = inboundLines({
+                expanded: false,
+                theme: { bold: (line) => line, fg: (_colour, line) => line },
+                tool: "intercom",
+                value: {
                   body: original.body,
                   cc: false,
+                  did: original.did,
                   from: original.from,
+                  id: original.id,
+                  kind: original.kind,
                   label: "Yaffle",
                   relay: original.relay,
                   verified: original.verified,
                 },
-                80
-              );
+                width: 80,
+              });
 
-              expect(compact[0]).toContain("via desk");
+              expect(compact.at(-1)).toContain("via desk");
               expect(compact[0]).toContain("Yaffle");
               expect(compact.length).toBeLessThanOrEqual(4);
             }
