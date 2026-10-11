@@ -33,12 +33,40 @@ export type {
   AcquireRequest,
 } from "./mailbox.ts";
 
-export { ownIdentity, prepare, SendOutcomes } from "./prepare.ts";
+export { authenticateClaims } from "./auth.ts";
+
+export type { AuthenticateRequest } from "./auth.ts";
+
+export { ReplayAuthority } from "./replay.ts";
+
+export type { ReplayInterface } from "./replay.ts";
+
+export {
+  AgentName,
+  encodePayload,
+  Kind,
+  Payload,
+  PayloadJson,
+  SUMMARY_MAX,
+} from "./payload.ts";
+
+export type { KindValue, PayloadValue } from "./payload.ts";
+
+export {
+  ownIdentity,
+  prepare,
+  PreparedMailbox,
+  seal,
+  sendSealed,
+  SendOutcomes,
+} from "./prepare.ts";
 
 export type {
   OwnIdentity,
   PeerDocument,
   PrepareOptions,
+  SealOptions,
+  SealedMessage,
   SendOutcome,
   SendResult,
 } from "./prepare.ts";

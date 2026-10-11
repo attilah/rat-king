@@ -10,6 +10,6 @@
     "@rat-king/envelope": "workspace:*",
     "@rat-king/lexicon": "workspace:*",
     "effect": "4.0.1",
-    "xstate": "6.0.0-alpha.59"
+    "xstate": "6.0.0-alpha.65"
   }
 }

@@ -226,7 +226,7 @@ importers:
         version: 24.13.6
       '@xstate/effect':
         specifier: 0.1.0-alpha.2
-        version: 0.1.0-alpha.2(effect@4.0.1)(xstate@6.0.0-alpha.59)
+        version: 0.1.0-alpha.2(effect@4.0.1)(xstate@6.0.0-alpha.65)
       alchemy:
         specifier: 2.0.0-beta.81
         version: 2.0.0-beta.81(@effect/platform-node@4.0.0(effect@4.0.1)(redis@6.3.0))(@effect/vitest@4.0.1(effect@4.0.1)(vitest@5.0.1(@types/node@24.13.6)(vite@8.3.2(@types/node@24.13.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))))(@types/node@24.13.6)(effect@4.0.1)(hono@4.11.4)(typescript@7.0.2)(vite@8.3.2(@types/node@24.13.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))(ws@8.22.0)
@@ -258,8 +258,8 @@ importers:
         specifier: 5.0.1
         version: 5.0.1(@types/node@24.13.6)(vite@8.3.2(@types/node@24.13.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
       xstate:
-        specifier: 6.0.0-alpha.59
-        version: 6.0.0-alpha.59
+        specifier: 6.0.0-alpha.65
+        version: 6.0.0-alpha.65
 
   apps/billing-ingress:
     dependencies:
@@ -289,8 +289,8 @@ importers:
         specifier: github:joelhooks/pi-claude-bridge#1dff6271f067dcf4606e8c4405264a5182164e04
         version: https://codeload.github.com/joelhooks/pi-claude-bridge/tar.gz/1dff6271f067dcf4606e8c4405264a5182164e04(@anthropic-ai/sdk@0.129.0(zod@4.6.5))(@earendil-works/pi-ai@1.0.2(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.11.2)(ws@8.22.0)(zod@4.6.5))(@earendil-works/pi-coding-agent@1.0.2(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.5))(@earendil-works/pi-tui@1.0.2)(typebox@1.3.27)(zod@4.6.5)
       xstate:
-        specifier: 6.0.0-alpha.59
-        version: 6.0.0-alpha.59
+        specifier: 6.0.0-alpha.65
+        version: 6.0.0-alpha.65
     devDependencies:
       '@cloudflare/workers-types':
         specifier: 5.20261004.1
@@ -329,8 +329,8 @@ importers:
         specifier: 4.0.1
         version: 4.0.1
       xstate:
-        specifier: 6.0.0-alpha.59
-        version: 6.0.0-alpha.59
+        specifier: 6.0.0-alpha.65
+        version: 6.0.0-alpha.65
     devDependencies:
       '@cloudflare/workers-types':
         specifier: 5.20261004.1
@@ -363,8 +363,8 @@ importers:
         specifier: 4.0.1
         version: 4.0.1
       xstate:
-        specifier: 6.0.0-alpha.59
-        version: 6.0.0-alpha.59
+        specifier: 6.0.0-alpha.65
+        version: 6.0.0-alpha.65
     devDependencies:
       '@cloudflare/workers-types':
         specifier: 5.20261004.1
@@ -434,8 +434,8 @@ importers:
         specifier: 4.0.1
         version: 4.0.1
       xstate:
-        specifier: 6.0.0-alpha.59
-        version: 6.0.0-alpha.59
+        specifier: 6.0.0-alpha.65
+        version: 6.0.0-alpha.65
 
   packages/pi-ratking:
     dependencies:
@@ -455,8 +455,8 @@ importers:
         specifier: 4.0.1
         version: 4.0.1
       xstate:
-        specifier: 6.0.0-alpha.59
-        version: 6.0.0-alpha.59
+        specifier: 6.0.0-alpha.65
+        version: 6.0.0-alpha.65
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 1.0.2
@@ -3425,10 +3425,6 @@ packages:
   safer-buffer@2.1.2:
     resolution: {integrity: sha512-YZo3K82SD7Riyi0E1EQPojLz7kpepnSQI9IyPbHHg1XXXevb5dJI7tpyN2ADxGcQbHG7vcyRHk0cbwqcQriUtg==}
 
-  saxes@6.0.0:
-    resolution: {integrity: sha512-xAg7SOnEhrm5zI3puOOKyy1OMcMlIJZYNJY7xLBwSze0UjhPLnWfj2GF2EpT0jmzaJKIWKHLsaSSajf35bcYnA==}
-    engines: {node: '>=v12.22.7'}
-
   semver@7.8.5:
     resolution: {integrity: sha512-Y7/KDsb8LjooZpwaqGyulO6DQlksgCncchHGk+sZIY4SBvUocMBEFH5Ur1fI4dV+Jvl0w6cjvucaIi40puRioA==}
     engines: {node: '>=10'}
@@ -3779,11 +3775,8 @@ packages:
       utf-8-validate:
         optional: true
 
-  xmlchars@2.2.0:
-    resolution: {integrity: sha512-JZnDKK8B0RCDw84FNdDAIpZK+JuJw+s7Lz8nksI7SIuU3UXJJslUthsi+uWBUYOwPFwW7W7PRLRfUKpxjtjFCw==}
-
-  xstate@6.0.0-alpha.59:
-    resolution: {integrity: sha512-IDBLFTCkMgRzoxecswgXKnZin6aca237WhogmMeuebGnYn+NeQUq9IcAeWKuf/Y0TDYZFwupnx5tP23GMSl1Ww==}
+  xstate@6.0.0-alpha.65:
+    resolution: {integrity: sha512-fCRPjxUeefg4AFzEcnBv/Z6A1UoNLBVWeWaXQ7C3DQ3iuobV/A9OLneLDN0SosN2exYmwLxMP4N1Sy0G7oHpsg==}
     hasBin: true
 
   y18n@5.0.8:
@@ -5350,10 +5343,10 @@ snapshots:
 
   '@vitest/spy@5.0.1': {}
 
-  '@xstate/effect@0.1.0-alpha.2(effect@4.0.1)(xstate@6.0.0-alpha.59)':
+  '@xstate/effect@0.1.0-alpha.2(effect@4.0.1)(xstate@6.0.0-alpha.65)':
     dependencies:
       effect: 4.0.1
-      xstate: 6.0.0-alpha.59
+      xstate: 6.0.0-alpha.65
 
   accepts@2.0.0:
     dependencies:
@@ -6501,10 +6494,6 @@ snapshots:
 
   safer-buffer@2.1.2: {}
 
-  saxes@6.0.0:
-    dependencies:
-      xmlchars: 2.2.0
-
   semver@7.8.5: {}
 
   send@1.2.1:
@@ -6829,11 +6818,7 @@ snapshots:
 
   ws@8.22.0: {}
 
-  xmlchars@2.2.0: {}
-
-  xstate@6.0.0-alpha.59:
-    dependencies:
-      saxes: 6.0.0
+  xstate@6.0.0-alpha.65: {}
 
   y18n@5.0.8: {}
 

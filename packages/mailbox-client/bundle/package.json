@@ -16,6 +16,6 @@
     "@hpke/core": "1.9.0",
     "@ipld/dag-cbor": "10.0.2",
     "effect": "4.0.1",
-    "xstate": "6.0.0-alpha.59"
+    "xstate": "6.0.0-alpha.65"
   }
 }

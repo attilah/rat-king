@@ -1,6 +1,6 @@
 import * as Defs from "../lexicon/defs.js";
 import * as Send from "../lexicon/mailbox.send.js";
-import { Data, Effect } from "effect";
+import { Context, Data, Effect } from "effect";
 import { Document } from "./auth.js";
 import type { ConsumeOptions, MessageMeta } from "./consume.js";
 import { MailboxClientError } from "./error.js";
@@ -90,8 +90,49 @@ export declare const SendOutcomes: {
 export type SendResult = SendOutcome & {
     readonly cc?: SendOutcome;
 };
+export interface SealOptions {
+    readonly encrypt?: boolean;
+    readonly replyTo?: Defs.MessageRefValue;
+    readonly summary?: string;
+    readonly thread?: string;
+}
+export interface SealedMessage {
+    readonly envelope: Defs.EncryptedEnvelopeValue;
+    readonly messageId: string;
+}
+declare const PreparedMailbox_base: Context.ServiceClass<PreparedMailbox, "mailbox/PreparedMailbox", {
+    readonly sealPayload: (to: string, body: string, opts?: SealOptions) => Effect.Effect<SealedMessage, MailboxClientError>;
+    readonly sendSealed: (envelope: Defs.EncryptedEnvelopeValue, fence?: LeaseFence) => Effect.Effect<SendOutcome>;
+}>;
+export declare class PreparedMailbox extends PreparedMailbox_base {
+}
+export declare const seal: (to: string, body: string, opts?: SealOptions | undefined) => Effect.Effect<SealedMessage, MailboxClientError, PreparedMailbox>;
+export declare const sendSealed: (envelope: {
+    readonly [x: string]: import("../lexicon/runtime.js").LexValue;
+    readonly aad: {
+        readonly [x: string]: import("../lexicon/runtime.js").LexValue;
+        readonly expiresAt?: string & import("effect/Brand").Brand<"Lexicon:datetime">;
+        readonly messageId: string & import("effect/Brand").Brand<"Lexicon:tid">;
+        readonly recipientDid: string & import("effect/Brand").Brand<"Lexicon:did">;
+        readonly recipientKeyId: string & import("effect/Brand").Brand<"Lexicon:uri">;
+        readonly senderDid: string & import("effect/Brand").Brand<"Lexicon:did">;
+    };
+    readonly ciphertext: Uint8Array<ArrayBufferLike>;
+    readonly enc: Uint8Array<ArrayBufferLike>;
+    readonly suite: {
+        readonly [x: string]: import("../lexicon/runtime.js").LexValue;
+        readonly aeadId: number;
+        readonly kdfId: number;
+        readonly kemId: number;
+    };
+    readonly version: number;
+}, fence?: LeaseFence | undefined) => Effect.Effect<SendOutcome, never, PreparedMailbox>;
 export interface PrepareOptions {
     readonly own: OwnIdentity;
+    readonly names?: {
+        readonly from: string;
+        readonly peers: Readonly<Record<string, string>>;
+    };
     readonly peers: readonly PeerDocument[];
     readonly endpoint: string;
     readonly serviceDid: string;
@@ -167,6 +208,29 @@ export declare const prepare: (options: PrepareOptions) => Effect.Effect<{
         };
         readonly version: number;
     }, MailboxClientError | import("../lexicon/xrpc-failure.js").XrpcFailure, never>;
+    sealPayload: (to: string, body: string, opts?: SealOptions | undefined) => Effect.Effect<{
+        envelope: {
+            readonly [x: string]: import("../lexicon/runtime.js").LexValue;
+            readonly aad: {
+                readonly [x: string]: import("../lexicon/runtime.js").LexValue;
+                readonly expiresAt?: string & import("effect/Brand").Brand<"Lexicon:datetime">;
+                readonly messageId: string & import("effect/Brand").Brand<"Lexicon:tid">;
+                readonly recipientDid: string & import("effect/Brand").Brand<"Lexicon:did">;
+                readonly recipientKeyId: string & import("effect/Brand").Brand<"Lexicon:uri">;
+                readonly senderDid: string & import("effect/Brand").Brand<"Lexicon:did">;
+            };
+            readonly ciphertext: Uint8Array<ArrayBufferLike>;
+            readonly enc: Uint8Array<ArrayBufferLike>;
+            readonly suite: {
+                readonly [x: string]: import("../lexicon/runtime.js").LexValue;
+                readonly aeadId: number;
+                readonly kdfId: number;
+                readonly kemId: number;
+            };
+            readonly version: number;
+        };
+        messageId: string & import("effect/Brand").Brand<"Lexicon:tid">;
+    }, MailboxClientError, never>;
     send: (envelope: {
         readonly [x: string]: import("../lexicon/runtime.js").LexValue;
         readonly aad: {
@@ -190,5 +254,37 @@ export declare const prepare: (options: PrepareOptions) => Effect.Effect<{
         readonly cc?: string;
         readonly fence?: LeaseFence;
     } | undefined) => Effect.Effect<SendResult, never, never>;
+    sendSealed: (envelope: {
+        readonly [x: string]: import("../lexicon/runtime.js").LexValue;
+        readonly aad: {
+            readonly [x: string]: import("../lexicon/runtime.js").LexValue;
+            readonly expiresAt?: string & import("effect/Brand").Brand<"Lexicon:datetime">;
+            readonly messageId: string & import("effect/Brand").Brand<"Lexicon:tid">;
+            readonly recipientDid: string & import("effect/Brand").Brand<"Lexicon:did">;
+            readonly recipientKeyId: string & import("effect/Brand").Brand<"Lexicon:uri">;
+            readonly senderDid: string & import("effect/Brand").Brand<"Lexicon:did">;
+        };
+        readonly ciphertext: Uint8Array<ArrayBufferLike>;
+        readonly enc: Uint8Array<ArrayBufferLike>;
+        readonly suite: {
+            readonly [x: string]: import("../lexicon/runtime.js").LexValue;
+            readonly aeadId: number;
+            readonly kdfId: number;
+            readonly kemId: number;
+        };
+        readonly version: number;
+    }, fence?: LeaseFence | undefined) => Effect.Effect<{
+        readonly _tag: "NotAttempted";
+        readonly reason: string;
+    } | {
+        readonly _tag: "Rejected";
+        readonly error: MailboxClientError;
+    } | {
+        readonly _tag: "Accepted";
+        readonly receipt: Send.OutputValue["receipt"];
+    } | {
+        readonly _tag: "Uncertain";
+        readonly error: MailboxClientError;
+    }, never, never>;
 }, MailboxClientError, import("effect/http/HttpClient").HttpClient | import("effect/Scope").Scope>;
 export {};

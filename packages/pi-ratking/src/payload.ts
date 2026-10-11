@@ -1,5 +1,7 @@
 import { Effect, Option, Schema } from "effect";
 
+import { PayloadJson } from "../../mailbox-client/src/payload.ts";
+import type { KindValue } from "../../mailbox-client/src/payload.ts";
 import { renderRecordBody } from "./agentgraph.ts";
 import { AgentName } from "./name.ts";
 
@@ -24,35 +26,18 @@ export interface InboundRecord {
   readonly replyTo: Option.Option<string>;
 }
 
-export const SUMMARY_MAX = 280;
+export {
+  encodePayload,
+  Kind,
+  Payload,
+  PayloadJson,
+  SUMMARY_MAX,
+} from "../../mailbox-client/src/payload.ts";
 
-export const Kind = Schema.Literals(["message", "ask", "reply", "data"]);
-
-export type KindValue = typeof Kind.Type;
-
-export const Payload = Schema.Struct({
-  body: Schema.String,
-  cc: Schema.optionalKey(Schema.Array(AgentName)),
-  from: AgentName,
-  kind: Schema.optionalKey(Kind),
-  label: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(256))),
-  replyTo: Schema.optionalKey(Schema.String),
-  summary: Schema.optionalKey(
-    Schema.String.check(Schema.isMaxLength(SUMMARY_MAX))
-  ),
-  thread: Schema.optionalKey(Schema.String),
-  to: Schema.optionalKey(AgentName),
-});
-
-export type PayloadValue = typeof Payload.Type;
-
-export const PayloadJson = Schema.fromJsonString(Payload);
-
-export const encodePayload = Effect.fn("RatKing.encodePayload")(
-  function* encodePayload(payload: PayloadValue) {
-    return yield* Schema.encodeEffect(PayloadJson)(payload);
-  }
-);
+export type {
+  KindValue,
+  PayloadValue,
+} from "../../mailbox-client/src/payload.ts";
 
 export const decodePayload = (body: string) =>
   Schema.decodeEffect(PayloadJson)(body).pipe(Effect.option);
