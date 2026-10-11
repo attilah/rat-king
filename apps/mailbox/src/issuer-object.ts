@@ -1,7 +1,7 @@
 /* oxlint-disable promise/prefer-await-to-callbacks, typescript/promise-function-async -- Effect adapters require lazy Promise thunks, not callback-style control flow. */
 import type { Request as XrpcRequest } from "@rat-king/lexicon/transport";
 import { DurableObject } from "cloudflare:workers";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
 
 import type { Bindings } from "./bindings.ts";
 import { Caller } from "./caller.ts";
@@ -14,10 +14,18 @@ import {
   issuerConfig,
   issuerHandlers,
   issuerRoute,
+  RetirementRegistry,
 } from "./issuer.ts";
+import { Retirement } from "./store.ts";
 import { trafficDid } from "./traffic-store.ts";
 
 export const issuerInstance = "issuer";
+
+const mailboxCall = <A>(call: () => Promise<A>) =>
+  Effect.tryPromise({
+    catch: () => failure("MailboxUnavailable", 503),
+    try: call,
+  });
 
 export class Issuer extends DurableObject<Bindings> {
   private readonly store;
@@ -65,6 +73,52 @@ export class Issuer extends DurableObject<Bindings> {
       })
     );
 
+    const retirements = Layer.succeed(
+      RetirementRegistry,
+      RetirementRegistry.of({
+        clear: (did) =>
+          mailboxCall(() => env.MAILBOX.getByName(did).unretire()),
+        current: Effect.fn("RetirementRegistry.current")(function* current(
+          did: string
+        ) {
+          const json = yield* mailboxCall(() =>
+            env.MAILBOX.getByName(did).retirement()
+          );
+
+          return json === undefined
+            ? undefined
+            : yield* Schema.decodeUnknownEffect(
+                Schema.fromJsonString(Retirement)
+              )(json).pipe(
+                Effect.mapError(() => failure("MailboxUnavailable", 503))
+              );
+        }),
+        retire: Effect.fn("RetirementRegistry.retire")(
+          function* retire(did, retirement) {
+            if (did === trafficDid) {
+              return yield* Effect.fail(failure("Forbidden", 403));
+            }
+
+            const outcome = yield* mailboxCall(() =>
+              env.MAILBOX.getByName(did).retire(
+                Schema.encodeSync(Schema.fromJsonString(Retirement))(retirement)
+              )
+            );
+
+            if (outcome === "NameNotFound") {
+              return yield* Effect.fail(failure("NameNotFound", 404));
+            }
+
+            if (outcome !== "retired") {
+              return yield* Effect.fail(failure("MailboxUnavailable", 503));
+            }
+
+            return yield* Effect.void;
+          }
+        ),
+      })
+    );
+
     return Effect.runPromise(
       issuerRoute(request).pipe(
         Effect.provide(
@@ -74,6 +128,7 @@ export class Issuer extends DurableObject<Bindings> {
           }).pipe(
             Layer.provide(this.store),
             Layer.provide(registry),
+            Layer.provide(retirements),
             Layer.provide(Layer.succeed(Caller, { did: caller }))
           )
         )

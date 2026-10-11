@@ -41,6 +41,7 @@
       },
       "errors": [
         { "name": "LeaseMismatch", "description": "Missing or stale sender lease fence." },
+        { "name": "Retired", "description": "The recipient name is retired. The message reads '<name> was retired at <datetime>; current row is <successor>' or ends '; no successor'. Nothing was admitted." },
         {
           "name": "InvalidRequest",
           "description": "Invalid or unsupported operation."

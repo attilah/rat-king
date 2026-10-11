@@ -1,0 +1,45 @@
+{
+  "lexicon": 1,
+  "id": "sh.mschf.ratking.identity.retireName",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Retire a name so its mailbox refuses new mail with Retired, naming the optional successor. The caller must be an operator, the name's own DID or the host that registered it. Repeating it replaces the successor and time. The name's own identity acquiring its lease clears the retirement.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["name"],
+          "properties": {
+            "name": { "type": "string", "maxLength": 128 },
+            "successor": { "type": "string", "maxLength": 128 }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": { "type": "ref", "ref": "#retirement" }
+      },
+      "errors": [
+        { "name": "InvalidRequest" },
+        { "name": "InvalidName" },
+        { "name": "AuthRequired" },
+        { "name": "Forbidden" },
+        { "name": "NameReserved" },
+        { "name": "NameNotFound", "description": "No public document is registered for the name's DID." },
+        { "name": "MailboxUnavailable" }
+      ]
+    },
+    "retirement": {
+      "type": "object",
+      "required": ["name", "did", "retiredAt", "by"],
+      "properties": {
+        "name": { "type": "string", "maxLength": 128 },
+        "did": { "type": "string", "format": "did" },
+        "retiredAt": { "type": "string", "format": "datetime" },
+        "successor": { "type": "string", "maxLength": 128 },
+        "by": { "type": "string", "format": "did" }
+      }
+    }
+  }
+}

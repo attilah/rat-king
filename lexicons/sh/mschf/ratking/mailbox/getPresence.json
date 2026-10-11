@@ -1,0 +1,33 @@
+{
+  "lexicon": 1,
+  "id": "sh.mschf.ratking.mailbox.getPresence",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Whether a reader holds the DID's mailbox lease. Any authenticated identity may ask. Carries no lease id, harness or message content. lastHeldAt is the last instant the lease was held: now while held, the release time after a release, the expiry after a lapse. It is absent when the lease was never held.",
+      "parameters": {
+        "type": "params",
+        "required": ["did"],
+        "properties": { "did": { "type": "string", "format": "did" } }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["did", "held"],
+          "properties": {
+            "did": { "type": "string", "format": "did" },
+            "held": { "type": "boolean" },
+            "lastHeldAt": { "type": "string", "format": "datetime" }
+          }
+        }
+      },
+      "errors": [
+        { "name": "InvalidRequest" },
+        { "name": "AuthRequired" },
+        { "name": "Forbidden" },
+        { "name": "MailboxUnavailable" }
+      ]
+    }
+  }
+}

@@ -3,7 +3,7 @@ import * as List from "@rat-king/lexicon/mailbox.list";
 import { Effect, Layer, Schema } from "effect";
 
 import { base64url, unbase64url } from "./auth.ts";
-import { Lease, MailboxStore, storageOperation } from "./store.ts";
+import { Lease, MailboxStore, Retirement, storageOperation } from "./store.ts";
 import type { Event, LeaseValue, Message, Transaction } from "./store.ts";
 import { projectTraffic, trafficTables } from "./traffic-store.ts";
 
@@ -155,6 +155,16 @@ export const sqliteStore = (
     },
     recipient: () =>
       firstValue(sql, "SELECT value FROM metadata WHERE key='recipient'") ?? "",
+    retirement: () => {
+      const value = firstValue(
+        sql,
+        "SELECT value FROM metadata WHERE key='retirement'"
+      );
+
+      return value === undefined
+        ? undefined
+        : Schema.decodeUnknownSync(Schema.fromJsonString(Retirement))(value);
+    },
     setDocument: (document) => {
       sql.exec(
         "INSERT INTO metadata (key,value) VALUES ('didDocument',?)",
@@ -165,6 +175,18 @@ export const sqliteStore = (
       sql.exec(
         "INSERT INTO lease (singleton,value) VALUES (1,?) ON CONFLICT(singleton) DO UPDATE SET value=excluded.value",
         JSON.stringify(lease)
+      );
+    },
+    setRetirement: (retirement) => {
+      if (retirement === undefined) {
+        sql.exec("DELETE FROM metadata WHERE key='retirement'");
+
+        return;
+      }
+
+      sql.exec(
+        "INSERT INTO metadata (key,value) VALUES ('retirement',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        Schema.encodeSync(Schema.fromJsonString(Retirement))(retirement)
       );
     },
     watermark: () => {

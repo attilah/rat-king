@@ -1,7 +1,16 @@
 /* oxlint-disable eslint/max-classes-per-file, eslint/no-redeclare -- Effect service, Schema errors and the reader state enum share their owning port. */
 import * as Defs from "@rat-king/lexicon/defs";
-import { ownIdentity, prepare, SendOutcomes } from "@rat-king/mailbox-client";
+import * as Retire from "@rat-king/lexicon/identity.retireName";
+import * as Runtime from "@rat-king/lexicon/runtime";
+import { Transport } from "@rat-king/lexicon/transport";
+import {
+  ownIdentity,
+  prepare,
+  SendOutcomes,
+  transportLayer,
+} from "@rat-king/mailbox-client";
 import type {
+  MailboxClientError,
   ConsumeOptions,
   IdentityValue,
   LeaseFence,
@@ -61,6 +70,8 @@ import type {
   LexiconRecordValue,
   PayloadValue,
 } from "./payload.ts";
+import { PRESENCE_TTL_MS, PresenceTimeout, presenceLine } from "./presence.ts";
+import type { PresenceValue } from "./presence.ts";
 import { quarantined, recover } from "./quarantine.ts";
 import type { Quarantined } from "./quarantine.ts";
 import { errorTag, HEARTBEAT_EVERY, HeartbeatJson } from "./reader-health.ts";
@@ -85,6 +96,7 @@ export const NotDeliveredCode = Schema.Literals([
   "Uncertain",
   "Refused",
   "Partial",
+  "Retired",
 ]);
 
 export class NotDelivered extends Schema.TaggedError<NotDelivered>()(
@@ -141,6 +153,7 @@ export interface Delivered {
   readonly seq: number;
   readonly to: string;
   readonly did: string;
+  readonly presence?: string;
 }
 
 const oneLineSummary = (text: string) =>
@@ -211,6 +224,9 @@ export class RatKing extends Context.Service<
     ) => Effect.Effect<Delivered, NotDelivered | AskFailed>;
     readonly pending: Effect.Effect<readonly Received[]>;
     readonly list: Effect.Effect<readonly Listed[]>;
+    readonly retire: (
+      successor: Option.Option<string>
+    ) => Effect.Effect<Retire.OutputValue, NotDelivered>;
     readonly status: Effect.Effect<Status>;
   }
 >()("pi-ratking/RatKing") {}
@@ -267,6 +283,11 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
   const fence = yield* Ref.make(Option.none<LeaseFence>());
   const lastLease = yield* Ref.make(Option.none<LeaseFence>());
   const seen = new Set<string>();
+
+  const presences = new Map<
+    string,
+    { readonly at: number; readonly value: Option.Option<PresenceValue> }
+  >();
 
   const services = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     effect.pipe(
@@ -698,6 +719,32 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
   const refused = (code: typeof NotDeliveredCode.Type) => (reason: string) =>
     new NotDelivered({ code, reason });
 
+  const presenceOf = (
+    did: string,
+    lookup: Effect.Effect<PresenceValue, MailboxClientError>
+  ) =>
+    Effect.gen(function* presenceLineFor() {
+      const now = yield* Clock.currentTimeMillis;
+      const cached = presences.get(did);
+
+      const value =
+        cached !== undefined && now - cached.at < PRESENCE_TTL_MS
+          ? cached.value
+          : yield* lookup.pipe(
+              Effect.timeoutOption(yield* PresenceTimeout),
+              Effect.orElseSucceed(() => Option.none<PresenceValue>()),
+              Effect.tap((fresh) =>
+                Effect.sync(() => {
+                  presences.set(did, { at: now, value: fresh });
+                })
+              )
+            );
+
+      return value.pipe(
+        Option.flatMap((presence) => presenceLine(presence, now))
+      );
+    }).pipe(Effect.catchCause(() => Effect.succeed(Option.none<string>())));
+
   const lookup = Effect.fn("RatKing.lookup")(function* lookup(
     identity: Parameters<typeof ownIdentity>[0],
     requested: string
@@ -917,9 +964,11 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
             Effect.fail(refused("NotAttempted")(reason)),
           Rejected: ({ error }) =>
             Effect.fail(
-              refused("Rejected")(
-                `${error.error ?? "Rejected"} (${error.status ?? "4xx"}): ${error.reason}`
-              )
+              error.error === "Retired"
+                ? refused("Retired")(error.reason)
+                : refused("Rejected")(
+                    `${error.error ?? "Rejected"} (${error.status ?? "4xx"}): ${error.reason}`
+                  )
             ),
           Uncertain: ({ error }) =>
             Effect.fail(
@@ -932,11 +981,21 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
         accepted.push(delivered);
       }
 
-      const [delivered] = accepted;
+      const [admitted] = accepted;
 
-      if (delivered === undefined) {
+      if (admitted === undefined) {
         return yield* refused("NotAttempted")("No delivery");
       }
+
+      const line = yield* presenceOf(
+        admitted.did,
+        client.presence(admitted.did)
+      );
+
+      const delivered: Delivered = Option.match(line, {
+        onNone: () => admitted,
+        onSome: (presence) => ({ ...admitted, presence }),
+      });
 
       return { delivered, extra };
     }).pipe(
@@ -1279,7 +1338,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
               Effect.fail(
                 new AskFailed({
                   code: "NoReply",
-                  reason: `No reply from ${delivered.to} to ${delivered.id} within ${Duration.format(Duration.fromInputUnsafe(timeout))}. The ask was delivered; a late answer arrives as a normal message.`,
+                  reason: `No reply from ${delivered.to} to ${delivered.id} within ${Duration.format(Duration.fromInputUnsafe(timeout))}. The ask was delivered; a late answer arrives as a normal message.${delivered.presence === undefined ? "" : ` ${delivered.presence}`}`,
                 })
               ),
           })
@@ -1406,6 +1465,68 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       }
 
       return delivered;
+    }),
+    retire: Effect.fn("RatKing.retire")(function* retire(successor) {
+      const own = yield* awaitSelf;
+
+      const input = yield* Schema.decodeUnknownEffect(
+        Schema.toEncoded(Runtime.Data)
+      )(
+        Option.match(successor, {
+          onNone: () => ({ name: own.name }),
+          onSome: (next) => ({ name: own.name, successor: next }),
+        })
+      ).pipe(Effect.mapError(() => refused("NotAttempted")("Invalid name")));
+
+      const response = yield* Transport.use((transport) =>
+        transport.request({
+          input,
+          method: "POST",
+          nsid: Retire.Method.nsid,
+          params: undefined,
+        })
+      ).pipe(
+        Effect.provide(
+          transportLayer(
+            settings.endpoint,
+            `${settings.serviceDid.replace(/#mailbox$/u, "")}#mailbox`,
+            own.identity
+          )
+        ),
+        Effect.provideService(HttpClient.HttpClient, http),
+        Effect.mapError(() =>
+          refused("Uncertain")("Name authority is unreachable")
+        )
+      );
+
+      if (response.status !== 200) {
+        const error = Schema.decodeUnknownOption(
+          Schema.Struct({
+            error: Schema.String,
+            message: Schema.optionalKey(Schema.String),
+          })
+        )(response.body);
+
+        return yield* refused(
+          response.status >= 500 ? "Uncertain" : "Rejected"
+        )(
+          Option.match(error, {
+            onNone: () => `Name authority answered HTTP ${response.status}`,
+            onSome: (body) =>
+              body.message === undefined || body.message === body.error
+                ? body.error
+                : `${body.error}: ${body.message}`,
+          })
+        );
+      }
+
+      return yield* Schema.decodeUnknownEffect(Retire.Output)(
+        response.body
+      ).pipe(
+        Effect.mapError(() =>
+          refused("Uncertain")("Name authority answered with an invalid body")
+        )
+      );
     }),
     run,
     send: Effect.fn("RatKing.send")(function* send(to, body, options) {

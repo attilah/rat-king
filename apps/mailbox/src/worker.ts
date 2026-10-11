@@ -1,11 +1,13 @@
 import * as PutDocument from "@rat-king/lexicon/admin.putDidDocument";
 import * as Defs from "@rat-king/lexicon/defs";
 import * as ListNames from "@rat-king/lexicon/identity.listNames";
+import * as ListRetired from "@rat-king/lexicon/identity.listRetired";
 /* oxlint-disable promise/prefer-await-to-callbacks, typescript/promise-function-async -- Effect adapters require lazy Promise thunks, not callback-style control flow. */
 import { MailboxServer, serverLayer } from "@rat-king/lexicon/mailbox-server";
 import * as Ack from "@rat-king/lexicon/mailbox.ack";
 import * as Deliver from "@rat-king/lexicon/mailbox.deliver";
 import * as Peer from "@rat-king/lexicon/mailbox.getPeerDocument";
+import * as Presence from "@rat-king/lexicon/mailbox.getPresence";
 import * as List from "@rat-king/lexicon/mailbox.list";
 import * as Traffic from "@rat-king/lexicon/mailbox.listTraffic";
 import * as Send from "@rat-king/lexicon/mailbox.send";
@@ -38,11 +40,12 @@ import {
   LeaseAuthority,
   leaseLayer,
 } from "./mailbox.ts";
+import { isoTime, markRetired, presenceOf } from "./retirement.ts";
 import { SenderFence } from "./sender-fence.ts";
 import { SocketAttachment, socketStep, socketCodes } from "./socket.ts";
 import { sqliteStore } from "./sqlite.ts";
 import type { Sql } from "./sqlite.ts";
-import { MailboxStore, storageOperation } from "./store.ts";
+import { MailboxStore, Retirement, storageOperation } from "./store.ts";
 import type { LeaseValue, Event } from "./store.ts";
 import { TerminalDelivery, terminalLayer } from "./terminal.ts";
 import { trafficRequest } from "./traffic-http.ts";
@@ -432,6 +435,63 @@ export class Mailbox extends DurableObject<Bindings> {
         Effect.catchTag("XrpcFailure", (error) => Effect.succeed(error.error)),
         Effect.provide(this.store)
       )
+    );
+  }
+  presence() {
+    return Effect.runPromise(
+      Effect.gen(function* presence() {
+        const store = yield* MailboxStore;
+        const now = yield* Clock.currentTimeMillis;
+
+        return yield* store.transaction((tx) => presenceOf(tx.lease(), now));
+      }).pipe(Effect.provide(this.store))
+    );
+  }
+  retire(json: string) {
+    const retirement = Schema.decodeSync(Schema.fromJsonString(Retirement))(
+      json
+    );
+
+    const staticDocuments = Schema.decodeSync(
+      Schema.fromJsonString(Schema.Array(Defs.DidDocument))
+    )(this.env.DID_DOCUMENTS);
+
+    return Effect.runPromise(
+      MailboxStore.use((store) =>
+        store.transaction((tx) => {
+          markRetired(tx, staticDocuments, retirement);
+
+          return "retired";
+        })
+      ).pipe(
+        Effect.catchTag("XrpcFailure", (error) => Effect.succeed(error.error)),
+        Effect.provide(this.store)
+      )
+    );
+  }
+  unretire() {
+    return Effect.runPromise(
+      MailboxStore.use((store) =>
+        store.transaction((tx) => {
+          const cleared = tx.retirement() !== undefined;
+          tx.setRetirement(undefined);
+
+          return cleared;
+        })
+      ).pipe(Effect.provide(this.store))
+    );
+  }
+  retirement() {
+    return Effect.runPromise(
+      MailboxStore.use((store) =>
+        store.transaction((tx) => {
+          const current = tx.retirement();
+
+          return current === undefined
+            ? undefined
+            : Schema.encodeSync(Schema.fromJsonString(Retirement))(current);
+        })
+      ).pipe(Effect.provide(this.store))
     );
   }
   registeredDocument() {
@@ -874,6 +934,7 @@ const methods = new Set<string>(
     Traffic.Method,
     Resolve.Method,
     Peer.Method,
+    Presence.Method,
     Subscribe.Method,
     SubscribeTraffic.Method,
     ...issuerMethods,
@@ -894,23 +955,24 @@ const issuerRequest = Effect.fn("Issuer.request")(function* issuerRequest(
 
   let transport: XrpcRequest;
 
-  if (nsid === ListNames.Method.nsid) {
+  if (nsid === ListNames.Method.nsid || nsid === ListRetired.Method.nsid) {
     if (request.method !== "GET") {
       return yield* Effect.fail(failure("InvalidRequest"));
     }
 
-    const params = yield* ListNames.decodeParams([
-      ...new URL(request.url).searchParams.entries(),
-    ]).pipe(Effect.mapError(() => failure("InvalidRequest")));
+    const entries = [...new URL(request.url).searchParams.entries()];
 
-    transport = {
-      input: undefined,
-      method: "GET",
-      nsid,
-      params: yield* Schema.encodeEffect(ListNames.Params)(params).pipe(
-        Effect.mapError(() => failure("InvalidRequest"))
-      ),
-    };
+    const params = yield* (
+      nsid === ListNames.Method.nsid
+        ? ListNames.decodeParams(entries).pipe(
+            Effect.flatMap(Schema.encodeEffect(ListNames.Params))
+          )
+        : ListRetired.decodeParams(entries).pipe(
+            Effect.flatMap(Schema.encodeEffect(ListRetired.Params))
+          )
+    ).pipe(Effect.mapError(() => failure("InvalidRequest")));
+
+    transport = { input: undefined, method: "GET", nsid, params };
   } else {
     if (
       request.method !== "POST" ||
@@ -945,30 +1007,75 @@ const issuerRequest = Effect.fn("Issuer.request")(function* issuerRequest(
   });
 });
 
+const presenceRequest = Effect.fn("Mailbox.presence")(function* presenceRequest(
+  request: Request,
+  env: Bindings,
+  scope: FailureScope
+) {
+  if (request.method !== "GET") {
+    return yield* Effect.fail(failure("InvalidRequest"));
+  }
+
+  const params = yield* Presence.decodeParams([
+    ...new URL(request.url).searchParams.entries(),
+  ]).pipe(Effect.mapError(() => failure("InvalidRequest")));
+
+  if (params.did === trafficDid) {
+    return yield* Effect.fail(failure("Forbidden", 403));
+  }
+
+  scope.recipient = params.did;
+
+  const presence = yield* Effect.tryPromise({
+    catch: () => failure("MailboxUnavailable", 503),
+    try: () => env.MAILBOX.getByName(params.did).presence(),
+  });
+
+  const encoded = { did: params.did, held: presence.held };
+
+  if (presence.lastHeldAt !== undefined) {
+    Object.assign(encoded, { lastHeldAt: isoTime(presence.lastHeldAt) });
+  }
+
+  const output = yield* Schema.decodeUnknownEffect(Presence.Output)(
+    encoded
+  ).pipe(Effect.mapError(() => failure("MailboxUnavailable", 503)));
+
+  return Response.json(yield* Schema.encodeEffect(Presence.Output)(output));
+});
+
 const serviceRequest = (
   request: Request,
   env: Bindings,
   nsid: string,
-  issuer: string
-) =>
-  issuerMethods.some((method) => method.nsid === nsid)
-    ? issuerRequest(request, env, nsid, issuer)
-    : trafficRequest({
-        issuer,
-        nsid,
-        observers: didAllowlist(env.OBSERVER_DIDS),
-        operators: didAllowlist(env.OPERATOR_DIDS),
-        read: (params, caller) =>
-          Effect.tryPromise({
-            catch: () => failure("MailboxUnavailable", 503),
-            try: () =>
-              env.MAILBOX.getByName(trafficDid).readTraffic(
-                JSON.stringify(params),
-                caller
-              ),
-          }),
-        request,
-      });
+  issuer: string,
+  scope: FailureScope
+) => {
+  if (issuerMethods.some((method) => method.nsid === nsid)) {
+    return issuerRequest(request, env, nsid, issuer);
+  }
+
+  if (nsid === Presence.Method.nsid) {
+    return presenceRequest(request, env, scope);
+  }
+
+  return trafficRequest({
+    issuer,
+    nsid,
+    observers: didAllowlist(env.OBSERVER_DIDS),
+    operators: didAllowlist(env.OPERATOR_DIDS),
+    read: (params, caller) =>
+      Effect.tryPromise({
+        catch: () => failure("MailboxUnavailable", 503),
+        try: () =>
+          env.MAILBOX.getByName(trafficDid).readTraffic(
+            JSON.stringify(params),
+            caller
+          ),
+      }),
+    request,
+  });
+};
 
 const handleRequest = (
   request: Request,
@@ -1023,6 +1130,7 @@ const handleRequest = (
         Traffic.Method,
         Resolve.Method,
         Peer.Method,
+        Presence.Method,
         ...issuerMethods,
       ].some((method) => method.nsid === nsid)
     ) {
@@ -1054,7 +1162,13 @@ const handleRequest = (
       return Response.json(yield* Schema.encodeEffect(Peer.Output)(output));
     }
 
-    const trafficResponse = yield* serviceRequest(request, env, nsid, issuer);
+    const trafficResponse = yield* serviceRequest(
+      request,
+      env,
+      nsid,
+      issuer,
+      scope
+    );
 
     if (trafficResponse !== undefined) {
       return trafficResponse;

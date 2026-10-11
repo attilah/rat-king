@@ -2,16 +2,21 @@
 import * as Defs from "@rat-king/lexicon/defs";
 import * as Enroll from "@rat-king/lexicon/identity.enrollHost";
 import * as ListNames from "@rat-king/lexicon/identity.listNames";
+import * as ListRetired from "@rat-king/lexicon/identity.listRetired";
 import * as Register from "@rat-king/lexicon/identity.register";
+import * as Retire from "@rat-king/lexicon/identity.retireName";
+import * as Unretire from "@rat-king/lexicon/identity.unretireName";
 import type { Request as XrpcRequest } from "@rat-king/lexicon/transport";
 import type { XrpcFailure } from "@rat-king/lexicon/xrpc-failure";
-import { Context, Effect, Layer, Option, Result, Schema } from "effect";
+import { Clock, Context, Effect, Layer, Option, Result, Schema } from "effect";
 
 import { Caller } from "./caller.ts";
 import { failure } from "./failure.ts";
 import {
+  AgentName,
   decideRegistration,
   IssuerConfig,
+  nameDid,
   publicOnly,
   refusalStatus,
 } from "./issuer-policy.ts";
@@ -22,9 +27,32 @@ import type {
   Refusal,
 } from "./issuer-policy.ts";
 import { IssuerStore } from "./issuer-store.ts";
-import type { IssuerTransaction } from "./issuer-store.ts";
+import type { IssuerTransaction, RetiredName } from "./issuer-store.ts";
+import { isoTime } from "./retirement.ts";
+import type { RetirementValue } from "./store.ts";
 
-export const issuerMethods = [Register.Method, Enroll.Method, ListNames.Method];
+export const issuerMethods = [
+  Register.Method,
+  Enroll.Method,
+  ListNames.Method,
+  Retire.Method,
+  Unretire.Method,
+  ListRetired.Method,
+];
+
+export class RetirementRegistry extends Context.Service<
+  RetirementRegistry,
+  {
+    readonly retire: (
+      did: string,
+      retirement: RetirementValue
+    ) => Effect.Effect<void, XrpcFailure>;
+    readonly clear: (did: string) => Effect.Effect<boolean, XrpcFailure>;
+    readonly current: (
+      did: string
+    ) => Effect.Effect<RetirementValue | undefined, XrpcFailure>;
+  }
+>()("mailbox/RetirementRegistry") {}
 
 export class DocumentRegistry extends Context.Service<
   DocumentRegistry,
@@ -47,6 +75,15 @@ export class IssuerHandlers extends Context.Service<
     readonly listNames: (
       params: ListNames.ParamsValue
     ) => Effect.Effect<ListNames.OutputValue, XrpcFailure>;
+    readonly retireName: (
+      input: Retire.InputValue
+    ) => Effect.Effect<Retire.OutputValue, XrpcFailure>;
+    readonly unretireName: (
+      input: Unretire.InputValue
+    ) => Effect.Effect<Unretire.OutputValue, XrpcFailure>;
+    readonly listRetired: (
+      params: ListRetired.ParamsValue
+    ) => Effect.Effect<ListRetired.OutputValue, XrpcFailure>;
   }
 >()("mailbox/IssuerHandlers") {}
 
@@ -94,13 +131,80 @@ const output = <S extends Schema.Top>(schema: S, value: S["Encoded"]) =>
     Effect.mapError(() => failure("MailboxUnavailable", 503))
   );
 
+const isName = Schema.is(AgentName);
+
+const retiredOutput = (retired: RetiredName) => {
+  const encoded = {
+    by: retired.by,
+    did: retired.did,
+    name: retired.name,
+    retiredAt: isoTime(retired.retiredAt),
+  };
+
+  if (retired.successor !== undefined) {
+    Object.assign(encoded, { successor: retired.successor });
+  }
+
+  return encoded;
+};
+
 export const issuerHandlers = (policy: IssuerPolicy) =>
   Layer.effect(
     IssuerHandlers,
     Effect.gen(function* makeIssuerHandlers() {
       const store = yield* IssuerStore;
       const registry = yield* DocumentRegistry;
+      const retirements = yield* RetirementRegistry;
       const caller = yield* Caller;
+
+      const subject = Effect.fn("Issuer.subject")(function* subject(
+        name: string
+      ) {
+        if (!isName(name)) {
+          return yield* Effect.fail(failure("InvalidName"));
+        }
+
+        if (
+          Option.exists(policy.config, (config) =>
+            config.reserved.includes(name)
+          )
+        ) {
+          return yield* Effect.fail(failure("NameReserved", 403));
+        }
+
+        const binding = yield* store.transaction((tx) => tx.binding(name));
+
+        const found =
+          binding === undefined
+            ? policy.config.pipe(
+                Option.map((config) => ({
+                  did: nameDid(config.didTemplate, name),
+                  host: Option.none<string>(),
+                }))
+              )
+            : Option.some({
+                did: binding.did,
+                host: Option.some(binding.host),
+              });
+
+        if (Option.isNone(found)) {
+          return yield* Effect.fail(
+            failure("MailboxUnavailable", 503, "Issuer is not configured")
+          );
+        }
+
+        const { did, host } = found.value;
+
+        if (
+          !policy.operators.includes(caller.did) &&
+          caller.did !== did &&
+          !Option.contains(host, caller.did)
+        ) {
+          return yield* Effect.fail(failure("Forbidden", 403));
+        }
+
+        return did;
+      });
 
       return IssuerHandlers.of({
         enrollHost: Effect.fn("Issuer.enrollHost")(function* enrollHost(input) {
@@ -141,6 +245,39 @@ export const issuerHandlers = (policy: IssuerPolicy) =>
               : { names }
           );
         }),
+        listRetired: Effect.fn("Issuer.listRetired")(
+          function* listRetired(params) {
+            const limit = params.limit ?? ListRetired.Method.defaults.limit;
+
+            const rows = yield* store.transaction((tx) =>
+              tx.retired(params.cursor ?? "", limit + 1)
+            );
+
+            const page = rows.slice(0, limit);
+            const retired: ReturnType<typeof retiredOutput>[] = [];
+
+            for (const row of page) {
+              const current = yield* retirements.current(row.did);
+
+              if (current?.retiredAt === row.retiredAt) {
+                retired.push(retiredOutput(row));
+              } else {
+                yield* store.transaction((tx) => {
+                  tx.unretire(row.name, row.retiredAt);
+                });
+              }
+            }
+
+            const last = page.at(-1);
+
+            return yield* output(
+              ListRetired.Output,
+              rows.length > limit && last !== undefined
+                ? { cursor: last.name, retired }
+                : { retired }
+            );
+          }
+        ),
         register: Effect.fn("Issuer.register")(function* register(input) {
           const config = yield* Option.match(policy.config, {
             onNone: () =>
@@ -187,6 +324,54 @@ export const issuerHandlers = (policy: IssuerPolicy) =>
 
           return yield* output(Register.Output, { did: first.did });
         }),
+        retireName: Effect.fn("Issuer.retireName")(function* retireName(input) {
+          const did = yield* subject(input.name);
+
+          if (
+            input.successor !== undefined &&
+            (!isName(input.successor) || input.successor === input.name)
+          ) {
+            return yield* Effect.fail(
+              failure("InvalidName", 400, "Invalid successor")
+            );
+          }
+
+          const retirement: RetirementValue = {
+            by: caller.did,
+            name: input.name,
+            retiredAt: yield* Clock.currentTimeMillis,
+          };
+
+          if (input.successor !== undefined) {
+            Object.assign(retirement, { successor: input.successor });
+          }
+
+          yield* retirements.retire(did, retirement);
+          yield* store.transaction((tx) => {
+            tx.retire({ ...retirement, did });
+          });
+
+          return yield* output(
+            Retire.Output,
+            retiredOutput({ ...retirement, did })
+          );
+        }),
+        unretireName: Effect.fn("Issuer.unretireName")(
+          function* unretireName(input) {
+            const did = yield* subject(input.name);
+            const cleared = yield* retirements.clear(did);
+
+            yield* store.transaction((tx) => {
+              tx.unretire(input.name);
+            });
+
+            return yield* output(Unretire.Output, {
+              cleared,
+              did,
+              name: input.name,
+            });
+          }
+        ),
       });
     })
   );
@@ -242,6 +427,33 @@ export const issuerRoute = Effect.fn("Issuer.route")(function* issuerRoute(
         Schema.decodeUnknownEffect(ListNames.Params)(request.params ?? {}).pipe(
           Effect.flatMap(handlers.listNames)
         )
+      );
+    }
+
+    case Retire.Method.nsid: {
+      return yield* respond(
+        Retire.Output,
+        Schema.decodeUnknownEffect(Retire.Input)(request.input).pipe(
+          Effect.flatMap(handlers.retireName)
+        )
+      );
+    }
+
+    case Unretire.Method.nsid: {
+      return yield* respond(
+        Unretire.Output,
+        Schema.decodeUnknownEffect(Unretire.Input)(request.input).pipe(
+          Effect.flatMap(handlers.unretireName)
+        )
+      );
+    }
+
+    case ListRetired.Method.nsid: {
+      return yield* respond(
+        ListRetired.Output,
+        Schema.decodeUnknownEffect(ListRetired.Params)(
+          request.params ?? {}
+        ).pipe(Effect.flatMap(handlers.listRetired))
       );
     }
 

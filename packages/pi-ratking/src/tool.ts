@@ -3,7 +3,12 @@ import type { Duration } from "effect";
 
 import type { NotConfigured } from "./config.ts";
 import { RatKing, ReaderState } from "./ratking.ts";
-import type { NotDelivered, SendOptions, Status } from "./ratking.ts";
+import type {
+  Delivered,
+  NotDelivered,
+  SendOptions,
+  Status,
+} from "./ratking.ts";
 
 export const Action = Schema.Literals([
   "list",
@@ -16,6 +21,7 @@ export const Action = Schema.Literals([
   "handled",
   "status",
   "cancel",
+  "retire",
 ]);
 
 export const Attachment = Schema.Struct({
@@ -38,6 +44,7 @@ export const ToolParams = Schema.Struct({
   replyAll: Schema.optionalKey(Schema.Boolean),
   replyTo: Schema.optionalKey(Schema.String),
   retryOf: Schema.optionalKey(Schema.String),
+  successor: Schema.optionalKey(Schema.String),
   summary: Schema.optionalKey(Schema.String),
   supersedes: Schema.optionalKey(Schema.String),
   to: Schema.optionalKey(Schema.String),
@@ -63,6 +70,12 @@ const loud = (text: string, details: ToolText["details"] = {}): ToolText => ({
   text,
 });
 
+const withPresence = (text: string, delivered: Delivered) =>
+  delivered.presence === undefined ? text : `${text}\n${delivered.presence}`;
+
+const presenceDetails = (delivered: Delivered) =>
+  delivered.presence === undefined ? {} : { presence: delivered.presence };
+
 export const notDeliveredText = (error: NotDelivered) =>
   error.code === "Partial"
     ? `PARTIAL DELIVERY: ${error.reason}`
@@ -86,7 +99,8 @@ Usage:
   ${tool}({ action: "reply", replyTo: "<id>", summary: "...", message: "..." }) → Answer a message by its id
   ${tool}({ action: "pending" })                                     → Unanswered inbound asks
   ${tool}({ action: "list" })                                        → The Rat King directory
-  ${tool}({ action: "status" })                                      → This Pi's name and reader`;
+  ${tool}({ action: "status" })                                      → This Pi's name and reader
+  ${tool}({ action: "retire", successor: "name" })                   → Retire this Pi's own name; mail to it is refused naming the successor, and this reader stops`;
 
 export const promptSnippet = (tool: string) =>
   `Message other agents over Rat King with ${tool}: send, ask and wait, reply by id, list the directory.`;
@@ -283,8 +297,16 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
         });
 
         return ok(
-          `Reply delivered to ${delivered.to} over Rat King (id ${delivered.id}, seq ${delivered.seq}).`,
-          { id: delivered.id, replyTo: target, seq: delivered.seq }
+          withPresence(
+            `Reply delivered to ${delivered.to} over Rat King (id ${delivered.id}, seq ${delivered.seq}).`,
+            delivered
+          ),
+          {
+            id: delivered.id,
+            replyTo: target,
+            seq: delivered.seq,
+            ...presenceDetails(delivered),
+          }
         );
       })
     ),
@@ -299,8 +321,16 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
         });
 
         return ok(
-          `Delivered to ${delivered.to} over Rat King (id ${delivered.id}, seq ${delivered.seq}).`,
-          { id: delivered.id, seq: delivered.seq, to: delivered.to }
+          withPresence(
+            `Delivered to ${delivered.to} over Rat King (id ${delivered.id}, seq ${delivered.seq}).`,
+            delivered
+          ),
+          {
+            id: delivered.id,
+            seq: delivered.seq,
+            to: delivered.to,
+            ...presenceDetails(delivered),
+          }
         );
       })
     ),
@@ -318,10 +348,26 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
 
         return ok(
           `**Reply from ${reply.from}** (id ${reply.id}):\n${reply.body}`,
-          {
-            id: delivered.id,
-            replyId: reply.id,
-          }
+          { id: delivered.id, replyId: reply.id }
+        );
+      })
+    ),
+    Match.when("retire", () =>
+      Effect.gen(function* retire() {
+        const successor = Option.fromNullishOr(params.successor).pipe(
+          Option.map((name) => name.trim()),
+          Option.filter((name) => name !== "")
+        );
+
+        const retired = yield* ratking.retire(successor);
+
+        return ok(
+          `Retired ${retired.name} at ${retired.retiredAt}. Mail to it is now refused${
+            retired.successor === undefined
+              ? ""
+              : `, naming ${retired.successor} as the current row`
+          }. This reader stops; a new session under this name acquires its lease and clears the retirement.`,
+          { name: retired.name, retired: true }
         );
       })
     ),

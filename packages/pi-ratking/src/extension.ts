@@ -309,13 +309,19 @@ const forwardSend = (request: typeof SendRequest.Type) =>
         ? yield* ratking.send(request.to ?? "", body, options)
         : yield* ratking.reply(request.replyTo, body, options);
 
-    return {
+    const result = {
       id: delivered.id,
       requestId: request.requestId,
       seq: delivered.seq,
       status: "delivered",
       to: delivered.to,
     } as const;
+
+    if (delivered.presence !== undefined) {
+      Object.assign(result, { presence: delivered.presence });
+    }
+
+    return result;
   }).pipe(
     Effect.catchTags({
       AskFailed: (error) =>
@@ -348,10 +354,11 @@ const parameters = Type.Object({
       "handled",
       "status",
       "cancel",
+      "retire",
     ].map((action) => Type.Literal(action)),
     {
       description:
-        "send, ask (waits for the reply), reply, handled (confirm a relayed original id), pending, list, status. handover and cancel are refused on Rat King.",
+        "send, ask (waits for the reply), reply, handled (confirm a relayed original id), pending, list, status, retire (retire this Pi's own name, optionally naming a successor, and stop its reader). handover and cancel are refused on Rat King.",
     }
   ),
   attachments: Type.Optional(
@@ -407,6 +414,12 @@ const parameters = Type.Object({
   ),
   retryOf: Type.Optional(
     Type.String({ description: "Accepted for compatibility; unused." })
+  ),
+  successor: Type.Optional(
+    Type.String({
+      description:
+        "For retire: the Rat King name that replaces this one. Senders to the retired name are told to use it.",
+    })
   ),
   summary: Type.Optional(
     Type.String({
@@ -518,8 +531,8 @@ export const ratkingExtension = (options: ExtensionOptions) =>
 
     pi.registerTool({
       description: description(tool),
-      execute: async (_id, params, signal) =>
-        await run(
+      execute: async (_id, params, signal) => {
+        const result = await run(
           Effect.gen(function* execute() {
             const decoded = yield* Schema.decodeEffect(ToolParams)(params);
             const settings = yield* Settings;
@@ -536,7 +549,20 @@ export const ratkingExtension = (options: ExtensionOptions) =>
           (reason) =>
             toolResult(notConfiguredText(new NotConfigured({ reason }))),
           signal
-        ),
+        );
+
+        if (
+          !("isError" in result) &&
+          Schema.is(Schema.Struct({ retired: Schema.Literal(true) }))(
+            result.details
+          )
+        ) {
+          retired = true;
+          await stop();
+        }
+
+        return result;
+      },
       label: "Rat King",
       name: tool,
       parameters,

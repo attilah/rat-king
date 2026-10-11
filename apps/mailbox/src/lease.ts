@@ -138,6 +138,7 @@ const makeLeases = (store: typeof MailboxStore.Service): LeaseInterface =>
         };
 
         tx.setLease(lease);
+        tx.setRetirement(undefined);
 
         return fullLease(lease);
       });

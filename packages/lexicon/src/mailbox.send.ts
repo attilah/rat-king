@@ -40,6 +40,7 @@ export type ErrorBodyValue = typeof ErrorBody.Type;
 
 export const KnownErrors = [
   "LeaseMismatch",
+  "Retired",
   "InvalidRequest",
   "AuthRequired",
   "Forbidden",
