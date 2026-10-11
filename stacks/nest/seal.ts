@@ -12,21 +12,22 @@ import { FetchHttpClient } from "effect/http";
 
 import { plaintext } from "../../packages/envelope/src/canonical.ts";
 import * as Defs from "../../packages/lexicon/src/defs.ts";
-import * as Send from "../../packages/lexicon/src/mailbox.send.ts";
 import { lexString } from "../../packages/lexicon/src/runtime.ts";
-import { Transport } from "../../packages/lexicon/src/transport.ts";
-import { transportLayer } from "../../packages/mailbox-client/src/transport.ts";
+import {
+  ownIdentity,
+  prepare,
+  PreparedMailbox,
+  seal,
+  sendSealed,
+  SendOutcomes,
+  SUMMARY_MAX,
+} from "../../packages/mailbox-client/src/index.ts";
 import {
   loadSettings,
   Settings,
 } from "../../packages/pi-ratking/src/config.ts";
 import { directoryLayer } from "../../packages/pi-ratking/src/directory.ts";
 import { reasonOf } from "../../packages/pi-ratking/src/errors.ts";
-import {
-  PayloadJson,
-  SUMMARY_MAX,
-} from "../../packages/pi-ratking/src/payload.ts";
-import type { PayloadValue } from "../../packages/pi-ratking/src/payload.ts";
 import { secretStoreLayer } from "../../packages/pi-ratking/src/secrets.ts";
 import {
   leaseScriptIdentity,
@@ -140,7 +141,7 @@ export const parseSeal = (argv: readonly string[]) => {
 export const scriptSeal = Effect.fn("Nest.scriptSeal")(function* scriptSeal(
   request: typeof SealRequest.Type
 ) {
-  const { client, from, primary } = yield* prepareScript({
+  const { client, primary } = yield* prepareScript({
     ...request,
     cc: [],
   });
@@ -157,33 +158,6 @@ export const scriptSeal = Effect.fn("Nest.scriptSeal")(function* scriptSeal(
     );
   }
 
-  let json: string | undefined;
-
-  const encodeForId = (id: string) => {
-    if (json === undefined) {
-      const payload: PayloadValue = {
-        body: request.body,
-        cc: [],
-        from,
-        kind: request.replyTo === undefined ? "message" : "reply",
-        thread: request.thread ?? id,
-        to: primary.name,
-      };
-
-      if (request.summary !== undefined) {
-        Object.assign(payload, { summary: request.summary });
-      }
-
-      if (request.replyTo !== undefined) {
-        Object.assign(payload, { replyTo: request.replyTo });
-      }
-
-      json = Schema.encodeSync(PayloadJson)(payload);
-    }
-
-    return json;
-  };
-
   const replyTo =
     request.replyTo === undefined
       ? undefined
@@ -192,17 +166,29 @@ export const scriptSeal = Effect.fn("Nest.scriptSeal")(function* scriptSeal(
           senderDid: primary.did,
         });
 
-  const envelope = yield* client.seal(
+  const options = { encrypt: request.encrypt === true };
+
+  if (replyTo !== undefined) {
+    Object.assign(options, { replyTo });
+  }
+
+  if (request.summary !== undefined) {
+    Object.assign(options, { summary: request.summary });
+  }
+
+  if (request.thread !== undefined) {
+    Object.assign(options, { thread: request.thread });
+  }
+
+  const { envelope, messageId } = yield* seal(
     primary.did,
-    encodeForId,
-    replyTo === undefined
-      ? { encrypt: request.encrypt === true }
-      : { encrypt: request.encrypt === true, replyTo }
-  );
+    request.body,
+    options
+  ).pipe(Effect.provideService(PreparedMailbox, client));
 
   return {
     envelope: yield* Schema.encodeEffect(Defs.EncryptedEnvelope)(envelope),
-    messageId: envelope.aad.messageId,
+    messageId,
     to: primary.name,
   };
 });
@@ -272,89 +258,53 @@ export const scriptSendSealed = Effect.fn("Nest.scriptSendSealed")(
         );
       }
 
-      return yield* Effect.gen(function* sendEnvelope() {
-        const transport = yield* Transport;
+      const client = yield* prepare({
+        endpoint: settings.endpoint,
+        own: yield* ownIdentity(identity).pipe(
+          Effect.mapError((error) => refused("NoIdentity", error.reason))
+        ),
+        peers: [],
+        serviceDid: settings.serviceDid,
+      }).pipe(Effect.mapError((error) => refused("NoIdentity", error.reason)));
 
-        const response = yield* transport
-          .request({
-            input: { envelope },
-            method: "POST",
-            nsid: Send.Method.nsid,
-            params: undefined,
-          })
-          .pipe(
-            Effect.mapError((): SealedFailure =>
-              Verdicts.Uncertain({
-                reason: "Service-auth HTTP call failed",
-                sent: true,
-              })
-            )
-          );
-
-        if (response.status === 409) {
-          return yield* Effect.fail<SealedFailure>(new Conflict());
-        }
-
-        if (response.status >= 400 && response.status < 500) {
-          const error = Schema.decodeUnknownResult(Send.ErrorBody)(
-            response.body
-          );
-
-          const code = Result.isSuccess(error)
-            ? error.success.error
-            : "Rejected";
-
-          const reason = Result.isSuccess(error)
-            ? (error.success.message ?? "Mailbox refused admission")
-            : "Mailbox refused admission";
-
-          return yield* Effect.fail(
-            refused(
-              code === "AuthRequired" || code === "Forbidden"
-                ? "Unauthorized"
-                : code,
-              reason
-            )
-          );
-        }
-
-        if (response.status !== 200 || response.kind !== "json") {
-          return yield* Effect.fail<SealedFailure>(
-            Verdicts.Uncertain({
-              reason: "Admission not confirmed",
-              sent: true,
-            })
-          );
-        }
-
-        const receipt = yield* Schema.decodeUnknownEffect(Send.Output)(
-          response.body
-        ).pipe(
-          Effect.mapError(() =>
-            Verdicts.Uncertain({
-              reason: "Invalid admission receipt",
-              sent: true,
-            })
-          )
-        );
-
-        stdout.push(
-          JSON.stringify({
-            id: receipt.receipt.message.messageId,
-            seq: receipt.receipt.seq,
-          })
-        );
-
-        return yield* Effect.void;
-      }).pipe(
-        Effect.provide(
-          transportLayer(
-            settings.endpoint,
-            `${settings.serviceDid.replace(/#mailbox$/u, "")}#mailbox`,
-            identity
-          )
-        )
+      const decoded = yield* Schema.decodeEffect(Defs.EncryptedEnvelope)(
+        envelope
+      ).pipe(
+        Effect.mapError(() => refused("Usage", "Invalid sealed envelope"))
       );
+
+      const outcome = yield* sendSealed(decoded).pipe(
+        Effect.provideService(PreparedMailbox, client)
+      );
+
+      return yield* SendOutcomes.$match(outcome, {
+        Accepted: ({ receipt }) =>
+          Effect.sync(() => {
+            stdout.push(
+              JSON.stringify({
+                id: receipt.message.messageId,
+                seq: receipt.seq,
+              })
+            );
+          }),
+        NotAttempted: ({ reason }) =>
+          Effect.fail(refused("NotAttempted", reason)),
+        Rejected: ({ error }) =>
+          Effect.fail<SealedFailure>(
+            error.status === 409
+              ? new Conflict()
+              : refused(
+                  error.error === "AuthRequired" || error.error === "Forbidden"
+                    ? "Unauthorized"
+                    : (error.error ?? "Rejected"),
+                  error.reason
+                )
+          ),
+        Uncertain: ({ error }) =>
+          Effect.fail<SealedFailure>(
+            Verdicts.Uncertain({ reason: error.reason, sent: true })
+          ),
+      });
     }).pipe(
       Effect.scoped,
       Effect.match({

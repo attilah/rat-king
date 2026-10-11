@@ -13,7 +13,7 @@
     "@rat-king/lexicon": "workspace:*",
     "@rat-king/mailbox-client": "workspace:*",
     "effect": "4.0.1",
-    "xstate": "6.0.0-alpha.59"
+    "xstate": "6.0.0-alpha.65"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "1.0.2",

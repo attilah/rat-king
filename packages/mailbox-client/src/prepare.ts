@@ -30,6 +30,8 @@ import { importSigning, Identity } from "./identity.ts";
 import type { IdentityValue } from "./identity.ts";
 import { layer, RatKingMailbox } from "./mailbox.ts";
 import type { LeaseFence, OpenedMessage, SendOptions } from "./mailbox.ts";
+import { PayloadJson } from "./payload.ts";
+import type { PayloadValue } from "./payload.ts";
 import { lookupPresence } from "./record-visibility.ts";
 import { randomTid } from "./tid.ts";
 import { transportLayer } from "./transport.ts";
@@ -72,8 +74,58 @@ export const SendOutcomes = Data.taggedEnum<SendOutcome>();
 
 export type SendResult = SendOutcome & { readonly cc?: SendOutcome };
 
+export interface SealOptions {
+  readonly encrypt?: boolean;
+  readonly replyTo?: Defs.MessageRefValue;
+  readonly summary?: string;
+  readonly thread?: string;
+}
+
+export interface SealedMessage {
+  readonly envelope: Defs.EncryptedEnvelopeValue;
+  readonly messageId: string;
+}
+
+export class PreparedMailbox extends Context.Service<
+  PreparedMailbox,
+  {
+    readonly sealPayload: (
+      to: string,
+      body: string,
+      opts?: SealOptions
+    ) => Effect.Effect<SealedMessage, MailboxClientError>;
+    readonly sendSealed: (
+      envelope: Defs.EncryptedEnvelopeValue,
+      fence?: LeaseFence
+    ) => Effect.Effect<SendOutcome>;
+  }
+>()("mailbox/PreparedMailbox") {}
+
+export const seal = Effect.fn("Mailbox.sealPayload")(function* seal(
+  to: string,
+  body: string,
+  opts?: SealOptions
+) {
+  const client = yield* PreparedMailbox;
+
+  return yield* client.sealPayload(to, body, opts);
+});
+
+export const sendSealed = Effect.fn("Mailbox.sendSealed")(function* sendSealed(
+  envelope: Defs.EncryptedEnvelopeValue,
+  fence?: LeaseFence
+) {
+  const client = yield* PreparedMailbox;
+
+  return yield* client.sendSealed(envelope, fence);
+});
+
 export interface PrepareOptions {
   readonly own: OwnIdentity;
+  readonly names?: {
+    readonly from: string;
+    readonly peers: Readonly<Record<string, string>>;
+  };
   readonly peers: readonly PeerDocument[];
   readonly endpoint: string;
   readonly serviceDid: string;
@@ -156,71 +208,73 @@ export const prepare = Effect.fn("Mailbox.prepare")(function* prepare(
 
   let consuming = false;
 
-  const seal = Effect.fn("Mailbox.seal")(function* seal(
-    to: string,
-    body: string | ((messageId: string) => string),
-    opts?: SendOptions
-  ) {
-    const now = yield* Clock.currentTimeMillis;
+  const sealEnvelopeForPeer = Effect.fn("Mailbox.seal")(
+    function* sealEnvelopeForPeer(
+      to: string,
+      body: string | ((messageId: string) => string),
+      opts?: SendOptions
+    ) {
+      const now = yield* Clock.currentTimeMillis;
 
-    const messageId = randomTid(now);
+      const messageId = randomTid(now);
 
-    const text = yield* Effect.try({
-      catch: () =>
-        new MailboxClientError({ reason: "Invalid message body factory" }),
-      try: () =>
-        Match.value(body).pipe(
-          Match.when(Match.string, (value) => value),
-          Match.orElse((factory) => factory(messageId))
+      const text = yield* Effect.try({
+        catch: () =>
+          new MailboxClientError({ reason: "Invalid message body factory" }),
+        try: () =>
+          Match.value(body).pipe(
+            Match.when(Match.string, (value) => value),
+            Match.orElse((factory) => factory(messageId))
+          ),
+      });
+
+      const raw = {
+        aad: {
+          messageId,
+          recipientDid: to,
+          recipientKeyId: `${to}#encryption`,
+          senderDid: identity.did,
+        },
+        body: new TextEncoder().encode(text),
+        suite: opts?.encrypt === false ? plaintextSuite : suite,
+        version: 1,
+      };
+
+      if (opts?.expiresAt !== undefined) {
+        Object.assign(raw.aad, { expiresAt: opts.expiresAt });
+      }
+
+      if (opts?.replyTo !== undefined) {
+        Object.assign(raw, { replyTo: opts.replyTo });
+      }
+
+      if (opts?.urgent !== undefined) {
+        Object.assign(raw, { urgent: opts.urgent });
+      }
+
+      const payload = yield* Schema.decodeUnknownEffect(
+        Schema.toType(Defs.SigningPayload)
+      )(raw).pipe(Effect.mapError(clientError));
+
+      const envelope = yield* sealEnvelope({
+        payload,
+        recipientKey: yield* resolver.resolve(
+          to,
+          `${to}#encryption`,
+          "keyAgreement"
         ),
-    });
-
-    const raw = {
-      aad: {
-        messageId,
-        recipientDid: to,
         recipientKeyId: `${to}#encryption`,
-        senderDid: identity.did,
-      },
-      body: new TextEncoder().encode(text),
-      suite: opts?.encrypt === false ? plaintextSuite : suite,
-      version: 1,
-    };
+        signingKey,
+        signingKeyId: `${identity.did}#atproto`,
+      }).pipe(Effect.mapError(clientError));
 
-    if (opts?.expiresAt !== undefined) {
-      Object.assign(raw.aad, { expiresAt: opts.expiresAt });
+      payloads.set(envelope, payload);
+
+      return envelope;
     }
+  );
 
-    if (opts?.replyTo !== undefined) {
-      Object.assign(raw, { replyTo: opts.replyTo });
-    }
-
-    if (opts?.urgent !== undefined) {
-      Object.assign(raw, { urgent: opts.urgent });
-    }
-
-    const payload = yield* Schema.decodeUnknownEffect(
-      Schema.toType(Defs.SigningPayload)
-    )(raw).pipe(Effect.mapError(clientError));
-
-    const envelope = yield* sealEnvelope({
-      payload,
-      recipientKey: yield* resolver.resolve(
-        to,
-        `${to}#encryption`,
-        "keyAgreement"
-      ),
-      recipientKeyId: `${to}#encryption`,
-      signingKey,
-      signingKeyId: `${identity.did}#atproto`,
-    }).pipe(Effect.mapError(clientError));
-
-    payloads.set(envelope, payload);
-
-    return envelope;
-  });
-
-  const submit = Effect.fn("Mailbox.submit")(function* submit(
+  const submit = Effect.fn("Mailbox.sendSealed")(function* submit(
     envelope: Defs.EncryptedEnvelopeValue,
     fence?: LeaseFence
   ) {
@@ -331,7 +385,7 @@ export const prepare = Effect.fn("Mailbox.prepare")(function* prepare(
           Effect.mapError(clientError)
         );
 
-        copy = yield* seal(did, body, { replyTo });
+        copy = yield* sealEnvelopeForPeer(did, body, { replyTo });
         cached.set(did, copy);
         copies.set(envelope, cached);
       }
@@ -345,6 +399,48 @@ export const prepare = Effect.fn("Mailbox.prepare")(function* prepare(
     );
 
     return { ...primary, cc: ccResult };
+  });
+
+  const sealPayload = Effect.fn("Mailbox.sealPayload")(function* sealPayload(
+    to: string,
+    body: string,
+    opts?: SealOptions
+  ) {
+    const from = options.names?.from;
+    const recipient = options.names?.peers[to];
+
+    if (from === undefined || recipient === undefined) {
+      return yield* failure(
+        "Payload sealing requires sender and recipient names"
+      );
+    }
+
+    const envelope = yield* sealEnvelopeForPeer(
+      to,
+      (id) => {
+        const payload: PayloadValue = {
+          body,
+          cc: [],
+          from,
+          kind: opts?.replyTo === undefined ? "message" : "reply",
+          thread: opts?.thread ?? id,
+          to: recipient,
+        };
+
+        if (opts?.summary !== undefined) {
+          Object.assign(payload, { summary: opts.summary });
+        }
+
+        if (opts?.replyTo !== undefined) {
+          Object.assign(payload, { replyTo: opts.replyTo.messageId });
+        }
+
+        return Schema.encodeSync(PayloadJson)(payload);
+      },
+      opts
+    ).pipe(Effect.mapError(clientError));
+
+    return { envelope, messageId: envelope.aad.messageId };
   });
 
   const refresh = Effect.fn("Mailbox.refresh")(function* refresh(did: string) {
@@ -428,7 +524,9 @@ export const prepare = Effect.fn("Mailbox.prepare")(function* prepare(
     presence,
     refresh,
     resolveLease: mailbox.lease.resolve,
-    seal,
+    seal: sealEnvelopeForPeer,
+    sealPayload,
     send,
+    sendSealed: submit,
   };
 });

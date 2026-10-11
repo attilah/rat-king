@@ -23,7 +23,7 @@ import type { XrpcFailure } from "@rat-king/lexicon/xrpc-failure";
 import { DurableObject } from "cloudflare:workers";
 import { Clock, Effect, Layer, Schema } from "effect";
 
-import { authenticate, authenticateClaims, ReplayAuthority } from "./auth.ts";
+import { authenticate, authenticateClaims } from "./auth.ts";
 import type { Bindings } from "./bindings.ts";
 import { documentsLayer, didAllowlist, peerDocument } from "./documents.ts";
 import { logFailure } from "./failure-log.ts";
@@ -40,6 +40,7 @@ import {
   LeaseAuthority,
   leaseLayer,
 } from "./mailbox.ts";
+import { replayLayer } from "./replay.ts";
 import { isoTime, markRetired, presenceOf } from "./retirement.ts";
 import { SenderFence } from "./sender-fence.ts";
 import { SocketAttachment, socketStep, socketCodes } from "./socket.ts";
@@ -90,33 +91,6 @@ const errorResponse = (error: XrpcFailure) =>
   Response.json(
     { error: error.error, message: error.message },
     { status: error.status }
-  );
-
-const replayLayer = (env: Bindings) =>
-  Layer.succeed(
-    ReplayAuthority,
-    ReplayAuthority.of({
-      consume: Effect.fn("AuthTokens.consume")(function* consume(claims, now) {
-        const accepted = yield* Effect.tryPromise({
-          catch: () => failure("MailboxUnavailable", 503),
-          try: () =>
-            env.AUTH_TOKENS.getByName(env.SERVICE_DID).consume(
-              claims.iss,
-              claims.jti,
-              claims.exp,
-              now
-            ),
-        });
-
-        if (!accepted) {
-          return yield* Effect.fail(
-            failure("AuthRequired", 401, "Reused service token")
-          );
-        }
-
-        return yield* Effect.void;
-      }),
-    })
   );
 
 const armTraffic = Effect.fn("Traffic.arm")(function* arm(

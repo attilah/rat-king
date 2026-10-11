@@ -377,6 +377,12 @@ export const prepareScript = Effect.fn("Nest.prepareScript")(
 
     const client = yield* prepare({
       endpoint: settings.endpoint,
+      names: {
+        from,
+        peers: Object.fromEntries(
+          targets.map((target) => [target.did, target.name])
+        ),
+      },
       own,
       peers: targets.map((target) => target.document),
       serviceDid: settings.serviceDid,

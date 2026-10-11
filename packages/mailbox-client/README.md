@@ -19,6 +19,14 @@ Same sender and messageId with identical envelope bytes returns the original adm
 
 `cc` names one distinct known DID. Only an accepted, locally sealed primary can produce a CC, because copying encrypted ciphertext cannot disclose the plaintext to another key. The returned `cc` outcome is independent. CC never retries the primary and never changes its receipt. It uses a separate messageId, a signed replyTo link and an encrypted `sh.mschf.ratking.mailbox.cc` body carrying the primary sender, messageId and recipient. `open` projects this as `OpenedMessage.cc`; its body is the copied content. Recipient adapters must label it a CC. Its ack belongs only to the copy's messageId, never the primary. No automatic CC retries occur. Restored externally sealed envelopes can send their primary but cannot manufacture a CC without their plaintext.
 
+## Public service auth and sealed journals
+
+`authenticateClaims({ authorization, audience, nsid, now })` verifies ES256 service auth against `DidResolver` and consumes the token through `ReplayAuthority`. `now` is milliseconds; claims use seconds. Supply the service audience DID and allowed lexicon method as `nsid`. Supply a replay implementation that atomically refuses a reused issuer and jti. The mailbox uses this same verifier.
+
+For named message payloads, pass `names: { from, peers }` to `prepare`, where `peers` maps recipient DIDs to resolved Rat King names. Provide the returned client with `Effect.provideService(PreparedMailbox, client)`. Then `seal(to, body, { summary, thread, replyTo, encrypt })` returns `{ envelope, messageId }`. It encodes the same payload as `nest seal`; absent names fail closed. `replyTo` is a message reference with senderDid and messageId. The existing `client.seal` still returns a bare envelope without wrapping its body.
+
+`sendSealed(envelope, fence?)` submits the supplied envelope without re-sealing. It checks sender identity and the optional sender lease fence, and returns `SendOutcome`. It needs no recipient lookup; the server admits or refuses the sealed recipient. Provide the same `PreparedMailbox` service, or call `client.sendSealed` directly. Persist and retry the original envelope, not a new seal. Neither operation performs live deployment.
+
 ## Consume
 
 `yield* client.consume(handler, { harness, resume, afterSeq, onLease })` runs one scoped consumer per prepared client. `harness` is supplied by the caller. `resume` is the last lease fence; it must belong to the own DID. Persist `onLease` updates if crash handover is needed. A signed same-DID acquire with the current fence increments generation even when the harness sessionId changes. Without current fence proof, `LeaseHeld` waits until the returned holder expiry and retries.

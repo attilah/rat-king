@@ -1,8 +1,8 @@
 import { Option, Result, Schema } from "effect";
 
-export const AgentName = Schema.String.check(
-  Schema.isPattern(/^(?:[a-z0-9]+(?:-[a-z0-9]+)*\/)?[a-z][a-z0-9_-]{0,31}$/u)
-);
+import { AgentName } from "../../mailbox-client/src/payload.ts";
+
+export { AgentName } from "../../mailbox-client/src/payload.ts";
 
 export const Did = Schema.String.check(Schema.isPattern(/^did:web:[^#\s]+$/u));
 

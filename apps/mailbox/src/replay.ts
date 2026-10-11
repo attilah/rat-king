@@ -1,17 +1,37 @@
-import type { XrpcFailure } from "@rat-king/lexicon/xrpc-failure";
-import { Context } from "effect";
-import type { Effect } from "effect";
+import { ReplayAuthority } from "@rat-king/mailbox-client";
+import { Effect, Layer } from "effect";
 
-import type { ClaimsValue } from "./auth.ts";
+import type { Bindings } from "./bindings.ts";
+import { failure } from "./failure.ts";
 
-export interface ReplayInterface {
-  readonly consume: (
-    claims: ClaimsValue,
-    now: number
-  ) => Effect.Effect<void, XrpcFailure>;
-}
+export { ReplayAuthority } from "@rat-king/mailbox-client";
 
-export class ReplayAuthority extends Context.Service<
-  ReplayAuthority,
-  ReplayInterface
->()("mailbox/ReplayAuthority") {}
+export type { ReplayInterface } from "@rat-king/mailbox-client";
+
+export const replayLayer = (env: Bindings) =>
+  Layer.succeed(
+    ReplayAuthority,
+    ReplayAuthority.of({
+      consume: Effect.fn("AuthTokens.consume")(function* consume(claims, now) {
+        const accepted = yield* Effect.tryPromise({
+          catch: () => failure("MailboxUnavailable", 503),
+          // oxlint-disable-next-line typescript/promise-function-async -- Effect adapters require lazy Promise thunks.
+          try: () =>
+            env.AUTH_TOKENS.getByName(env.SERVICE_DID).consume(
+              claims.iss,
+              claims.jti,
+              claims.exp,
+              now
+            ),
+        });
+
+        if (!accepted) {
+          return yield* Effect.fail(
+            failure("AuthRequired", 401, "Reused service token")
+          );
+        }
+
+        return yield* Effect.void;
+      }),
+    })
+  );

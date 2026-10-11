@@ -1843,10 +1843,17 @@ var clientLayer = Layer.effect(
 );
 
 // packages/mailbox-client/src/mailbox.ts
-import { Clock as Clock3, Context as Context5, Effect as Effect15, Layer as Layer4, Option as Option3, Schema as Schema29 } from "effect";
+import { Clock as Clock3, Context as Context6, Effect as Effect15, Layer as Layer4, Option as Option3, Schema as Schema29 } from "effect";
 
 // packages/mailbox-client/src/auth.ts
-import { Context as Context3, Effect as Effect9, Layer as Layer2, Schema as Schema20 } from "effect";
+import { Context as Context4, Effect as Effect9, Layer as Layer2, Schema as Schema20 } from "effect";
+
+// packages/mailbox-client/src/replay.ts
+import { Context as Context3 } from "effect";
+var ReplayAuthority = class extends Context3.Service()("mailbox/ReplayAuthority") {
+};
+
+// packages/mailbox-client/src/auth.ts
 var failure = (error, status, message) => {
   if (message === void 0) {
     return new XrpcFailure({ error, response: {}, status });
@@ -1866,6 +1873,7 @@ var Claims = Schema20.Struct({
   jti: Schema20.String.check(Schema20.isMinLength(16)),
   lxm: Schema20.String
 });
+var authFailure = (error, status = 400, message = error) => new XrpcFailure({ error, message, response: { error, message }, status });
 var PublicJwk2 = Schema20.Struct({
   crv: Schema20.Literal("P-256"),
   d: Schema20.optionalKey(Schema20.Never),
@@ -1886,7 +1894,7 @@ var Document = Schema20.Struct({
   )
 });
 var Documents = Schema20.Array(Document);
-var DidResolver = class extends Context3.Service()("mailbox/DidResolver") {
+var DidResolver = class extends Context4.Service()("mailbox/DidResolver") {
 };
 var documentResolver = (lookup) => Layer2.succeed(
   DidResolver,
@@ -1918,6 +1926,61 @@ var documentResolver = (lookup) => Layer2.succeed(
 );
 var staticResolver = (documents) => documentResolver(
   (did) => Effect9.succeed(documents.find((candidate) => candidate.id === did))
+);
+var Header = Schema20.Struct({
+  alg: Schema20.Literal("ES256"),
+  kid: Schema20.optionalKey(Schema20.String),
+  typ: Schema20.optionalKey(Schema20.Literal("JWT"))
+});
+var json = (text) => Effect9.try({
+  catch: () => authFailure("AuthRequired", 401),
+  try: () => new TextDecoder().decode(unbase64url(text))
+});
+var authenticateClaims = Effect9.fn("ServiceAuth.authenticateClaims")(
+  function* authenticateClaims2(request) {
+    const token = request.authorization?.match(
+      /^Bearer (?<token>[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/u
+    )?.groups?.token;
+    if (token === void 0 || token === "") {
+      return yield* Effect9.fail(authFailure("AuthRequired", 401));
+    }
+    const [headerText = "", claimsText = "", signatureText = ""] = token.split(".");
+    const header = yield* Schema20.decodeUnknownEffect(
+      Schema20.fromJsonString(Header)
+    )(yield* json(headerText)).pipe(
+      Effect9.mapError(() => authFailure("AuthRequired", 401))
+    );
+    const claims = yield* Schema20.decodeUnknownEffect(
+      Schema20.fromJsonString(Claims)
+    )(yield* json(claimsText)).pipe(
+      Effect9.mapError(() => authFailure("AuthRequired", 401))
+    );
+    const now = Math.floor(request.now / 1e3);
+    if (claims.aud !== request.audience || claims.lxm !== request.nsid || claims.iat > now || claims.exp <= now || claims.exp <= claims.iat || claims.exp - claims.iat > 60 || now - claims.iat > 60) {
+      return yield* Effect9.fail(
+        authFailure("AuthRequired", 401, "Invalid service-auth claims")
+      );
+    }
+    const kid = header.kid ?? "#atproto";
+    const keyId = kid.startsWith("#") ? `${claims.iss}${kid}` : kid;
+    const resolver = yield* DidResolver;
+    const key = yield* resolver.resolve(claims.iss, keyId, "authentication");
+    const signature = yield* Effect9.try({
+      catch: () => authFailure("AuthRequired", 401),
+      try: () => unbase64url(signatureText)
+    });
+    const valid = yield* verify(
+      key,
+      new TextEncoder().encode(`${headerText}.${claimsText}`),
+      signature
+    ).pipe(Effect9.mapError(() => authFailure("AuthRequired", 401)));
+    if (!valid) {
+      return yield* Effect9.fail(authFailure("AuthRequired", 401));
+    }
+    const replay = yield* ReplayAuthority;
+    yield* replay.consume(claims, request.now);
+    return claims;
+  }
 );
 var serviceToken = Effect9.fn("ServiceAuth.sign")(
   function* serviceToken2(claims, key, kid) {
@@ -2165,14 +2228,14 @@ var transportLayer = (endpoint, audience, identity) => Layer3.effect(
           }
           const response = yield* http.execute(outgoing);
           const body = yield* response.text;
-          const json = yield* Schema26.decodeUnknownEffect(
+          const json2 = yield* Schema26.decodeUnknownEffect(
             Schema26.fromJsonString(Schema26.toEncoded(Data))
           )(body).pipe(Effect12.result);
-          if (Result2.isFailure(json)) {
+          if (Result2.isFailure(json2)) {
             return { body, kind: "text", status: response.status };
           }
           return {
-            body: json.success,
+            body: json2.success,
             kind: "json",
             status: response.status
           };
@@ -2269,7 +2332,7 @@ var Notice = Schema27.StructWithRest(
 // packages/mailbox-client/src/watch.ts
 import {
   Clock as Clock2,
-  Context as Context4,
+  Context as Context5,
   Duration,
   Effect as Effect14,
   Option as Option2,
@@ -2279,7 +2342,7 @@ import {
   Stream
 } from "effect";
 import { Socket } from "effect/socket";
-var WebSocketPort = class extends Context4.Service()("@rat-king/mailbox-client/WebSocketPort") {
+var WebSocketPort = class extends Context5.Service()("@rat-king/mailbox-client/WebSocketPort") {
 };
 var socketError = (error) => {
   if (Predicate.isTagged(error.reason, "SocketCloseError")) {
@@ -2404,7 +2467,7 @@ var watch = (config, poll, afterSeq, fence) => Stream.suspend(() => {
 });
 
 // packages/mailbox-client/src/mailbox.ts
-var RatKingMailbox = class extends Context5.Service()("@rat-king/mailbox-client/RatKingMailbox") {
+var RatKingMailbox = class extends Context6.Service()("@rat-king/mailbox-client/RatKingMailbox") {
 };
 var layer = (config, resolverLayer = staticResolver(config.documents)) => Layer4.effect(
   RatKingMailbox,
@@ -2639,37 +2702,64 @@ var layer = (config, resolverLayer = staticResolver(config.documents)) => Layer4
   ])
 );
 
-// packages/lexicon/src/mailbox.getPeerDocument.ts
+// packages/mailbox-client/src/payload.ts
 import { Effect as Effect16, Schema as Schema30 } from "effect";
-var Params13 = Schema30.StructWithRest(
-  Schema30.Struct({
+var AgentName = Schema30.String.check(
+  Schema30.isPattern(/^(?:[a-z0-9]+(?:-[a-z0-9]+)*\/)?[a-z][a-z0-9_-]{0,31}$/u)
+);
+var SUMMARY_MAX = 280;
+var Kind = Schema30.Literals(["message", "ask", "reply", "data"]);
+var Payload = Schema30.Struct({
+  body: Schema30.String,
+  cc: Schema30.optionalKey(Schema30.Array(AgentName)),
+  from: AgentName,
+  kind: Schema30.optionalKey(Kind),
+  label: Schema30.optionalKey(Schema30.String.check(Schema30.isMaxLength(256))),
+  replyTo: Schema30.optionalKey(Schema30.String),
+  summary: Schema30.optionalKey(
+    Schema30.String.check(Schema30.isMaxLength(SUMMARY_MAX))
+  ),
+  thread: Schema30.optionalKey(Schema30.String),
+  to: Schema30.optionalKey(AgentName)
+});
+var PayloadJson = Schema30.fromJsonString(Payload);
+var encodePayload = Effect16.fn("RatKing.encodePayload")(
+  function* encodePayload2(payload) {
+    return yield* Schema30.encodeEffect(PayloadJson)(payload);
+  }
+);
+
+// packages/lexicon/src/mailbox.getPeerDocument.ts
+import { Effect as Effect17, Schema as Schema31 } from "effect";
+var Params13 = Schema31.StructWithRest(
+  Schema31.Struct({
     did: lexString({ format: "did", type: "string" }).pipe(
-      Schema30.brand("Lexicon:did")
+      Schema31.brand("Lexicon:did")
     )
   }),
-  [Schema30.Record(Schema30.String, Data)]
+  [Schema31.Record(Schema31.String, Data)]
 );
-var Input11 = Schema30.Undefined;
-var Output11 = Schema30.StructWithRest(
-  Schema30.Struct({ document: DidDocument }),
-  [Schema30.Record(Schema30.String, Data)]
+var Input11 = Schema31.Undefined;
+var Output11 = Schema31.StructWithRest(
+  Schema31.Struct({ document: DidDocument }),
+  [Schema31.Record(Schema31.String, Data)]
 );
-var ParamsFromQuery5 = Schema30.StructWithRest(
-  Schema30.Struct({ did: Schema30.String }),
-  [Schema30.Record(Schema30.String, Data)]
-).pipe(Schema30.decodeTo(Params13));
-var encodeParams9 = Effect16.fn("lexicon.encodeParams")(
+var ParamsFromQuery5 = Schema31.StructWithRest(
+  Schema31.Struct({ did: Schema31.String }),
+  [Schema31.Record(Schema31.String, Data)]
+).pipe(Schema31.decodeTo(Params13));
+var encodeParams9 = Effect17.fn("lexicon.encodeParams")(
   function* encodeParams10(params) {
     return entries(
-      yield* Schema30.decodeUnknownEffect(Params4)(
-        yield* Schema30.encodeEffect(ParamsFromQuery5)(params)
+      yield* Schema31.decodeUnknownEffect(Params4)(
+        yield* Schema31.encodeEffect(ParamsFromQuery5)(params)
       )
     );
   }
 );
-var decodeParams9 = Effect16.fn("lexicon.decodeParams")(
+var decodeParams9 = Effect17.fn("lexicon.decodeParams")(
   function* decodeParams10(entries2) {
-    return yield* Schema30.decodeUnknownEffect(ParamsFromQuery5)(
+    return yield* Schema31.decodeUnknownEffect(ParamsFromQuery5)(
       parameters(entries2)
     );
   }
@@ -2691,25 +2781,25 @@ var Method12 = {
 // packages/mailbox-client/src/prepare.ts
 import {
   Clock as Clock5,
-  Context as Context6,
+  Context as Context7,
   Data as Data2,
-  Effect as Effect18,
+  Effect as Effect19,
   Layer as Layer5,
   Match as Match2,
   Predicate as Predicate2,
   Result as Result3,
-  Schema as Schema32
+  Schema as Schema33
 } from "effect";
 
 // packages/mailbox-client/src/consume.ts
 import {
   Clock as Clock4,
   DateTime,
-  Effect as Effect17,
+  Effect as Effect18,
   Match,
   Option as Option4,
   Schedule as Schedule2,
-  Schema as Schema31,
+  Schema as Schema32,
   Stream as Stream2
 } from "effect";
 import { createMachine, initialTransition, transition } from "xstate";
@@ -2731,13 +2821,13 @@ var consumerMachine = createMachine({
 });
 var expiredRefusal = (error) => error.error === "InvalidTransition" && error.reason === "Expired message";
 var settledRefusal = (error) => error.error === "InvalidTransition";
-var consume = (mailbox, did, handler, options) => Effect17.scoped(
-  Effect17.gen(function* runConsumer() {
+var consume = (mailbox, did, handler, options) => Effect18.scoped(
+  Effect18.gen(function* runConsumer() {
     let [state] = initialTransition(consumerMachine);
-    const step = (event) => Effect17.sync(() => {
+    const step = (event) => Effect18.sync(() => {
       [state] = transition(consumerMachine, state, { type: event });
     });
-    const acquire = Effect17.gen(function* acquire2() {
+    const acquire = Effect18.gen(function* acquire2() {
       const now = yield* Clock4.currentTimeMillis;
       const input = {
         did,
@@ -2759,31 +2849,31 @@ var consume = (mailbox, did, handler, options) => Effect17.scoped(
         });
       }
       return yield* mailbox.lease.acquire(input).pipe(
-        Effect17.catchIf(
+        Effect18.catchIf(
           (error) => error.error === "LeaseHeld",
-          (error) => Effect17.gen(function* waitHolder() {
+          (error) => Effect18.gen(function* waitHolder() {
             yield* step("HELD");
             const holder = yield* mailbox.lease.resolve(did).pipe(
-              Effect17.catchIf(
+              Effect18.catchIf(
                 (failure3) => failure3.error === "LeaseNotFound",
-                () => Effect17.void
+                () => Effect18.void
               )
             );
             const current2 = yield* Clock4.currentTimeMillis;
             if (holder !== void 0) {
-              yield* Effect17.interruptible(
-                Effect17.sleep(
+              yield* Effect18.interruptible(
+                Effect18.sleep(
                   Math.max(1, Date.parse(holder.expiresAt) - current2)
                 )
               );
             }
             yield* step("RETRY");
-            return yield* Effect17.fail(error);
+            return yield* Effect18.fail(error);
           })
         )
       );
     }).pipe(
-      Effect17.retry(
+      Effect18.retry(
         Schedule2.spaced("1 millis").pipe(
           Schedule2.while(
             ({ input }) => input.error === "LeaseHeld"
@@ -2791,19 +2881,19 @@ var consume = (mailbox, did, handler, options) => Effect17.scoped(
         )
       )
     );
-    let current = yield* Effect17.acquireRelease(
+    let current = yield* Effect18.acquireRelease(
       acquire,
-      () => Effect17.gen(function* release() {
+      () => Effect18.gen(function* release() {
         yield* step("STOP");
         yield* mailbox.lease.release({
           did,
           generation: current.generation,
           leaseId: current.leaseId
         }).pipe(
-          Effect17.tapError(
-            (error) => Effect17.logWarning("Mailbox lease release not confirmed", error)
+          Effect18.tapError(
+            (error) => Effect18.logWarning("Mailbox lease release not confirmed", error)
           ),
-          Effect17.ignore
+          Effect18.ignore
         );
         yield* step("RELEASED");
       })
@@ -2817,12 +2907,12 @@ var consume = (mailbox, did, handler, options) => Effect17.scoped(
       generation: current.generation,
       leaseId: current.leaseId
     });
-    const lost = (error) => Effect17.gen(function* classifyLoss() {
+    const lost = (error) => Effect18.gen(function* classifyLoss() {
       yield* step("LOST");
       const actual = yield* mailbox.lease.resolve(did).pipe(
-        Effect17.catchIf(
+        Effect18.catchIf(
           (failure3) => failure3.error === "LeaseNotFound",
-          () => Effect17.void
+          () => Effect18.void
         )
       );
       const now = yield* Clock4.currentTimeMillis;
@@ -2833,11 +2923,11 @@ var consume = (mailbox, did, handler, options) => Effect17.scoped(
       if (actual !== void 0 && (actual.leaseId !== current.leaseId || actual.generation !== current.generation)) {
         reason = "LeaseTakenOver";
       }
-      return yield* Effect17.fail(
+      return yield* Effect18.fail(
         new MailboxClientError({ error: reason, reason: error.reason })
       );
     });
-    const renew = Effect17.gen(function* renew2() {
+    const renew = Effect18.gen(function* renew2() {
       const now = yield* Clock4.currentTimeMillis;
       const remaining = Date.parse(current.expiresAt) - now;
       if (remaining <= 0) {
@@ -2846,7 +2936,7 @@ var consume = (mailbox, did, handler, options) => Effect17.scoped(
           reason: "Lease expired before renewal"
         });
       }
-      yield* Effect17.sleep(Math.max(1, Math.floor(remaining / 2)));
+      yield* Effect18.sleep(Math.max(1, Math.floor(remaining / 2)));
       const renewedAt = yield* Clock4.currentTimeMillis;
       const renewal = {
         ...fence(),
@@ -2861,22 +2951,22 @@ var consume = (mailbox, did, handler, options) => Effect17.scoped(
       if (options.onLease !== void 0) {
         yield* options.onLease(current);
       }
-      return yield* Effect17.void;
-    }).pipe(Effect17.repeat(Schedule2.spaced("0 millis")), Effect17.catch(lost));
+      return yield* Effect18.void;
+    }).pipe(Effect18.repeat(Schedule2.spaced("0 millis")), Effect18.catch(lost));
     const intake = mailbox.watch(options.afterSeq ?? 0, fence()).pipe(
       Stream2.runForEach(
-        (batch) => Effect17.forEach(
+        (batch) => Effect18.forEach(
           batch.events,
-          (event) => Effect17.gen(function* accept() {
-            if (!Schema31.is(MessageEvent)(event)) {
+          (event) => Effect18.gen(function* accept() {
+            if (!Schema32.is(MessageEvent)(event)) {
               return;
             }
             const { onSkip, unopenable } = options;
-            const skip = (reason) => onSkip === void 0 ? Effect17.void : onSkip({ reason, seq: event.seq });
+            const skip = (reason) => onSkip === void 0 ? Effect18.void : onSkip({ reason, seq: event.seq });
             const opened = yield* mailbox.open(event.envelope).pipe(
-              Effect17.map(Option4.some),
-              Effect17.catch(
-                (error) => unopenable === void 0 ? Effect17.fail(error) : unopenable(event, error)
+              Effect18.map(Option4.some),
+              Effect18.catch(
+                (error) => unopenable === void 0 ? Effect18.fail(error) : unopenable(event, error)
               )
             );
             if (Option4.isNone(opened)) {
@@ -2886,7 +2976,7 @@ var consume = (mailbox, did, handler, options) => Effect17.scoped(
             const message = opened.value;
             const input = { ...fence(), message: event.receipt.message };
             const delivered = yield* mailbox.deliver(input).pipe(
-              Effect17.map(
+              Effect18.map(
                 ({ receipt }) => Match.value(receipt.state).pipe(
                   Match.when(
                     "expired",
@@ -2899,13 +2989,13 @@ var consume = (mailbox, did, handler, options) => Effect17.scoped(
                   Match.orElse(() => Option4.none())
                 )
               ),
-              Effect17.catchIf(
+              Effect18.catchIf(
                 expiredRefusal,
-                () => Effect17.succeed(Option4.some("expired"))
+                () => Effect18.succeed(Option4.some("expired"))
               ),
-              Effect17.catchIf(
+              Effect18.catchIf(
                 settledRefusal,
-                () => Effect17.succeed(Option4.some("settled"))
+                () => Effect18.succeed(Option4.some("settled"))
               )
             );
             if (Option4.isSome(delivered)) {
@@ -2913,31 +3003,31 @@ var consume = (mailbox, did, handler, options) => Effect17.scoped(
               return;
             }
             yield* handler(message, { seq: event.seq });
-            yield* mailbox.ack(input).pipe(Effect17.catchIf(settledRefusal, () => Effect17.void));
+            yield* mailbox.ack(input).pipe(Effect18.catchIf(settledRefusal, () => Effect18.void));
           }),
           { discard: true }
         )
       ),
-      Effect17.catch((error) => {
-        if (Schema31.is(MailboxClientError)(error) && error.error === "LeaseMismatch") {
+      Effect18.catch((error) => {
+        if (Schema32.is(MailboxClientError)(error) && error.error === "LeaseMismatch") {
           return lost(error);
         }
-        return Effect17.fail(error);
+        return Effect18.fail(error);
       })
     );
-    yield* Effect17.raceFirst(intake, renew);
+    yield* Effect18.raceFirst(intake, renew);
   })
 );
 
 // packages/mailbox-client/src/prepare.ts
 var ownBrand = /* @__PURE__ */ Symbol("OwnIdentity");
 var identities = /* @__PURE__ */ new WeakMap();
-var ownIdentity = Effect18.fn("Mailbox.ownIdentity")(
+var ownIdentity = Effect19.fn("Mailbox.ownIdentity")(
   function* ownIdentity2(value) {
-    const identity = yield* Schema32.decodeUnknownEffect(Identity)(value).pipe(
-      Effect18.mapError(clientError)
+    const identity = yield* Schema33.decodeUnknownEffect(Identity)(value).pipe(
+      Effect19.mapError(clientError)
     );
-    yield* importSigning(identity).pipe(Effect18.mapError(clientError));
+    yield* importSigning(identity).pipe(Effect19.mapError(clientError));
     const handle = Object.freeze({
       [ownBrand]: true
     });
@@ -2946,17 +3036,27 @@ var ownIdentity = Effect18.fn("Mailbox.ownIdentity")(
   }
 );
 var SendOutcomes = Data2.taggedEnum();
+var PreparedMailbox = class extends Context7.Service()("mailbox/PreparedMailbox") {
+};
+var seal3 = Effect19.fn("Mailbox.sealPayload")(function* seal4(to, body, opts) {
+  const client = yield* PreparedMailbox;
+  return yield* client.sealPayload(to, body, opts);
+});
+var sendSealed = Effect19.fn("Mailbox.sendSealed")(function* sendSealed2(envelope, fence) {
+  const client = yield* PreparedMailbox;
+  return yield* client.sendSealed(envelope, fence);
+});
 var failure2 = (reason) => new MailboxClientError({ reason });
 var sameDocument = (a, b) => base64url2(canonical(a)) === base64url2(canonical(b));
-var prepare = Effect18.fn("Mailbox.prepare")(function* prepare2(options) {
+var prepare = Effect19.fn("Mailbox.prepare")(function* prepare2(options) {
   const identity = identities.get(options.own);
   if (identity === void 0) {
     return yield* failure2("Unknown own identity handle");
   }
   const peers = /* @__PURE__ */ new Map();
   for (const value of options.peers) {
-    const peer = yield* Schema32.decodeUnknownEffect(Document)(value).pipe(
-      Effect18.mapError(clientError)
+    const peer = yield* Schema33.decodeUnknownEffect(Document)(value).pipe(
+      Effect19.mapError(clientError)
     );
     const existing = peers.get(peer.id);
     if (existing !== void 0 && !sameDocument(existing, peer)) {
@@ -2965,12 +3065,12 @@ var prepare = Effect18.fn("Mailbox.prepare")(function* prepare2(options) {
     peers.set(peer.id, peer);
   }
   const resolverLayer = documentResolver(
-    (did) => Effect18.sync(() => peers.get(did))
+    (did) => Effect19.sync(() => peers.get(did))
   );
   const config = {
-    documents: yield* Schema32.decodeUnknownEffect(
-      Schema32.Array(Schema32.toType(DidDocument))
-    )(options.peers).pipe(Effect18.mapError(clientError)),
+    documents: yield* Schema33.decodeUnknownEffect(
+      Schema33.Array(Schema33.toType(DidDocument))
+    )(options.peers).pipe(Effect19.mapError(clientError)),
     endpoint: options.endpoint,
     identity,
     serviceDid: options.serviceDid
@@ -2983,67 +3083,69 @@ var prepare = Effect18.fn("Mailbox.prepare")(function* prepare2(options) {
   const context = yield* Layer5.build(
     clientLayer.pipe(Layer5.provide(authLayer))
   );
-  const client = Context6.get(context, MailboxClient);
+  const client = Context7.get(context, MailboxClient);
   const transportContext = yield* Layer5.build(authLayer);
-  const transport = Context6.get(transportContext, Transport);
+  const transport = Context7.get(transportContext, Transport);
   const resolverContext = yield* Layer5.build(resolverLayer);
-  const resolver = Context6.get(resolverContext, DidResolver);
+  const resolver = Context7.get(resolverContext, DidResolver);
   const mailboxContext = yield* Layer5.build(layer(config, resolverLayer));
-  const mailbox = Context6.get(mailboxContext, RatKingMailbox);
+  const mailbox = Context7.get(mailboxContext, RatKingMailbox);
   const signingKey = yield* importSigning(identity).pipe(
-    Effect18.mapError(clientError)
+    Effect19.mapError(clientError)
   );
   const payloads = /* @__PURE__ */ new WeakMap();
   const copies = /* @__PURE__ */ new WeakMap();
   let consuming = false;
-  const seal3 = Effect18.fn("Mailbox.seal")(function* seal4(to, body, opts) {
-    const now = yield* Clock5.currentTimeMillis;
-    const messageId = randomTid(now);
-    const text = yield* Effect18.try({
-      catch: () => new MailboxClientError({ reason: "Invalid message body factory" }),
-      try: () => Match2.value(body).pipe(
-        Match2.when(Match2.string, (value) => value),
-        Match2.orElse((factory) => factory(messageId))
-      )
-    });
-    const raw = {
-      aad: {
-        messageId,
-        recipientDid: to,
+  const sealEnvelopeForPeer = Effect19.fn("Mailbox.seal")(
+    function* sealEnvelopeForPeer2(to, body, opts) {
+      const now = yield* Clock5.currentTimeMillis;
+      const messageId = randomTid(now);
+      const text = yield* Effect19.try({
+        catch: () => new MailboxClientError({ reason: "Invalid message body factory" }),
+        try: () => Match2.value(body).pipe(
+          Match2.when(Match2.string, (value) => value),
+          Match2.orElse((factory) => factory(messageId))
+        )
+      });
+      const raw = {
+        aad: {
+          messageId,
+          recipientDid: to,
+          recipientKeyId: `${to}#encryption`,
+          senderDid: identity.did
+        },
+        body: new TextEncoder().encode(text),
+        suite: opts?.encrypt === false ? plaintextSuite : suite,
+        version: 1
+      };
+      if (opts?.expiresAt !== void 0) {
+        Object.assign(raw.aad, { expiresAt: opts.expiresAt });
+      }
+      if (opts?.replyTo !== void 0) {
+        Object.assign(raw, { replyTo: opts.replyTo });
+      }
+      if (opts?.urgent !== void 0) {
+        Object.assign(raw, { urgent: opts.urgent });
+      }
+      const payload = yield* Schema33.decodeUnknownEffect(
+        Schema33.toType(SigningPayload)
+      )(raw).pipe(Effect19.mapError(clientError));
+      const envelope = yield* seal({
+        payload,
+        recipientKey: yield* resolver.resolve(
+          to,
+          `${to}#encryption`,
+          "keyAgreement"
+        ),
         recipientKeyId: `${to}#encryption`,
-        senderDid: identity.did
-      },
-      body: new TextEncoder().encode(text),
-      suite: opts?.encrypt === false ? plaintextSuite : suite,
-      version: 1
-    };
-    if (opts?.expiresAt !== void 0) {
-      Object.assign(raw.aad, { expiresAt: opts.expiresAt });
+        signingKey,
+        signingKeyId: `${identity.did}#atproto`
+      }).pipe(Effect19.mapError(clientError));
+      payloads.set(envelope, payload);
+      return envelope;
     }
-    if (opts?.replyTo !== void 0) {
-      Object.assign(raw, { replyTo: opts.replyTo });
-    }
-    if (opts?.urgent !== void 0) {
-      Object.assign(raw, { urgent: opts.urgent });
-    }
-    const payload = yield* Schema32.decodeUnknownEffect(
-      Schema32.toType(SigningPayload)
-    )(raw).pipe(Effect18.mapError(clientError));
-    const envelope = yield* seal({
-      payload,
-      recipientKey: yield* resolver.resolve(
-        to,
-        `${to}#encryption`,
-        "keyAgreement"
-      ),
-      recipientKeyId: `${to}#encryption`,
-      signingKey,
-      signingKeyId: `${identity.did}#atproto`
-    }).pipe(Effect18.mapError(clientError));
-    payloads.set(envelope, payload);
-    return envelope;
-  });
-  const submit = Effect18.fn("Mailbox.submit")(function* submit2(envelope, fence) {
+  );
+  const submit = Effect19.fn("Mailbox.sendSealed")(function* submit2(envelope, fence) {
     if (envelope.aad.senderDid !== identity.did || fence !== void 0 && fence.did !== identity.did) {
       return SendOutcomes.NotAttempted({
         reason: "Sender identity or fence mismatch"
@@ -3056,20 +3158,20 @@ var prepare = Effect18.fn("Mailbox.prepare")(function* prepare2(options) {
         leaseId: fence.leaseId
       });
     }
-    const decoded = yield* Schema32.decodeUnknownEffect(
-      Schema32.toType(Input5)
-    )(raw).pipe(Effect18.mapError(clientError), Effect18.result);
+    const decoded = yield* Schema33.decodeUnknownEffect(
+      Schema33.toType(Input5)
+    )(raw).pipe(Effect19.mapError(clientError), Effect19.result);
     if (Result3.isFailure(decoded)) {
       return SendOutcomes.NotAttempted({ reason: decoded.failure.reason });
     }
-    const result = yield* client.send(decoded.success).pipe(Effect18.mapError(clientError), Effect18.result);
+    const result = yield* client.send(decoded.success).pipe(Effect19.mapError(clientError), Effect19.result);
     if (Result3.isSuccess(result)) {
       return SendOutcomes.Accepted({ receipt: result.success.receipt });
     }
     const error = result.failure;
     return error.status !== void 0 && error.status >= 400 && error.status < 500 ? SendOutcomes.Rejected({ error }) : SendOutcomes.Uncertain({ error });
   });
-  const send = Effect18.fn("Mailbox.send")(function* send2(envelope, opts) {
+  const send = Effect19.fn("Mailbox.send")(function* send2(envelope, opts) {
     if (!peers.has(envelope.aad.recipientDid)) {
       return SendOutcomes.NotAttempted({ reason: "Unknown primary peer" });
     }
@@ -3095,7 +3197,7 @@ var prepare = Effect18.fn("Mailbox.prepare")(function* prepare2(options) {
         })
       };
     }
-    const ccResult = yield* Effect18.gen(function* carbonCopy() {
+    const ccResult = yield* Effect19.gen(function* carbonCopy() {
       const cached = copies.get(envelope) ?? /* @__PURE__ */ new Map();
       let copy = cached.get(did);
       if (copy === void 0) {
@@ -3108,48 +3210,79 @@ var prepare = Effect18.fn("Mailbox.prepare")(function* prepare2(options) {
             senderDid: identity.did
           }
         });
-        const replyTo = yield* Schema32.decodeUnknownEffect(
-          Schema32.toType(MessageRef)
+        const replyTo = yield* Schema33.decodeUnknownEffect(
+          Schema33.toType(MessageRef)
         )({ messageId: envelope.aad.messageId, senderDid: identity.did }).pipe(
-          Effect18.mapError(clientError)
+          Effect19.mapError(clientError)
         );
-        copy = yield* seal3(did, body, { replyTo });
+        copy = yield* sealEnvelopeForPeer(did, body, { replyTo });
         cached.set(did, copy);
         copies.set(envelope, cached);
       }
       return yield* submit(copy, opts?.fence);
     }).pipe(
-      Effect18.mapError(clientError),
-      Effect18.catch(
-        (error) => Effect18.succeed(SendOutcomes.NotAttempted({ reason: error.reason }))
+      Effect19.mapError(clientError),
+      Effect19.catch(
+        (error) => Effect19.succeed(SendOutcomes.NotAttempted({ reason: error.reason }))
       )
     );
     return { ...primary, cc: ccResult };
   });
-  const refresh = Effect18.fn("Mailbox.refresh")(function* refresh2(did) {
-    const params = yield* Schema32.decodeUnknownEffect(Params13)({ did }).pipe(
-      Effect18.mapError(clientError)
+  const sealPayload = Effect19.fn("Mailbox.sealPayload")(function* sealPayload2(to, body, opts) {
+    const from = options.names?.from;
+    const recipient = options.names?.peers[to];
+    if (from === void 0 || recipient === void 0) {
+      return yield* failure2(
+        "Payload sealing requires sender and recipient names"
+      );
+    }
+    const envelope = yield* sealEnvelopeForPeer(
+      to,
+      (id) => {
+        const payload = {
+          body,
+          cc: [],
+          from,
+          kind: opts?.replyTo === void 0 ? "message" : "reply",
+          thread: opts?.thread ?? id,
+          to: recipient
+        };
+        if (opts?.summary !== void 0) {
+          Object.assign(payload, { summary: opts.summary });
+        }
+        if (opts?.replyTo !== void 0) {
+          Object.assign(payload, { replyTo: opts.replyTo.messageId });
+        }
+        return Schema33.encodeSync(PayloadJson)(payload);
+      },
+      opts
+    ).pipe(Effect19.mapError(clientError));
+    return { envelope, messageId: envelope.aad.messageId };
+  });
+  const refresh = Effect19.fn("Mailbox.refresh")(function* refresh2(did) {
+    const params = yield* Schema33.decodeUnknownEffect(Params13)({ did }).pipe(
+      Effect19.mapError(clientError)
     );
     const response = yield* transport.request({
       input: void 0,
       method: "GET",
       nsid: Method12.nsid,
-      params: yield* Schema32.encodeEffect(Params13)(params).pipe(
-        Effect18.mapError(clientError)
+      params: yield* Schema33.encodeEffect(Params13)(params).pipe(
+        Effect19.mapError(clientError)
       )
-    }).pipe(Effect18.mapError(clientError));
+    }).pipe(Effect19.mapError(clientError));
     if (response.kind !== "json" || response.status !== 200) {
       return yield* new MailboxClientError({
         reason: "Peer directory request refused",
         status: response.status
       });
     }
-    const output = yield* Schema32.decodeUnknownEffect(Output11)(
+    const output = yield* Schema33.decodeUnknownEffect(Output11)(
       response.body
-    ).pipe(Effect18.mapError(clientError));
-    const peer = yield* Schema32.decodeUnknownEffect(Document)(
+    ).pipe(Effect19.mapError(clientError));
+    const peer = yield* Schema33.decodeUnknownEffect(Document)(
       output.document
-    ).pipe(Effect18.mapError(clientError));
+    ).pipe(Effect19.mapError(clientError));
     const existing = peers.get(did);
     if (peer.id !== did || existing !== void 0 && !sameDocument(existing, peer)) {
       return yield* failure2(
@@ -3159,45 +3292,56 @@ var prepare = Effect18.fn("Mailbox.prepare")(function* prepare2(options) {
     peers.set(did, peer);
     return peer;
   });
-  const presence = (did) => lookupPresence(did).pipe(Effect18.provideService(Transport, transport));
+  const presence = (did) => lookupPresence(did).pipe(Effect19.provideService(Transport, transport));
   return {
-    consume: (handler, opts) => Effect18.suspend(() => {
+    consume: (handler, opts) => Effect19.suspend(() => {
       if (consuming) {
-        return Effect18.fail(failure2("Consumer already active"));
+        return Effect19.fail(failure2("Consumer already active"));
       }
       consuming = true;
       return consume(mailbox, identity.did, handler, opts).pipe(
-        Effect18.ensuring(
-          Effect18.sync(() => {
+        Effect19.ensuring(
+          Effect19.sync(() => {
             consuming = false;
           })
         )
       );
     }),
-    head: mailbox.list({ afterSeq: 0, limit: 1 }).pipe(Effect18.map(({ throughSeq }) => throughSeq)),
+    head: mailbox.list({ afterSeq: 0, limit: 1 }).pipe(Effect19.map(({ throughSeq }) => throughSeq)),
     mailbox,
     open: mailbox.open,
     presence,
     refresh,
     resolveLease: mailbox.lease.resolve,
-    seal: seal3,
-    send
+    seal: sealEnvelopeForPeer,
+    sealPayload,
+    send,
+    sendSealed: submit
   };
 });
 export {
+  AgentName,
   Claims,
   DidResolver,
   Document,
   Documents,
   Identity,
+  Kind,
   MailboxClientError,
+  Payload,
+  PayloadJson,
+  PreparedMailbox,
   PrivateJwk,
   RatKingMailbox,
+  ReplayAuthority,
+  SUMMARY_MAX,
   SendOutcomes,
   WebSocketPort,
+  authenticateClaims,
   base64url2 as base64url,
   consumerMachine,
   documentResolver,
+  encodePayload,
   importAgreement,
   importSigning,
   layer,
@@ -3206,6 +3350,8 @@ export {
   prepare,
   readerCannotRender,
   recordType,
+  seal3 as seal,
+  sendSealed,
   serviceToken,
   staticResolver,
   tid,

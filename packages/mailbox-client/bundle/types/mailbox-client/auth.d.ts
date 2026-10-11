@@ -1,5 +1,6 @@
 import { XrpcFailure } from "../lexicon/xrpc-failure.js";
 import { Context, Effect, Layer, Schema } from "effect";
+import { ReplayAuthority } from "./replay.js";
 export declare const base64url: (bytes: Uint8Array) => string;
 export declare const unbase64url: (text: string) => Uint8Array<ArrayBuffer>;
 export declare const Claims: Schema.Struct<{
@@ -51,6 +52,20 @@ export declare class DidResolver extends DidResolver_base {
 }
 export declare const documentResolver: (lookup: (did: string) => Effect.Effect<typeof Document.Type | undefined, XrpcFailure>) => Layer.Layer<DidResolver, never, never>;
 export declare const staticResolver: (documents: DocumentsValue) => Layer.Layer<DidResolver, never, never>;
+export interface AuthenticateRequest {
+    readonly authorization: string | null;
+    readonly audience: string;
+    readonly nsid: string;
+    readonly now: number;
+}
+export declare const authenticateClaims: (request: AuthenticateRequest) => Effect.Effect<{
+    readonly aud: string;
+    readonly exp: number;
+    readonly iat: number;
+    readonly iss: string;
+    readonly jti: string;
+    readonly lxm: string;
+}, XrpcFailure, DidResolver | ReplayAuthority>;
 export declare const serviceToken: (claims: {
     readonly aud: string;
     readonly exp: number;

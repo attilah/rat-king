@@ -5,7 +5,13 @@ import { seal } from "@rat-king/envelope";
 import { canonical, plaintextSuite } from "@rat-king/envelope/canonical";
 import * as Defs from "@rat-king/lexicon/defs";
 import * as Send from "@rat-king/lexicon/mailbox.send";
-import { ownIdentity, prepare } from "@rat-king/mailbox-client";
+import {
+  ownIdentity,
+  prepare,
+  PreparedMailbox,
+  seal as publicSealMessage,
+  sendSealed as publicSendSealed,
+} from "@rat-king/mailbox-client";
 import {
   Effect,
   Layer,
@@ -18,7 +24,7 @@ import {
 import { HttpClient, HttpClientResponse } from "effect/http";
 import { asyncModelRun } from "fast-check";
 import type { AsyncCommand } from "fast-check";
-import { expect } from "vitest";
+import { expect, vi } from "vitest";
 
 import { projectLine } from "../../../stacks/nest/drain.ts";
 import {
@@ -33,6 +39,7 @@ import type { SealedValue } from "../../../stacks/nest/seal.ts";
 import type { LexJson } from "../../lexicon/src/runtime.ts";
 import { base64url } from "../../mailbox-client/src/auth.ts";
 import { importSigning } from "../../mailbox-client/src/identity.ts";
+import * as Tid from "../../mailbox-client/src/tid.ts";
 import { document, identity } from "../../mailbox-client/test/identity.ts";
 import { Settings } from "../src/config.ts";
 import { Directory, UnknownName } from "../src/directory.ts";
@@ -489,4 +496,209 @@ it.live.prop(
       });
     }).pipe(Effect.scoped),
   { arbitrary: { runs: 15 }, timeout: 120_000 }
+);
+
+it.effect.prop(
+  "public sealing shares nest payload bytes and sealed retries preserve one delivery and receipt",
+  [
+    Schema.String,
+    Schema.Array(Schema.Literals(["send", "fence", "sender"])).check(
+      Schema.isMaxLength(8)
+    ),
+  ],
+  ([body, steps]) =>
+    Effect.gen(function* publicProof() {
+      const sender = yield* identity(did(SENDER));
+      const inbox = yield* identity(did(PRIMARY));
+      const docs = yield* Effect.forEach([sender, inbox], document);
+
+      const server: Server = {
+        admitted: new Map(),
+        mode: "normal",
+        requests: 0,
+        seq: 0,
+      };
+
+      const http = fakeMailbox(server);
+
+      const client = yield* prepare({
+        endpoint: ENDPOINT,
+        names: { from: SENDER, peers: { [inbox.did]: PRIMARY } },
+        own: yield* ownIdentity(sender),
+        peers: docs,
+        serviceDid: SERVICE,
+      }).pipe(Effect.provideService(HttpClient.HttpClient, http));
+
+      const yieldDoc = yield* document(inbox);
+
+      const services = Layer.mergeAll(
+        Layer.succeed(HttpClient.HttpClient, http),
+        Layer.succeed(
+          SecretStore,
+          SecretStore.of({
+            add: () => Effect.void,
+            exists: () => Effect.succeed(true),
+            lease: () => Effect.succeed(Redacted.make(JSON.stringify(sender))),
+          })
+        ),
+        Layer.succeed(
+          Directory,
+          Directory.of({
+            documents: Effect.succeed(docs),
+            list: Effect.succeed([]),
+            nameOf: () => Effect.succeed(Option.none()),
+            record: () => Effect.void,
+            resolve: () =>
+              Effect.succeed({
+                did: inbox.did,
+                document: yieldDoc,
+                name: PRIMARY,
+              }),
+          })
+        ),
+        Layer.succeed(
+          Settings,
+          Settings.of({
+            askTimeoutMs: 1000,
+            didTemplate: TEMPLATE,
+            directory: "/example/directory.json",
+            documents: [],
+            encrypt: false,
+            endpoint: ENDPOINT,
+            issuer: Option.none(),
+            refuse: [],
+            relays: [],
+            reserved: {},
+            secretsCommand: "secrets",
+            serviceDid: SERVICE,
+            state: "/example/state",
+          })
+        )
+      );
+
+      const fixedId = "3m3m3m3m3m3m3";
+
+      const replyTo = yield* Schema.decodeUnknownEffect(
+        Schema.toType(Defs.MessageRef)
+      )({ messageId: fixedId, senderDid: inbox.did });
+
+      const spy = vi.spyOn(Tid, "randomTid").mockReturnValue(fixedId);
+
+      const publicSeal = yield* publicSealMessage(inbox.did, body, {
+        encrypt: false,
+        replyTo,
+        summary: "Shared summary",
+      }).pipe(
+        Effect.provideService(PreparedMailbox, client),
+        Effect.ensuring(
+          Effect.sync(() => {
+            spy.mockRestore();
+          })
+        )
+      );
+
+      const nestSpy = vi.spyOn(Tid, "randomTid").mockReturnValue(fixedId);
+
+      const nestSeal = yield* scriptSeal({
+        as: SECRET,
+        body,
+        replyTo: fixedId,
+        summary: "Shared summary",
+        to: PRIMARY,
+      }).pipe(
+        Effect.provide(services),
+        Effect.ensuring(
+          Effect.sync(() => {
+            nestSpy.mockRestore();
+          })
+        )
+      );
+
+      const reader = yield* prepare({
+        endpoint: ENDPOINT,
+        own: yield* ownIdentity(inbox),
+        peers: docs,
+        serviceDid: SERVICE,
+      }).pipe(Effect.provideService(HttpClient.HttpClient, http));
+
+      const opened = yield* reader.open(publicSeal.envelope);
+
+      const nestOpened = yield* reader.open(
+        yield* Schema.decodeEffect(Defs.EncryptedEnvelope)(nestSeal.envelope)
+      );
+
+      expect(opened.body).toBe(nestOpened.body);
+      expect(JSON.parse(opened.body)).toEqual({
+        body,
+        cc: [],
+        from: SENDER,
+        kind: "reply",
+        replyTo: fixedId,
+        summary: "Shared summary",
+        thread: fixedId,
+        to: PRIMARY,
+      });
+      expect(publicSeal.messageId).toBe(fixedId);
+      const outer = yield* Effect.context();
+
+      const commands: AsyncCommand<{ sent: boolean }, Server>[] = [
+        "send",
+        "send",
+        ...steps,
+      ].map((step) => ({
+        check: () => true,
+        run: async (model, real) => {
+          const operation = Effect.gen(function* submitPublic() {
+            const envelope =
+              step === "sender"
+                ? yield* Schema.decodeUnknownEffect(
+                    Schema.toType(Defs.EncryptedEnvelope)
+                  )({
+                    ...publicSeal.envelope,
+                    aad: { ...publicSeal.envelope.aad, senderDid: inbox.did },
+                  })
+                : publicSeal.envelope;
+
+            const outcome = yield* publicSendSealed(
+              envelope,
+              step === "fence"
+                ? { did: inbox.did, generation: 1, leaseId: "wrong-fence" }
+                : undefined
+            ).pipe(Effect.provideService(PreparedMailbox, client));
+
+            expect(outcome._tag).toBe(
+              step === "send" ? "Accepted" : "NotAttempted"
+            );
+
+            if (Predicate.isTagged(outcome, "Accepted")) {
+              expect(outcome.receipt).toEqual({
+                message: { messageId: fixedId, senderDid: sender.did },
+                recipientDid: inbox.did,
+                seq: 1,
+                state: "accepted",
+              });
+              model.sent = true;
+            }
+
+            expect(real.admitted.size).toBe(model.sent ? 1 : 0);
+            expect(real.seq).toBe(model.sent ? 1 : 0);
+            expect(real.admitted.get(key(publicSeal.envelope))?.bytes).toBe(
+              base64url(canonical(publicSeal.envelope))
+            );
+          });
+
+          // oxlint-disable-next-line effect-tests/no-manual-effect-runtime-in-tests -- asyncModelRun requires a Promise per command.
+          await Effect.runPromiseWith(outer)(operation);
+        },
+        toString: () => step,
+      }));
+
+      yield* Effect.promise(() =>
+        asyncModelRun(
+          () => ({ model: { sent: false }, real: server }),
+          commands
+        )
+      );
+    }).pipe(Effect.scoped),
+  { arbitrary: { runs: 15 } }
 );
