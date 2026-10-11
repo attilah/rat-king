@@ -33,6 +33,7 @@ export const IssuerSetting = Schema.Union([CommandIssuer, ServiceIssuer]);
 export type IssuerSettingValue = typeof IssuerSetting.Type;
 
 export const RelaySetting = Schema.Struct({
+  copyOutbound: Schema.optionalKey(Schema.Boolean),
   fallbackMinutes: Schema.Finite.check(Schema.isGreaterThan(0)),
   mode: Schema.Literals(["copy", "front"]),
   name: AgentName,

@@ -69,11 +69,25 @@ The forwarded signed record is `{ $type: "sh.mschf.ratking.relay#message", id, f
 
 `front` saves originals in `state/relay/<name-label>.json` before mailbox ack and suppresses their injection. Verified staff confirms with `{ $type: "sh.mschf.ratking.relay#handled", id: "<original id>" }`, sent as a record to the desk. A failed forward or expired deadline injects the original with `[staff did not handle]`, even if it previously settled an ask waiter; a restarted Pi no longer has that waiter. A one-second sweep handles deadlines; startup recovers overdue pending mail before consumption. Only a verified staff envelope can settle pending mail. Journal files and their directory are private (0600/0700). Malformed journals fail closed and retry, never reset themselves.
 
+The desk records every original in its thread store before routing, as it does for any inbound mail, so `reply` with `replyTo: <original id>` works from the desk even though front mode never injected it. Reply-all reaches the original sender, `to` and `cc`, never the EA unless the original named it. Like all thread records, this lives in memory: a restarted desk can no longer reply to an original it received before the restart.
+
+### Outbound copies
+
+`"copyOutbound": true` makes the desk copy each of its own `send`, `ask` and `reply` messages to `relay.to`:
+
+```json
+"relay": { "name": "switchboard", "to": "switchboard/ea", "mode": "front", "fallbackMinutes": 10, "copyOutbound": true }
+```
+
+The copy is `{ $type: "sh.mschf.ratking.relay#outbound", id, to, cc, kind, body, replyTo, summary, thread, encrypted }`, sent as a record after the original is accepted. `id` is the sent message id, `to` and `cc` are its recipients, and `replyTo` and `summary` are `null` when absent. The copy uses the original's encryption state. It runs in the background: a failed copy is logged and never fails or delays the send. A message already addressed or cc'd to `relay.to` is not copied. Relay forwards, handled confirmations and partially delivered sends are not copied. Only the reader named `relay.name` copies.
+
 ### EA integration
 
 The EA needs only pi-ratking, not a `ratking/record` consumer. When its own name is `relay.to`, the reader accepts a relay record only from a verified `relay.name`. It projects the original sender, label, verification flag, id, summary and body, remembers that original for replies, and injects a visible turn-starting message. The compact view adds `via switchboard`. The original verification flag is the desk's attestation, not a second original-sender signature. Wrong senders and other records stay on the record-event path and never become model mail.
 
 The reply hint uses the original id and `replyAll: false`, so the EA answers the original sender directly. `reply` links that original id, preserves the thread root, and defaults to the original encryption state. In front mode a successful reply also sends a `sh.mschf.ratking.relay#handled` record to the desk. If the reply was accepted but that confirmation fails, the tool reports partial delivery and tells the EA to retry only `handled`, not the answer.
+
+An outbound copy from the verified desk reaches the EA's model as silent context: a `ratking_message` sent with `triggerTurn: false`, marked `sent by switchboard`, with no reply hint. It is not remembered as a thread, so the EA cannot reply to it, and it never adds the EA to anyone's reply-all. It is not emitted on `ratking/message`.
 
 For work handled without a reply, call `intercom({ action: "handled", replyTo: "<original id>" })` (or the configured tool name). It sends the handled record to the verified desk DID stored with the original, using the original encryption state. It refuses unknown ids, ordinary mail and a changed desk DID. The explicit handled action is also available in copy mode; automatic confirmations run only in front mode. A direct EA reply does not settle an `ask` that names the desk's DID: it arrives as normal mail from the EA. The strict asked-DID waiter rule is unchanged.
 

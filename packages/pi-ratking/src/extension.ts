@@ -182,6 +182,7 @@ const inboundDetails = (inbound: Inbound, settled: boolean) => ({
   label: Option.getOrUndefined(inbound.label),
   relay: inbound.relay,
   replyTo: Option.getOrUndefined(inbound.replyTo),
+  sentBy: inbound.sentBy,
   settled,
   summary: Option.getOrUndefined(inbound.summary),
   thread: inbound.thread,
@@ -464,6 +465,20 @@ export const ratkingExtension = (options: ExtensionOptions) =>
             }),
             verified: inbound.verified,
           });
+
+          return;
+        }
+
+        if (inbound.sentBy !== undefined) {
+          pi.sendMessage(
+            {
+              content: renderInbound(tool, inbound),
+              customType: "ratking_message",
+              details: inboundDetails(inbound, settled),
+              display: true,
+            },
+            { triggerTurn: false }
+          );
 
           return;
         }

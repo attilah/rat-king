@@ -16,6 +16,7 @@ const Step = Schema.Struct({
   from: Schema.Literals(["desk", "imposter"]),
   originalVerified: Schema.Boolean,
   own: Schema.Literals(["desk/ea", "desk", "other"]),
+  sent: Schema.Boolean,
   verified: Schema.Boolean,
 });
 
@@ -25,7 +26,7 @@ interface Model {
 }
 
 it.effect.prop(
-  "EA relay model: only verified desk mail reaches the assigned EA, as original mail with a direct reply hint and via marker",
+  "EA relay model: only verified desk mail reaches the assigned EA, as original mail with a direct reply hint and via marker, or as a desk outbound copy that is never remembered and carries no reply hint",
   [Step, Schema.Array(Step)],
   ([seed, steps]) =>
     Effect.gen(function* eaModel() {
@@ -65,20 +66,33 @@ it.effect.prop(
                 did: "did:web:desk.example.invalid",
                 from: step.from,
                 id: "relay-envelope",
-                record: {
-                  $type: "sh.mschf.ratking.relay#message",
-                  body: step.body,
-                  cc: false,
-                  did: "did:web:person.example.invalid",
-                  encrypted: true,
-                  from: "person",
-                  id,
-                  kind: "ask",
-                  label: "Yaffle",
-                  replyTo: null,
-                  summary: "Original summary",
-                  verified: step.originalVerified,
-                },
+                record: step.sent
+                  ? {
+                      $type: "sh.mschf.ratking.relay#outbound",
+                      body: step.body,
+                      cc: ["carol"],
+                      encrypted: true,
+                      id,
+                      kind: "reply",
+                      replyTo: "root",
+                      summary: "Sent summary",
+                      thread: "root",
+                      to: "person",
+                    }
+                  : {
+                      $type: "sh.mschf.ratking.relay#message",
+                      body: step.body,
+                      cc: false,
+                      did: "did:web:person.example.invalid",
+                      encrypted: true,
+                      from: "person",
+                      id,
+                      kind: "ask",
+                      label: "Yaffle",
+                      replyTo: null,
+                      summary: "Original summary",
+                      verified: step.originalVerified,
+                    },
                 replyTo: Option.none(),
                 verified: step.verified,
               },
@@ -97,7 +111,42 @@ it.effect.prop(
 
             expect(projected).toBe(accepted);
 
-            if (accepted) {
+            if (accepted && step.sent) {
+              model.deliveries += 1;
+              const copy = delivered.at(-1);
+
+              if (copy === undefined) {
+                throw new Error("Missing outbound copy");
+              }
+
+              expect(copy).toMatchObject({
+                body: step.body,
+                ccNames: ["carol"],
+                from: "desk",
+                id,
+                sentBy: "desk",
+                thread: "root",
+                to: "person",
+              });
+
+              const text = renderInbound("intercom", copy);
+              expect(text).toContain("sent by desk");
+              expect(text).not.toContain('action: "reply"');
+              expect(text).not.toContain('action: "handled"');
+              expect(
+                compactLines(
+                  {
+                    body: copy.body,
+                    cc: false,
+                    from: copy.from,
+                    sentBy: copy.sentBy,
+                    to: copy.to,
+                    verified: copy.verified,
+                  },
+                  80
+                )[0]
+              ).toContain("sent by desk");
+            } else if (accepted) {
               model.deliveries += 1;
               model.remembered += 1;
               const original = delivered.at(-1);

@@ -77,11 +77,13 @@ import type { Quarantined } from "./quarantine.ts";
 import { errorTag, HEARTBEAT_EVERY, HeartbeatJson } from "./reader-health.ts";
 import type { ReaderHeartbeatValue } from "./reader-health.ts";
 import {
+  copiesOutbound,
   openRelay,
   deliverRelay,
   RelayHandled,
   RelayJournal,
 } from "./relay.ts";
+import type { RelayOutboundValue } from "./relay.ts";
 import { SecretStore } from "./secrets.ts";
 import { replyRecipients, Threads, threadsLayer } from "./threads.ts";
 import type { Received, Reply } from "./threads.ts";
@@ -154,6 +156,18 @@ export interface Delivered {
   readonly to: string;
   readonly did: string;
   readonly presence?: string;
+}
+
+interface Sent {
+  readonly from: string;
+  readonly to: string;
+  readonly cc: readonly string[];
+  readonly body: string;
+  readonly encrypted: boolean;
+  readonly kind: KindValue;
+  readonly thread: string;
+  readonly replyTo: string | null;
+  readonly summary: string | null;
 }
 
 const oneLineSummary = (text: string) =>
@@ -250,6 +264,7 @@ const backoff = (attempt: number) =>
 
 export const makeRatKing = Effect.gen(function* makeRatKing() {
   const settings = yield* Settings;
+  const lifetime = yield* Effect.scope;
   const directory = yield* Directory;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -997,7 +1012,23 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
         onSome: (presence) => ({ ...admitted, presence }),
       });
 
-      return { delivered, extra };
+      const summary = oneLineSummary(options.summary ?? "");
+
+      const sent: Sent = {
+        body: Option.getOrElse(textBody, () =>
+          Option.getOrElse(json, () => "")
+        ),
+        cc: targets.slice(1).map((target) => target.name),
+        encrypted: encrypt,
+        from: own.name,
+        kind: options.kind ?? "message",
+        replyTo: options.replyTo?.messageId ?? null,
+        summary: Option.isSome(textBody) && summary !== "" ? summary : null,
+        thread: options.thread ?? first.aad.messageId,
+        to: primary.name,
+      };
+
+      return { delivered, extra, sent };
     }).pipe(
       Effect.scoped,
       Effect.provideService(HttpClient.HttpClient, http),
@@ -1265,6 +1296,41 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
     )
   );
 
+  const copyOut = (delivered: Delivered, sent: Sent) => {
+    const config = settings.relay;
+
+    if (!copiesOutbound(config, sent.from, [sent.to, ...sent.cc])) {
+      return Effect.void;
+    }
+
+    const record: RelayOutboundValue = {
+      $type: "sh.mschf.ratking.relay#outbound",
+      body: sent.body,
+      cc: sent.cc,
+      encrypted: sent.encrypted,
+      id: delivered.id,
+      kind: sent.kind,
+      replyTo: sent.replyTo,
+      summary: sent.summary,
+      thread: sent.thread,
+      to: sent.to,
+    };
+
+    return transmit(
+      config.to,
+      record,
+      { encrypt: sent.encrypted, kind: "data" },
+      () => Effect.void
+    ).pipe(
+      Effect.tapError((failure) =>
+        Effect.logWarning("Rat King outbound copy failed", failure.code)
+      ),
+      Effect.ignore,
+      Effect.forkIn(lifetime),
+      Effect.asVoid
+    );
+  };
+
   const confirmHandled = Effect.fn("RatKing.confirmHandled")(
     function* confirmHandled(id: string) {
       const record = yield* threads.lookup(id);
@@ -1321,7 +1387,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       const pending = yield* Ref.make(Option.none<string>());
 
       return yield* Effect.gen(function* askAndWait() {
-        const { delivered, extra } = yield* transmit(
+        const { delivered, extra, sent } = yield* transmit(
           to,
           body,
           { ...options, kind: "ask" },
@@ -1330,6 +1396,8 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
               Effect.andThen(threads.wait(id, did))
             )
         );
+
+        yield* copyOut(delivered, sent);
 
         const reply = yield* Deferred.await(extra).pipe(
           Effect.timeoutOrElse({
@@ -1442,13 +1510,14 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
         Object.assign(replyOptions, { encrypt: record.value.relay.encrypted });
       }
 
-      const { delivered } = yield* transmit(
+      const { delivered, sent } = yield* transmit(
         target,
         body,
         replyOptions,
         () => Effect.void
       );
 
+      yield* copyOut(delivered, sent);
       yield* threads.answer(id);
 
       if (
@@ -1530,12 +1599,14 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
     }),
     run,
     send: Effect.fn("RatKing.send")(function* send(to, body, options) {
-      const { delivered } = yield* transmit(
+      const { delivered, sent } = yield* transmit(
         to,
         body,
         options ?? {},
         () => Effect.void
       );
+
+      yield* copyOut(delivered, sent);
 
       return delivered;
     }),

@@ -64,6 +64,7 @@ export const RelaySource = Schema.Struct({
 
 export interface Inbound {
   readonly relay?: typeof RelaySource.Type;
+  readonly sentBy?: string;
   readonly id: string;
   readonly did: string;
   readonly from: string;
@@ -92,7 +93,30 @@ export const replyHint = (tool: string, inbound: Inbound) =>
       : []),
   ].join("\n");
 
+const renderSent = (inbound: Inbound, by: string) =>
+  [
+    `**Rat King message sent by ${by}** · to ${inbound.to ?? "unknown"} · id ${inbound.id}${Option.match(
+      inbound.replyTo,
+      { onNone: () => "", onSome: (id) => ` · in reply to ${id}` }
+    )}`,
+    ...((inbound.ccNames?.length ?? 0) > 0
+      ? [`cc: ${(inbound.ccNames ?? []).join(", ")}`]
+      : []),
+    "",
+    ...Option.match(inbound.summary, {
+      onNone: () => [],
+      onSome: (summary) => [`Summary: ${summary}`, ""],
+    }),
+    inbound.body,
+    "",
+    `Context only: ${by} already sent this. Do not reply to it.`,
+  ].join("\n");
+
 export const renderInbound = (tool: string, inbound: Inbound) => {
+  if (inbound.sentBy !== undefined) {
+    return renderSent(inbound, inbound.sentBy);
+  }
+
   const name = inbound.verified
     ? inbound.from
     : `${inbound.from} (unverified name; sender ${inbound.did})`;

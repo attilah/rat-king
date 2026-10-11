@@ -538,7 +538,9 @@ const facts = (session: string) =>
 it.live.prop(
   "inbound records stay on ratking/record, messages keep their path, and both checkpoint before ack",
   [
-    Arbitrary.schema(Schema.Literals(["record", "message", "raw", "relay"])),
+    Arbitrary.schema(
+      Schema.Literals(["record", "message", "raw", "relay", "outbound"])
+    ),
     Arbitrary.schema(Schema.String),
   ],
   ([mode, body]) =>
@@ -575,6 +577,18 @@ it.live.prop(
           replyTo: null,
           summary: "Original summary",
           verified: true,
+        })),
+        Match.when("outbound", () => ({
+          $type: "sh.mschf.ratking.relay#outbound",
+          body,
+          cc: [],
+          encrypted: true,
+          id: "3m7x2ka4xv22a",
+          kind: "message",
+          replyTo: null,
+          summary: null,
+          thread: "3m7x2ka4xv22a",
+          to: "person",
         })),
         Match.exhaustive
       );
@@ -878,7 +892,16 @@ it.live.prop(
         await lifecycle.end();
       });
 
-      if (mode === "record") {
+      if (mode === "outbound") {
+        expect(records).toEqual([]);
+        expect(received).toEqual([]);
+        expect(outbound).toEqual([]);
+        expect(messages).toHaveLength(1);
+        expect(messages[0]).toMatchObject({
+          details: { sentBy: "handset", to: "person" },
+        });
+        expect(deliveries).toEqual([{ triggerTurn: false }]);
+      } else if (mode === "record") {
         expect(records).toEqual([
           {
             did: RECORD_PEER,
