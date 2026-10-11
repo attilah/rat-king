@@ -270,6 +270,7 @@ it.live.prop(
               endpoint: ENDPOINT,
               issuer: Option.none(),
               refuse: [],
+              relays: [],
               reserved: {},
               secretsCommand: "secrets",
               serviceDid: SERVICE,

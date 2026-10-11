@@ -1100,12 +1100,11 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
     deliver: Deliver
   ): Effect.Effect<RelayRoute, NotDelivered, Scope.Scope> =>
     Effect.gen(function* routeReader() {
-      const config = settings.relay;
+      const config = settings.relays.find(
+        (relay) => relay.name === own.name || relay.to === own.name
+      );
 
-      if (
-        config === undefined ||
-        (config.name !== own.name && config.to !== own.name)
-      ) {
+      if (config === undefined) {
         return {
           message: (inbound: Inbound, settled: boolean) =>
             deliver(inbound, settled),
@@ -1355,7 +1354,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
   );
 
   const copyOut = (delivered: Delivered, sent: Sent) => {
-    const config = settings.relay;
+    const config = settings.relays.find((relay) => relay.name === sent.from);
 
     if (!copiesOutbound(config, sent.from, [sent.to, ...sent.cc])) {
       return Effect.void;
@@ -1418,14 +1417,14 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
         });
       }
 
-      const config = settings.relay;
       const own = yield* awaitSelf;
+      const relayName = record.value.relay.name;
 
-      if (
-        config === undefined ||
-        own.name !== config.to ||
-        record.value.relay.name !== config.name
-      ) {
+      const config = settings.relays.find(
+        (relay) => relay.to === own.name && relay.name === relayName
+      );
+
+      if (config === undefined) {
         return yield* refused("NotAttempted")(
           "Handled confirmation is available only on the configured EA"
         );
@@ -1600,7 +1599,10 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
 
       if (
         record.value.relay !== undefined &&
-        settings.relay?.mode === "front"
+        settings.relays.some(
+          (relay) =>
+            relay.name === record.value.relay?.name && relay.mode === "front"
+        )
       ) {
         yield* confirmHandled(id).pipe(
           Effect.mapError((error) =>

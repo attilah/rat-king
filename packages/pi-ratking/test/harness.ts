@@ -45,7 +45,7 @@ export const harness = (
   refuse: readonly string[] = [],
   overrides: {
     readonly reserved?: ReservedValue;
-    readonly relay?: RelaySettingValue;
+    readonly relays?: readonly RelaySettingValue[];
     readonly documents?: readonly string[];
     readonly secrets?: Map<string, string>;
   } = {}
@@ -67,6 +67,7 @@ export const harness = (
           endpoint: "https://mailbox.example.invalid",
           issuer: Option.none(),
           refuse,
+          relays: [],
           reserved: {},
           secretsCommand: "secrets",
           serviceDid: "did:web:mailbox.example.invalid",

@@ -42,6 +42,16 @@ export const RelaySetting = Schema.Struct({
 
 export type RelaySettingValue = typeof RelaySetting.Type;
 
+export const relaysOf = (
+  relay: RelaySettingValue | readonly RelaySettingValue[] | undefined
+): readonly RelaySettingValue[] => {
+  if (relay === undefined) {
+    return [];
+  }
+
+  return Schema.is(RelaySetting)(relay) ? [relay] : relay;
+};
+
 export const PiConfig = Schema.Struct({
   askTimeoutMs: Schema.optionalKey(
     Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))
@@ -55,7 +65,9 @@ export const PiConfig = Schema.Struct({
   endpoint: Schema.String.check(Schema.isPattern(/^https?:\/\/\S+$/u)),
   issuer: Schema.optionalKey(IssuerSetting),
   refuse: Schema.optionalKey(Schema.Array(AgentName)),
-  relay: Schema.optionalKey(RelaySetting),
+  relay: Schema.optionalKey(
+    Schema.Union([RelaySetting, Schema.Array(RelaySetting)])
+  ),
   reserved: Schema.optionalKey(Reserved),
   secretsCommand: Schema.optionalKey(Schema.String),
   serviceDid: Did,
@@ -75,7 +87,7 @@ export interface SettingsValue {
   readonly issuer: Option.Option<IssuerSettingValue>;
   readonly refuse: readonly string[];
   readonly reserved: ReservedValue;
-  readonly relay?: RelaySettingValue;
+  readonly relays: readonly RelaySettingValue[];
   readonly secretsCommand: string;
   readonly serviceDid: string;
   readonly state: string;
@@ -150,15 +162,12 @@ export const loadSettings = Effect.fn("RatKing.loadSettings")(
       endpoint: config.endpoint,
       issuer: Option.fromNullishOr(config.issuer),
       refuse: config.refuse ?? [],
+      relays: relaysOf(config.relay),
       reserved: config.reserved ?? {},
       secretsCommand: config.secretsCommand ?? "secrets",
       serviceDid: config.serviceDid,
       state,
     });
-
-    if (config.relay !== undefined) {
-      Object.assign(settings, { relay: config.relay });
-    }
 
     return settings;
   }

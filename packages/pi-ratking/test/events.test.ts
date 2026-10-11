@@ -787,12 +787,14 @@ it.live.prop(
         Layer.orDie,
         Layer.provideMerge(
           harness(state, http, [], {
-            relay: {
-              fallbackMinutes: 10,
-              mode: "front",
-              name: "handset",
-              to: "tester",
-            },
+            relays: [
+              {
+                fallbackMinutes: 10,
+                mode: "front",
+                name: "handset",
+                to: "tester",
+              },
+            ],
           }).pipe(Layer.provideMerge(socketPort))
         )
       );

@@ -85,6 +85,7 @@ const services = (
             host: hostSecret,
           }),
           refuse: [],
+          relays: [],
           reserved: {},
           secretsCommand: "secrets",
           serviceDid,

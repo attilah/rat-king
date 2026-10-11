@@ -393,13 +393,15 @@ it.live.prop(
         Layer.orDie,
         Layer.provideMerge(
           harness(state, http, [], {
-            relay: {
-              copyOutbound: original.copyOutbound,
-              fallbackMinutes: 10,
-              mode: "front",
-              name: "tester",
-              to: "ea",
-            },
+            relays: [
+              {
+                copyOutbound: original.copyOutbound,
+                fallbackMinutes: 10,
+                mode: "front",
+                name: "tester",
+                to: "ea",
+              },
+            ],
           }).pipe(Layer.provideMerge(socketPort))
         )
       );
