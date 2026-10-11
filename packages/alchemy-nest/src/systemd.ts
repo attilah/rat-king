@@ -279,11 +279,38 @@ export const needsUpdate = (
   live.active !== (props.started ?? true) ||
   live.needDaemonReload;
 
+const validSocketPort = (port: number) =>
+  Number.isSafeInteger(port) && port >= 1024 && port <= 65_535;
+
 export const deleteUnit = Effect.fn("SystemdUnit.delete")(function* deleteUnit(
   shell: Interface,
   output: UnitAttributes
 ) {
   const live = yield* status(shell, output);
+  const store = output.name.endsWith("-seaweedfs.service");
+
+  const text = store
+    ? new TextDecoder().decode(yield* shell.read(output.path))
+    : "";
+
+  const s3 = Number(/-s3\.port=(?<port>\d+)/u.exec(text)?.groups?.port);
+
+  const s3Grpc = Number(
+    /-s3\.port\.grpc=(?<port>\d+)/u.exec(text)?.groups?.port
+  );
+
+  if (
+    store &&
+    output.name !== "rat-king-seaweedfs.service" &&
+    (textDigest(text) !== output.sha256 ||
+      !validSocketPort(s3) ||
+      s3 === 18_333 ||
+      !validSocketPort(s3Grpc) ||
+      s3Grpc === 28_333)
+  ) {
+    return yield* refuse("Store socket cleanup requires its declared ports.");
+  }
+
   yield* wantsLink(shell, output.home, output.name, "check");
 
   if (live.active) {
@@ -302,9 +329,14 @@ export const deleteUnit = Effect.fn("SystemdUnit.delete")(function* deleteUnit(
   yield* wantsLink(shell, output.home, output.name, "remove");
   yield* ctl(shell, "daemon-reload");
 
-  if (output.name === "rat-king-seaweedfs.service") {
-    yield* removeStoreSockets(shell);
+  if (store) {
+    yield* removeStoreSockets(
+      shell,
+      output.name === "rat-king-seaweedfs.service" ? undefined : { s3, s3Grpc }
+    );
   }
+
+  return yield* Effect.void;
 });
 
 export const deleteDeclaredUnit = Effect.fn("SystemdUnit.deleteDeclared")(

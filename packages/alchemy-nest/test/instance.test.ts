@@ -1,0 +1,185 @@
+import { NodePath } from "@effect/platform-node";
+import { offlineLayer } from "@rat-king/alchemy-nest/offline";
+import * as Test from "alchemy/Test/Vitest";
+import { Effect, Layer, Schema } from "effect";
+import { expect } from "vitest";
+
+import { Celld, ObjectStore } from "../src/index.ts";
+import { ReleaseSource } from "../src/release.ts";
+import { checkedStack } from "./checked-stack.ts";
+import {
+  Rendered,
+  renderProviders,
+  renderedSurface,
+} from "./instance-render.ts";
+import { mischief } from "./instance-stack.ts";
+
+const PlanSurface = Schema.Record(
+  Schema.String,
+  Schema.Struct({
+    props: Schema.optionalKey(
+      Schema.Struct({
+        endpoint: Schema.optionalKey(Schema.String),
+        name: Schema.optionalKey(Schema.String),
+        path: Schema.optionalKey(Schema.String),
+        sections: Schema.optionalKey(
+          Schema.Array(
+            Schema.Struct({
+              lines: Schema.Array(Schema.Tuple([Schema.String, Schema.String])),
+              name: Schema.String,
+            })
+          )
+        ),
+      })
+    ),
+  })
+);
+
+const host = {
+  dataRoot: "/srv/example/mailbox",
+  home: "/home/example",
+  ssh: "example",
+  tailnetIPv4: "203.0.113.10",
+};
+
+const { test } = Test.make({
+  providers: Layer.merge(ObjectStore.providers(), Celld.providers()).pipe(
+    Layer.provide(offlineLayer),
+    Layer.provide(NodePath.layer),
+    Layer.provide(
+      Layer.succeed(ReleaseSource, {
+        get: () => Effect.die("Offline plan must not download"),
+      })
+    )
+  ),
+  stage: "instance-tests",
+});
+
+const mailbox = Effect.gen(function* mailbox() {
+  const slice = yield* ObjectStore.Slice(host.home);
+
+  const bucket = yield* ObjectStore.Bucket("store", {
+    host,
+    name: "example-cells",
+    slice: slice.sha256,
+  });
+
+  return yield* Celld.Node("celld", { bucket, host });
+});
+
+test.provider("default plan preserves main output", (scratch) =>
+  Effect.gen(function* baseline() {
+    const plan = yield* checkedStack(scratch).plan(mailbox);
+    expect(
+      JSON.parse(
+        JSON.stringify(plan.resources).replaceAll(
+          /"instanceId":"[a-f0-9]+"/gu,
+          '"instanceId":"scratch"'
+        )
+      )
+    ).toMatchSnapshot();
+  })
+);
+
+const { test: renderTest } = Test.make({
+  providers: renderProviders.pipe(Layer.provide(NodePath.layer)),
+  stage: "instance-render-tests",
+});
+
+renderTest.provider("default rendered bytes equal main 920884e", (scratch) =>
+  Effect.gen(function* baseline() {
+    yield* checkedStack(scratch).deploy(mailbox);
+    expect(renderedSurface(yield* Rendered)).toMatchSnapshot();
+  })
+);
+
+test.provider(
+  "mischief offline plan creates only its instance resources",
+  (scratch) =>
+    Effect.gen(function* offline() {
+      const plan = yield* checkedStack(scratch).plan(mischief(host));
+
+      const surface = yield* Schema.decodeEffect(
+        Schema.fromJsonString(PlanSurface)
+      )(JSON.stringify(plan.resources));
+
+      const text = JSON.stringify(surface);
+
+      for (const name of [
+        "mischief-celld.service",
+        "mischief-seaweedfs.service",
+        "mischief.slice",
+        "/home/example/.config/mischief",
+        "/home/example/.local/share/mischief",
+        "/srv/example/mischief",
+        "http://127.0.0.1:28006",
+      ]) {
+        expect(text).toContain(name);
+      }
+
+      for (const name of [
+        "rat-king-celld.service",
+        "rat-king-seaweedfs.service",
+        "rat-king.slice",
+        "/home/example/.config/rat-king",
+        "/home/example/.local/share/rat-king",
+        "http://127.0.0.1:18333",
+      ]) {
+        expect(text).not.toContain(name);
+      }
+
+      expect(
+        Object.values(plan.resources).every(({ action }) => action === "create")
+      ).toBe(true);
+    })
+);
+
+renderTest.provider(
+  "mischief resolved files, credentials, retention and restart gates stay in its instance",
+  (scratch) =>
+    Effect.gen(function* rendered() {
+      yield* checkedStack(scratch).deploy(mischief(host));
+      const surface = renderedSurface(yield* Rendered);
+      expect(
+        surface.directories.every((path) => path.includes("mischief"))
+      ).toBe(true);
+      expect(
+        Object.keys(surface.files).every((path) => path.includes("mischief"))
+      ).toBe(true);
+
+      const store =
+        surface.files[
+          `${host.home}/.config/systemd/user/mischief-seaweedfs.service`
+        ];
+
+      const node =
+        surface.files[
+          `${host.home}/.config/systemd/user/mischief-celld.service`
+        ];
+
+      expect(store).toContain("-volume.max=32");
+      expect(node).toContain(
+        "--listen 203.0.113.10:28000 --internal-listen 127.0.0.1:28001"
+      );
+      expect(node).toContain(
+        'before-node "mischief" 28000 "/srv/example/mischief"'
+      );
+      expect(store).toContain('store "mischief" 28000 "/srv/example/mischief"');
+      expect(
+        surface.files[`${host.home}/.config/mischief/celld.env`]
+      ).toContain('S3_ENDPOINT="http://127.0.0.1:28006"');
+      expect(
+        surface.files[
+          `${host.home}/.local/share/mischief/bin/storage-maintenance.py`
+        ]
+      ).toContain("http://127.0.0.1:28004");
+      expect(
+        surface.files[
+          `${host.home}/.local/share/mischief/bin/storage-maintenance.py`
+        ]
+      ).toContain("http://127.0.0.1:28002");
+      expect(
+        surface.files[`${host.home}/.config/systemd/user/mischief.slice`]
+      ).toContain("MemoryHigh=2.5G");
+    })
+);

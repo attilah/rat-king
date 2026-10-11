@@ -1,8 +1,8 @@
 import { Context, Effect, Option } from "effect";
 
-import { readDirectory, readFile, refuse } from "./files.ts";
-import type { FileProps } from "./files.ts";
+import { fileText, readDirectory, readFile, refuse } from "./files.ts";
 import type { Interface } from "./host-shell.ts";
+import type { FileProps } from "./instance-files.ts";
 
 export class StateRecovery extends Context.Service<StateRecovery, boolean>()(
   "@rat-king/StateRecovery"
@@ -84,9 +84,15 @@ export const rotatingFile = Effect.fn("Nest.adopt.rotatingFile")(
       return false;
     }
 
-    const root = shell.purgeRoots.find((entry) =>
-      entry.endsWith("/.config/rat-king")
-    );
+    const instance =
+      owner?.name.replace(/-(?:seaweedfs|celld)\.service$/u, "") ?? "rat-king";
+
+    const root =
+      instance === "rat-king"
+        ? shell.purgeRoots.find((entry) => entry.endsWith("/.config/rat-king"))
+        : shell.purgeRoots.find(
+            (entry) => entry === `${owner?.home}/.config/${instance}`
+          );
 
     if (
       root === undefined ||
@@ -100,13 +106,13 @@ export const rotatingFile = Effect.fn("Nest.adopt.rotatingFile")(
     }
 
     const name = path.endsWith("/s3.json")
-      ? "rat-king-seaweedfs.service"
-      : "rat-king-celld.service";
+      ? `${instance}-seaweedfs.service`
+      : `${instance}-celld.service`;
 
     if (
       owner === undefined ||
       owner.name !== name ||
-      `${owner.home}/.config/rat-king` !== root
+      `${owner.home}/.config/${instance}` !== root
     ) {
       return yield* refuse(
         "Credential rotation requires its declared owner unit."
@@ -122,7 +128,16 @@ export const rotatingFile = Effect.fn("Nest.adopt.rotatingFile")(
       return yield* refuse("Credential rotation refuses a foreign owner unit.");
     }
 
-    const result = yield* shell.exec(["python3", "-c", rotationScript, path]);
+    const endpoint = /S3_ENDPOINT="http:\/\/127\.0\.0\.1:(?<port>\d+)"/u.exec(
+      fileText(props.content)
+    )?.groups?.port;
+
+    const script =
+      instance === "rat-king"
+        ? rotationScript
+        : rotationScript.replace("18333", endpoint ?? "invalid");
+
+    const result = yield* shell.exec(["python3", "-c", script, path]);
 
     if (result.code !== 0) {
       return yield* refuse(

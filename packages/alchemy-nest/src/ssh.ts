@@ -4,6 +4,8 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { absent } from "./absent.ts";
 import { HostError, HostShell } from "./host-shell.ts";
 import type { Diagnostics, Interface, Result } from "./host-shell.ts";
+import { validateInstance } from "./instance.ts";
+import type { InstanceProps } from "./instance.ts";
 import { NodeSchema } from "./inventory-schema.ts";
 import type { Node } from "./inventory-schema.ts";
 
@@ -12,7 +14,10 @@ export const shellQuote = (value: string): string =>
 
 const argvText = (argv: readonly string[]) => argv.map(shellQuote).join(" ");
 
-export const layer = (node: Node) =>
+export const layer = (
+  node: Node,
+  props: InstanceProps & { readonly dataRoot?: string } = {}
+) =>
   Layer.effect(
     HostShell,
     Effect.gen(function* makeSshShell() {
@@ -26,6 +31,7 @@ export const layer = (node: Node) =>
         )
       );
 
+      const layout = yield* validateInstance(validated, props);
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
 
       const permits = yield* Semaphore.make(4);
@@ -90,7 +96,7 @@ export const layer = (node: Node) =>
 
             for (const fact of [
               validated.home,
-              validated.dataRoot,
+              layout.dataRoot,
               validated.ssh,
               validated.tailnetIPv4,
             ]) {
@@ -187,11 +193,7 @@ export const layer = (node: Node) =>
             Effect.asVoid
           )
         ),
-        purgeRoots: [
-          validated.dataRoot,
-          `${validated.home}/.config/rat-king`,
-          `${validated.home}/.local/share/rat-king`,
-        ],
+        purgeRoots: [layout.dataRoot, layout.configuration, layout.binaryRoot],
         read: Effect.fn("HostShell.read")(function* operation(path) {
           const p = shellQuote(path);
 

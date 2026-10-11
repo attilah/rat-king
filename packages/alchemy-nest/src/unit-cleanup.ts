@@ -48,7 +48,20 @@ export const wantsLink = Effect.fn("SystemdUnit.wantsLink")(function* link(
 });
 
 export const removeStoreSockets = Effect.fn("SystemdUnit.storeSockets")(
-  function* sockets(shell: Interface) {
-    yield* must(shell, ["python3", "-c", storeSocketScript]);
+  function* sockets(
+    shell: Interface,
+    ports?: { readonly s3: number; readonly s3Grpc: number }
+  ) {
+    const script =
+      ports === undefined
+        ? storeSocketScript
+        : storeSocketScript
+            .replace("seaweedfs-s3-18333.sock", `seaweedfs-s3-${ports.s3}.sock`)
+            .replace(
+              "seaweedfs-s3-grpc-28333.sock",
+              `seaweedfs-s3-grpc-${ports.s3Grpc}.sock`
+            );
+
+    yield* must(shell, ["python3", "-c", script]);
   }
 );
