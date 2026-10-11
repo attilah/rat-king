@@ -10,6 +10,7 @@ import {
 } from "effect";
 import { FetchHttpClient } from "effect/http";
 
+import { plaintext } from "../../packages/envelope/src/canonical.ts";
 import * as Defs from "../../packages/lexicon/src/defs.ts";
 import * as Send from "../../packages/lexicon/src/mailbox.send.ts";
 import { lexString } from "../../packages/lexicon/src/runtime.ts";
@@ -44,6 +45,7 @@ const MessageId = lexString({ format: "tid", type: "string" });
 export const SealRequest = Schema.Struct({
   as: SendRequest.fields.as,
   body: Schema.String,
+  encrypt: Schema.optionalKey(Schema.Boolean),
   replyTo: Schema.optionalKey(MessageId),
   summary: Schema.optionalKey(
     Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(SUMMARY_MAX))
@@ -67,13 +69,21 @@ export const SealedJson = Schema.fromJsonString(Sealed);
 export type SealedValue = typeof Sealed.Type;
 
 const sealUsage =
-  "seal --as <identity-secret> --to <name> --body <text | -> [--summary <line>] [--thread <id>] [--reply-to <id>]";
+  "seal --as <identity-secret> --to <name> --body <text | -> [--summary <line>] [--thread <id>] [--reply-to <id>] [--encrypt]";
 
 export const parseSeal = (argv: readonly string[]) => {
   const values = new Map<string, string>();
+  let encrypt = false;
 
   for (let index = 0; index < argv.length; index += 2) {
     const flag = argv[index];
+
+    if (flag === "--encrypt" && !encrypt) {
+      encrypt = true;
+      index -= 1;
+      continue;
+    }
+
     const value = argv[index + 1];
 
     if (value === undefined) {
@@ -106,6 +116,10 @@ export const parseSeal = (argv: readonly string[]) => {
     to: values.get("--to"),
   };
 
+  if (encrypt) {
+    Object.assign(raw, { encrypt: true });
+  }
+
   if (values.has("--summary")) {
     Object.assign(raw, { summary: oneLine(values.get("--summary") ?? "") });
   }
@@ -130,6 +144,18 @@ export const scriptSeal = Effect.fn("Nest.scriptSeal")(function* scriptSeal(
     ...request,
     cc: [],
   });
+
+  if (
+    request.encrypt === true &&
+    !primary.document.keyAgreement.includes(`${primary.did}#encryption`)
+  ) {
+    return yield* Effect.fail(
+      refused(
+        "NoAgreementKey",
+        "Encrypted send requires a recipient agreement key"
+      )
+    );
+  }
 
   let json: string | undefined;
 
@@ -169,7 +195,9 @@ export const scriptSeal = Effect.fn("Nest.scriptSeal")(function* scriptSeal(
   const envelope = yield* client.seal(
     primary.did,
     encodeForId,
-    replyTo === undefined ? { encrypt: false } : { encrypt: false, replyTo }
+    replyTo === undefined
+      ? { encrypt: request.encrypt === true }
+      : { encrypt: request.encrypt === true, replyTo }
   );
 
   return {
@@ -200,7 +228,11 @@ const renderFailure = (failure: SealedFailure) =>
   );
 
 export const scriptSendSealed = Effect.fn("Nest.scriptSendSealed")(
-  function* scriptSendSealed(as: string, text: string) {
+  function* scriptSendSealed(
+    as: string,
+    text: string,
+    requireEncrypted?: boolean
+  ) {
     const stdout: string[] = [];
 
     const result = yield* Effect.gen(function* submitJournal() {
@@ -212,6 +244,15 @@ export const scriptSendSealed = Effect.fn("Nest.scriptSendSealed")(
           )
         )
       );
+
+      if (requireEncrypted === true && plaintext(envelope)) {
+        return yield* Effect.fail(
+          refused(
+            "EncryptionRequired",
+            "--encrypt refuses a plaintext sealed envelope"
+          )
+        );
+      }
 
       const settings = yield* Settings;
       const identity = yield* leaseScriptIdentity(as);
@@ -338,10 +379,15 @@ export const scriptSendSealed = Effect.fn("Nest.scriptSendSealed")(
 
 export const sealedSendFlags = (argv: readonly string[]) => {
   const values = new Map<string, string>();
+  const flags = argv.filter((flag) => flag !== "--encrypt");
 
-  for (let index = 0; index < argv.length; index += 2) {
-    const flag = argv[index];
-    const value = argv[index + 1];
+  if (argv.filter((flag) => flag === "--encrypt").length > 1) {
+    return Result.fail("Repeated --encrypt");
+  }
+
+  for (let index = 0; index < flags.length; index += 2) {
+    const flag = flags[index];
+    const value = flags[index + 1];
 
     if (
       (flag !== "--as" && flag !== "--sealed") ||
@@ -432,7 +478,11 @@ export const sealedSendCommand = Effect.fn("Nest.sealedSendCommand")(
         Effect.mapError((error) => refused("NotConfigured", error.reason))
       );
 
-      return yield* scriptSendSealed(parsed.success, text).pipe(
+      return yield* scriptSendSealed(
+        parsed.success,
+        text,
+        argv.includes("--encrypt")
+      ).pipe(
         Effect.provide(Layer.mergeAll(secretStoreLayer, FetchHttpClient.layer)),
         Effect.provideService(Settings, settings)
       );
