@@ -54,6 +54,8 @@ Opt-in purge drains paginated bucket objects before DeleteBucket. Alchemy depend
 
 The live provider layer installs `UnitStartup` checks in both SystemdUnit and Celld.Node create/update reconciliation. Only missing allowed sockets may wait for up to ten seconds; any extra port, wrong process or wrong bind stops both units immediately and fails the reconcile. Store startup requires its exact eight ports; node startup requires the final ten. No diagnose runs before that gate. Probe diagnostics retain at most 16 KiB of stderr, redact generated credentials and host facts, and drain the stream.
 
+`Celld.Deployment` accepts optional `secretNames: readonly string[]`. Omit it to keep the mailbox allowlist: `AGENT_IDENTITIES_CREDENTIAL`, `MODEL_GATEWAY_CREDENTIAL` and `CLAUDE_SIDECAR_CREDENTIAL`. Custom deployments supply their own names; binding generation still refuses undeclared names and collisions with public vars.
+
 ## Live probes
 
 The `live` package script requires `RAT_KING_LIVE_NODE` and an external `RAT_KING_STATE_DIR`. It validates the private inventory and disables Alchemy telemetry. Commands are `preflight`, `plan`, `deploy`, `bootstrap`, `bootstrap-check`, `diagnose`, `race`, `store-listeners`, `listeners`, `status`, `uid-probe` and `health`. The store-only listener check covers the interval while the node waits for its first deployment. `deploy` also requires `RAT_KING_START_APPROVED=true`; `race` requires `RAT_KING_RACE_APPROVED=true`. Those switches record an already-granted owner approval, not permission to start a shared-host workload.
@@ -80,7 +82,7 @@ The package is not published to a registry. A consumer pins it from a full rat-k
 
 Never use a branch or tag. The sha is the pin, and the consumer's lockfile records it.
 
-The package ships TypeScript source. Importing it needs a toolchain that runs `.ts` files (Node 24 or later, or a bundler) and `allowImportingTsExtensions` when typechecking.
+The package ships TypeScript source. Node does not strip types under `node_modules`; plain Node 24 fails with `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`. Pinned consumers need a runner that transforms dependency TypeScript, such as jiti 2.7.0, or a bundler. Set `allowImportingTsExtensions` when typechecking.
 
 | Entry point | Exports |
 | --- | --- |
