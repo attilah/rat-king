@@ -65,8 +65,14 @@ export const ShipAttempt = Schema.Struct({
 
 export type ShipSettingsValue = typeof ShipSettings.Type;
 
+export const RestartObservation = Schema.Struct({
+  durationSeconds: Schema.NullOr(Schema.Number),
+  restarted: Schema.NullOr(Schema.Boolean),
+});
+
 export const RestartEvent = Schema.Struct({
   durationSeconds: Schema.Number,
+  observation: Schema.optionalKey(RestartObservation),
   phase: Schema.Literals(["requested", "completed", "deferred"]),
   restarted: Schema.NullOr(Schema.Boolean),
   retryAt: Schema.optionalKey(Schema.Number),

@@ -16,6 +16,7 @@ import {
 } from "./ship-config.ts";
 import { sanitizeCandidateStderr } from "./ship-diagnostics.ts";
 import { sendShipNotification } from "./ship-notify.ts";
+import { deployOutcome } from "./ship-observation.ts";
 import { shipLoop } from "./ship.ts";
 import type { ShipPorts } from "./ship.ts";
 import { FleetError } from "./stage-config.ts";
@@ -400,41 +401,14 @@ export const shipCommand = Effect.fn("Ship.command")(
               Schema.decodeEffect(Schema.fromJsonString(RestartEvent))(line)
           );
 
-          const last = observations.at(-1);
-
-          const restarted = observations.some(
-            (event) => event.restarted === true
-          );
-
-          let outcome: (typeof ShipReceipt.Type)["result"] = "failed";
-
-          if (result.code === 0) {
-            outcome = "success";
-          } else if (last?.phase === "deferred") {
-            outcome = "deferred";
-          }
-
-          const verdict = {
-            celldRestarted:
-              restarted || (last?.restarted === null ? null : false),
-            restartSeconds:
-              last?.restarted === null
-                ? null
-                : observations.reduce(
-                    (duration, event) => duration + event.durationSeconds,
-                    0
-                  ),
-            result: outcome,
-          };
+          const verdict = deployOutcome(result.code, observations);
 
           const diagnostic =
             result.stderrTail === undefined
               ? verdict
               : { ...verdict, stderrTail: result.stderrTail };
 
-          return last?.retryAt === undefined
-            ? diagnostic
-            : { ...diagnostic, retryAt: last.retryAt };
+          return diagnostic;
         },
         (effect) =>
           effect.pipe(
