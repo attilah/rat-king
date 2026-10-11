@@ -1,0 +1,61 @@
+{
+  "mode": "offline-empty-state-assumption-NOT-live-reconciliation",
+  "plan": {
+    "resources": [
+      {
+        "fqn": "ingress",
+        "logicalId": "ingress",
+        "resourceType": "Cloudflare.Worker",
+        "action": "create",
+        "bindings": [
+          {
+            "sid": "ALERTS",
+            "action": "create"
+          },
+          {
+            "sid": "BILLING_PULL_CREDENTIAL",
+            "action": "create"
+          },
+          {
+            "sid": "BILLING_WEBHOOK_CREDENTIAL",
+            "action": "create"
+          },
+          {
+            "sid": "RATE_LIMIT",
+            "action": "create"
+          }
+        ]
+      }
+    ],
+    "actions": []
+  },
+  "surface": {
+    "hostname": "billing.example.invalid",
+    "workersDev": false,
+    "durableObjects": [
+      {
+        "binding": "ALERTS",
+        "className": "BillingQueue"
+      }
+    ],
+    "rateLimit": {
+      "binding": "RATE_LIMIT",
+      "namespaceId": 1001,
+      "limit": 10,
+      "period": 60
+    },
+    "secrets": [
+      {
+        "name": "BILLING_WEBHOOK_CREDENTIAL",
+        "type": "secret_text",
+        "value": "[REDACTED]"
+      },
+      {
+        "name": "BILLING_PULL_CREDENTIAL",
+        "type": "secret_text",
+        "value": "[REDACTED]"
+      }
+    ],
+    "paths": ["POST /", "GET /pull", "POST /ack"]
+  }
+}

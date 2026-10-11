@@ -24,6 +24,10 @@ export default defineConfig({
         },
       },
       {
+        extends: "apps/billing-ingress/vitest.config.ts",
+        test: { env: { ALCHEMY_TELEMETRY_DISABLED: "1" }, name: "billing" },
+      },
+      {
         extends: "stacks/cf/vitest.config.ts",
         test: {
           env: { ALCHEMY_TELEMETRY_DISABLED: "1" },

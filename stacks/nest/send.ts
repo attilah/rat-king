@@ -79,10 +79,11 @@ export const Verdicts = Data.taggedEnum<Verdict>();
 
 export const SendRequest = Schema.Struct({
   as: Schema.String.check(
-    Schema.isPattern(/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/u)
+    Schema.isPattern(/^[a-zA-Z0-9][a-zA-Z0-9._/-]{0,127}$/u)
   ),
   body: Schema.String,
   cc: Schema.Array(AgentName),
+  encrypt: Schema.optionalKey(Schema.Boolean),
   kind: Schema.optionalKey(Schema.Literal("data")),
   record: Schema.optionalKey(Schema.String),
   summary: Schema.String.check(
@@ -136,7 +137,7 @@ export const render = (verdict: Verdict) =>
   });
 
 const usage =
-  "send --as <identity-secret> --to <name> [--cc <name>]... [--summary <line>] (--body <text | -> | --record <file.json> --type <nsid>)";
+  "send --as <identity-secret> --to <name> [--cc <name>]... [--summary <line>] (--body <text | -> | --record <file.json> --type <nsid>) [--encrypt]";
 
 export const parseSend = (
   argv: readonly string[]
@@ -144,8 +145,17 @@ export const parseSend = (
   const values = new Map<string, string>();
   const cc: string[] = [];
 
+  let encrypt = false;
+
   for (let index = 0; index < argv.length; index += 2) {
     const flag = argv[index];
+
+    if (flag === "--encrypt" && !encrypt) {
+      encrypt = true;
+      index -= 1;
+      continue;
+    }
+
     const value = argv[index + 1];
 
     if (value === undefined) {
@@ -155,12 +165,10 @@ export const parseSend = (
     if (flag === "--cc") {
       cc.push(value);
     } else if (
-      (flag === "--as" ||
-        flag === "--to" ||
-        flag === "--summary" ||
-        flag === "--body" ||
-        flag === "--record" ||
-        flag === "--type") &&
+      flag !== undefined &&
+      ["--as", "--to", "--summary", "--body", "--record", "--type"].includes(
+        flag
+      ) &&
       !values.has(flag)
     ) {
       values.set(flag, value);
@@ -187,6 +195,10 @@ export const parseSend = (
     ),
     to: values.get("--to"),
   };
+
+  if (encrypt) {
+    Object.assign(input, { encrypt: true });
+  }
 
   if (values.has("--record")) {
     Object.assign(input, {
@@ -407,6 +419,21 @@ export const scriptSend = Effect.fn("Nest.scriptSend")(
         }
       }
 
+      if (
+        request.encrypt === true &&
+        targets.some(
+          (target) =>
+            !target.document.keyAgreement.includes(`${target.did}#encryption`)
+        )
+      ) {
+        return yield* Effect.fail(
+          refused(
+            "NoAgreementKey",
+            "Encrypted send requires a recipient agreement key"
+          )
+        );
+      }
+
       let json: string | undefined;
 
       const encodeForId = (id: string) => {
@@ -431,7 +458,9 @@ export const scriptSend = Effect.fn("Nest.scriptSend")(
 
       for (const target of targets) {
         envelopes.push(
-          yield* client.seal(target.did, encodeForId, { encrypt: false })
+          yield* client.seal(target.did, encodeForId, {
+            encrypt: request.encrypt === true,
+          })
         );
       }
 

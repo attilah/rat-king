@@ -19,6 +19,7 @@ import {
   alarmPlist,
   alarmCheck,
 } from "./alarm-command.ts";
+import { billingCommand } from "./billing-command.ts";
 import { doneBar } from "./comms.ts";
 import { configDoctor } from "./config-doctor.ts";
 import { commsCounts, digest } from "./digest.ts";
@@ -228,6 +229,10 @@ const program = Effect.gen(function* launcher() {
 });
 
 const scriptCommand = () => {
+  if (process.argv[2] === "billing-relay") {
+    return billingCommand(process.argv.slice(3));
+  }
+
   if (process.argv[2] === "seal") {
     return sealCommand(process.argv.slice(3));
   }

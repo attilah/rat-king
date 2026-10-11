@@ -261,6 +261,19 @@ importers:
         specifier: 6.0.0-alpha.59
         version: 6.0.0-alpha.59
 
+  apps/billing-ingress:
+    dependencies:
+      effect:
+        specifier: 4.0.1
+        version: 4.0.1
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: 5.20261004.1
+        version: 5.20261004.1
+      fast-check:
+        specifier: 4.10.2
+        version: 4.10.2
+
   apps/claude-sidecar:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
