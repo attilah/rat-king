@@ -24,10 +24,60 @@ A private launcher only needs to select the JSON and execute `stacks/nest/cli.ts
 | `provision` | Forward mailbox provisioning flags. Without `--secret`, substitute the agent label into `RAT_KING_AGENT_SECRET_TEMPLATE`. |
 | `mailbox` | Forward any mailbox CLI command and flags under the same configuration. |
 | `mint-host` | Generate signing/agreement keys on the configured target. Refuse an existing secret-store entry. Send private keys only through target-local stdin to the secret store. Print only the DID after successful storage. |
+| `send` | Send one signed-plaintext message as a send-only script identity. Needs only this host's pi.json and secret store, not the stage config. See [Script sends](#script-sends). |
 
 The Python collector is a read-only filesystem adapter. It emits frames; the Effect stream parses and classifies them. Call IDs are scoped to each session file. A send/ask/reply/handover whose result contains `Rat King` is network-routed; other returned results count as raw intercom. Calls without a tool result count as unanswered, not raw, and do not affect the done-bar. Digest exposes their aggregate as `unanswered_24h`; older history without that field still parses. Malformed session lines follow the old collector's skip behavior. Invalid route receipts, missing inputs, SSH failures and collector timeouts fail rather than reporting zero.
 
 Digest history keeps the old field meanings: route, fallback, loss and quarantine counts come from the local host; raw intercom counts sum both hosts. The done-bar is deliberately stricter: it also checks remote losses. A failed measurement does not append a successful digest.
+
+## Script sends
+
+Cron jobs and launchd monitors send through a dedicated **send-only identity**, for example `acme/alert-cron`. It is never a desk's name. `send` never claims a name, starts a reader or takes a lease; it leases the identity key for one minute, signs, sends and exits.
+
+```sh
+node stacks/nest/cli.ts send --as <identity-secret> --to <project/row> [--cc <name>]... --summary <line> --body <text | ->
+```
+
+- `--as` names the identity's secret-store entry. The sender name comes from the identity's DID through the host's DID template (`didTemplate` in pi.json) or its `reserved` table, never from a flag. An identity whose DID maps to no name is refused.
+- `--to` and `--cc` resolve like pi-ratking: the local directory first, then the DID template and the mailbox's public document. Aliases in `reserved` apply.
+- `--summary` is one line of 1 to 280 characters. `--body -` reads the body from stdin.
+- The payload matches pi-ratking's signed plaintext (`from`, `to`, `cc`, `summary`, `thread`, `kind: "message"`), so a Pi renders it as summary, then sender. Recipients verify the sender name against its DID.
+- Settings come from `RATKING_CONFIG`, else `$HOME/.config/rat-king/pi.json`: `endpoint`, `serviceDid`, `didTemplate`, `reserved`, `directory` and `secretsCommand`.
+
+| Exit | Meaning | Output |
+| --- | --- | --- |
+| `0` | Every recipient's mailbox accepted the message. | stdout: one JSON line `{"id","seq","to"}` for the primary recipient. |
+| `2` | Refused. Retrying will not help until something changes. | stderr: `NOT DELIVERED: <code>. <reason>`. Codes: `UnknownName`, `Retired` (the reason names the current row when there is a successor), `Unauthorized`, `Self`, `Partial` (names who already accepted; do not resend to them), `NoIdentity`, `NotConfigured`, `Usage`, `NotAttempted`, or the mailbox's own rejection code. |
+| `3` | Transport failed or admission is unconfirmed. | stderr: `NOT SENT: <reason>` when nothing reached a mailbox (safe to retry), or `UNCERTAIN: <reason>` when the message may have landed (a resend can duplicate it). Uncertain admission retries the same envelope for about 90 seconds first; the mailbox treats a repeat as the same message. |
+
+### Provision a script identity
+
+The operator mints it once, on the operator host, the same way a Pi on that host mints its own name through the command issuer: generate keys into the secret store, then register the public document at the DID the template gives the name. The agent label and secret name must avoid `/` and `.`, so pass the template DID for `<project>.<row>` explicitly:
+
+```sh
+nest.sh provision --agent acme-alert-cron \
+  --did did:web:acme.alert-cron.agents.example.invalid \
+  --secret rat_king_script_acme-alert-cron_identity
+```
+
+The printed DID must equal the template applied to `acme.alert-cron`; then recipients see the sender as `acme/alert-cron`. Use a `rat_king_script_` secret name, never the `rat_king_fleet_agent_<project>.<row>_identity` name a Pi would look for. Never start a Pi as that name: it would find no key under its own secret name, mint fresh keys and replace the registered document.
+
+### Run it from cron on another host
+
+The host needs a checkout of this repository, Node, a working pi.json (any host already running pi-ratking has one) and the identity in its own secret store. Copy the key over stdin only; it never touches argv, a file or a log:
+
+```sh
+secrets lease rat_king_script_acme-alert-cron_identity --ttl 1m --client-id provision \
+  | ssh <cron-host> 'secrets add rat_king_script_acme-alert-cron_identity'
+```
+
+Then the cron line, with an absolute Node and a `HOME` so pi.json and the secret store resolve:
+
+```cron
+*/5 * * * * HOME=/home/ops PATH=/usr/local/bin:/usr/bin:/bin /usr/local/bin/node /home/ops/rat-king/stacks/nest/cli.ts send --as rat_king_script_acme-alert-cron_identity --to acme/acme-desk --summary "disk alarm" --body "disk 91% on worker" >> /home/ops/alert-cron.log 2>&1 || echo "rat king send exit $?" >> /home/ops/alert-cron.log
+```
+
+The stage config and operator key never leave the operator host. On the operator host itself, `nest.sh send …` runs the same command.
 
 ## Continuous deployment
 
