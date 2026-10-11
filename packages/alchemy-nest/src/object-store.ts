@@ -1,11 +1,14 @@
 import * as Namespace from "alchemy/Namespace";
 import * as Output from "alchemy/Output";
 import { Random, RandomProvider } from "alchemy/Random";
-import { Effect, Layer, Redacted } from "effect";
+import { Effect, Layer, Redacted, Schema } from "effect";
 
 import { BucketProvider, BucketResource } from "./bucket-api.ts";
-import { textDigest } from "./files.ts";
+import { refuse, textDigest } from "./files.ts";
+import { InstanceNameSchema, validateInstance } from "./instance.ts";
+import type { InstanceProps } from "./instance.ts";
 import type { Node } from "./inventory-schema.ts";
+import { operatorBundle } from "./operator-build.ts";
 import { weedBinary } from "./pins.ts";
 import {
   HostDirectory,
@@ -22,26 +25,64 @@ import {
 } from "./storage-maintenance.ts";
 import { renderUnit } from "./systemd.ts";
 
-export const Slice = (home: string, memoryMax = "4G", cpuQuota = "300%") =>
-  SystemdUnit("rat-king-slice", sliceUnit(home, memoryMax, cpuQuota));
+export interface SliceProps {
+  readonly cpuQuota?: string;
+  readonly home: string;
+  readonly instance?: string;
+  readonly memoryHigh?: string;
+  readonly memoryMax?: string;
+  readonly oomPolicy?: "continue" | "stop" | "kill";
+}
 
-export const Bucket = (
-  id: string,
-  props: {
-    readonly host: Node;
-    readonly name: string;
-    readonly prepared?: readonly Output.Output<string>[];
-    readonly purgeOnDelete?: boolean;
-    readonly slice: Output.Output<string>;
-    readonly restartGateBundle?: string | undefined;
-  }
+export const Slice = (
+  input: string | SliceProps,
+  memoryMax = "4G",
+  cpuQuota = "300%"
 ) =>
+  Effect.gen(function* slice() {
+    const props = Schema.is(Schema.String)(input)
+      ? { cpuQuota, home: input, memoryMax }
+      : input;
+
+    const instance =
+      props.instance === undefined
+        ? "rat-king"
+        : yield* Schema.decodeEffect(InstanceNameSchema)(props.instance).pipe(
+            Effect.mapError(() => refuse("Invalid slice instance."))
+          );
+
+    return yield* SystemdUnit(
+      `${instance}-slice`,
+      sliceUnit(props.home, props.memoryMax, props.cpuQuota, props)
+    );
+  });
+
+export interface StoreProps extends InstanceProps {
+  readonly dataRoot?: string;
+  readonly host: Node;
+  readonly name: string;
+  readonly prepared?: readonly Output.Output<string>[];
+  readonly purgeOnDelete?: boolean;
+  readonly restartGateBundle?: string | undefined;
+  readonly slice: Output.Output<string>;
+  readonly volumeMax?: number;
+}
+
+export const Bucket = (id: string, props: StoreProps) =>
   Effect.gen(function* bucket() {
     const { host } = props;
+    const layout = yield* validateInstance(host, props);
+
+    if (
+      props.volumeMax !== undefined &&
+      (!Number.isSafeInteger(props.volumeMax) || props.volumeMax < 1)
+    ) {
+      return yield* refuse("Invalid volume maximum.");
+    }
 
     const root = yield* HostDirectory("binary-root", {
       mode: 0o700,
-      path: `${host.home}/.local/share/rat-king`,
+      path: layout.binaryRoot,
     });
 
     const bin = yield* HostDirectory("bin", {
@@ -51,31 +92,39 @@ export const Bucket = (
 
     const configuration = yield* HostDirectory("config-root", {
       mode: 0o700,
-      path: `${host.home}/.config/rat-king`,
+      path: layout.configuration,
     });
 
     const dataRoot = yield* HostDirectory("data-root", {
       mode: 0o700,
-      path: host.dataRoot,
+      path: layout.dataRoot,
     });
 
     const data = yield* HostDirectory("data", {
       mode: 0o700,
       path: Output.interpolate`${dataRoot.path}/seaweedfs`,
       purgeOnDelete: props.purgeOnDelete ?? false,
-      purgeRoot: host.dataRoot,
+      purgeRoot: layout.dataRoot,
     });
 
     const binary = yield* ReleaseBinary("weed", {
-      ...weedBinary(`${host.home}/.local/share/rat-king/bin/weed`),
+      ...weedBinary(`${layout.bin}/weed`),
       path: Output.interpolate`${bin.path}/weed`,
     });
 
+    const restartGateBundle =
+      props.restartGateBundle ??
+      (layout.instance === "rat-king"
+        ? undefined
+        : yield* operatorBundle(
+            new URL("instance-restart-gate.ts", import.meta.url).pathname
+          ));
+
     const gate =
-      props.restartGateBundle === undefined
+      restartGateBundle === undefined
         ? undefined
         : yield* RemoteFile("restart-gate", {
-            content: props.restartGateBundle,
+            content: restartGateBundle,
             mode: 0o600,
             path: Output.interpolate`${bin.path}/restart-gate.mjs`,
           });
@@ -84,18 +133,20 @@ export const Bucket = (
     const secret = yield* Random("secret-key", { bytes: 32 });
 
     const declaration = storeUnit({
-      binary: `${host.home}/.local/share/rat-king/bin/weed`,
-      config: `${host.home}/.config/rat-king/s3.json`,
-      data: `${host.dataRoot}/seaweedfs`,
+      binary: `${layout.bin}/weed`,
+      config: `${layout.configuration}/s3.json`,
+      data: `${layout.dataRoot}/seaweedfs`,
       home: host.home,
+      layout,
       restartGate:
         gate === undefined
           ? undefined
           : {
               address: host.tailnetIPv4,
-              path: `${host.home}/.local/share/rat-king/bin/restart-gate.mjs`,
+              path: `${layout.bin}/restart-gate.mjs`,
             },
       restartOn: [],
+      volumeMax: props.volumeMax,
     });
 
     const identity = yield* RemoteFile("identity", {
@@ -123,7 +174,7 @@ export const Bucket = (
       path: Output.interpolate`${configuration.path}/s3.json`,
       rotationOwner: {
         home: host.home,
-        name: "rat-king-seaweedfs.service",
+        name: layout.storeUnit,
         sha256: textDigest(renderUnit(declaration)),
       },
     });
@@ -142,7 +193,15 @@ export const Bucket = (
     });
 
     const maintenance = yield* RemoteFile("storage-maintenance", {
-      content: storageMaintenanceScript,
+      content: storageMaintenanceScript
+        .replace(
+          "http://127.0.0.1:19333",
+          `http://127.0.0.1:${layout.ports.master}`
+        )
+        .replace(
+          "http://127.0.0.1:18888",
+          `http://127.0.0.1:${layout.ports.filer}`
+        ),
       mode: 0o600,
       path: Output.interpolate`${bin.path}/storage-maintenance.py`,
     });
@@ -156,11 +215,12 @@ export const Bucket = (
         props.slice
       ).pipe(
         Output.map(([path, scriptHash, unitHash, sliceHash]) =>
-          storageRetentionUnit(host.home, path, [
-            scriptHash,
-            unitHash,
-            sliceHash,
-          ])
+          storageRetentionUnit(
+            host.home,
+            path,
+            [scriptHash, unitHash, sliceHash],
+            layout
+          )
         )
       )
     );
@@ -168,18 +228,18 @@ export const Bucket = (
     yield* SystemdUnit(
       "storage-retention-timer",
       Output.all(retention.sha256, maintenance.sha256).pipe(
-        Output.map((ready) => storageRetentionTimer(host.home, ready))
+        Output.map((ready) => storageRetentionTimer(host.home, ready, layout))
       )
     );
 
     const resource = yield* BucketResource("bucket", {
       config: identity.path,
-      endpoint: "http://127.0.0.1:18333",
+      endpoint: `http://127.0.0.1:${layout.ports.s3}`,
       name: props.name,
       ownedStore: Output.all(unit.home, unit.sha256).pipe(
         Output.map(([home, sha256]) => ({
           home,
-          name: "rat-king-seaweedfs.service" as const,
+          name: layout.storeUnit,
           sha256,
         }))
       ),
@@ -196,6 +256,7 @@ export const Bucket = (
       configuration: configuration.path,
       dataRoot: dataRoot.path,
       endpoint: resource.endpoint,
+      layout,
       region: resource.region,
       resource,
       restartGate: gate,

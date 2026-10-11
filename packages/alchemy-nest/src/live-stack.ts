@@ -73,5 +73,5 @@ export const liveStack = Stack(
       unit: cells.unit.sha256,
       version: cells.version,
     };
-  }).pipe(Effect.provide(host))
+  }).pipe(Effect.provide(host), Effect.orDie)
 );

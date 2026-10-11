@@ -1,0 +1,8 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`gated mailbox units keep main 920884e bytes 1`] = `
+{
+  "node": "b66c55f2c3fac0024b9c0b01755414926783afb0930c8b446eb426463ec5e6cb",
+  "store": "018f5e6a33d5a78febba5ee6be87b7a72df68df440561c52a621785724e0660e",
+}
+`;

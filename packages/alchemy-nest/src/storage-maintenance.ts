@@ -1,3 +1,4 @@
+import type { InstanceLayout } from "./instance.ts";
 import type { UnitProps } from "./systemd.ts";
 
 const quote = (value: string): string =>
@@ -6,11 +7,12 @@ const quote = (value: string): string =>
 export const storageRetentionUnit = (
   home: string,
   script: string,
-  ready: readonly string[]
+  ready: readonly string[],
+  layout?: InstanceLayout
 ): UnitProps => ({
   enabled: false,
   home,
-  name: "rat-king-storage-retention.service",
+  name: layout?.retentionUnit ?? "rat-king-storage-retention.service",
   restartOn: ready,
   scope: "user",
   sections: [
@@ -20,8 +22,8 @@ export const storageRetentionUnit = (
           "Description",
           "Rat King filer metadata log retention and storage alarm",
         ],
-        ["Requires", "rat-king-seaweedfs.service"],
-        ["After", "rat-king-seaweedfs.service"],
+        ["Requires", layout?.storeUnit ?? "rat-king-seaweedfs.service"],
+        ["After", layout?.storeUnit ?? "rat-king-seaweedfs.service"],
         ["StartLimitIntervalSec", "0"],
       ],
       name: "Unit",
@@ -30,7 +32,7 @@ export const storageRetentionUnit = (
       lines: [
         ["Type", "oneshot"],
         ["ExecStart", `/usr/bin/python3 ${quote(script)} retain`],
-        ["Slice", "rat-king.slice"],
+        ["Slice", layout?.slice ?? "rat-king.slice"],
         ["MemoryMax", "128M"],
         ["MemorySwapMax", "0"],
         ["CPUQuota", "10%"],
@@ -49,10 +51,11 @@ export const storageRetentionUnit = (
 
 export const storageRetentionTimer = (
   home: string,
-  ready: readonly string[]
+  ready: readonly string[],
+  layout?: InstanceLayout
 ): UnitProps => ({
   home,
-  name: "rat-king-storage-retention.timer",
+  name: layout?.retentionTimer ?? "rat-king-storage-retention.timer",
   restartOn: ready,
   scope: "user",
   sections: [
@@ -64,7 +67,7 @@ export const storageRetentionTimer = (
       lines: [
         ["OnCalendar", "*-*-* *:15:00 UTC"],
         ["Persistent", "true"],
-        ["Unit", "rat-king-storage-retention.service"],
+        ["Unit", layout?.retentionUnit ?? "rat-king-storage-retention.service"],
       ],
       name: "Timer",
     },

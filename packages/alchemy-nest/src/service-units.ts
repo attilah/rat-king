@@ -1,3 +1,4 @@
+import type { InstanceLayout, InstanceProps } from "./instance.ts";
 import type { Node } from "./inventory-schema.ts";
 import { nodeListener, storeListener } from "./listener-contract.ts";
 import type { UnitProps } from "./systemd.ts";
@@ -8,10 +9,14 @@ const quote = (value: string): string =>
 export const sliceUnit = (
   home: string,
   memoryMax = "4G",
-  cpuQuota = "300%"
+  cpuQuota = "300%",
+  props: InstanceProps & {
+    readonly memoryHigh?: string;
+    readonly oomPolicy?: string;
+  } = {}
 ): UnitProps => ({
   home,
-  name: "rat-king.slice",
+  name: `${props.instance ?? "rat-king"}.slice`,
   scope: "user",
   sections: [
     {
@@ -20,6 +25,22 @@ export const sliceUnit = (
         ["MemorySwapMax", "0"],
         ["CPUQuota", cpuQuota],
         ["TasksMax", "2048"],
+        ...(props.memoryHigh === undefined
+          ? []
+          : [
+              ["MemoryHigh", props.memoryHigh] satisfies readonly [
+                string,
+                string,
+              ],
+            ]),
+        ...(props.oomPolicy === undefined
+          ? []
+          : [
+              ["OOMPolicy", props.oomPolicy] satisfies readonly [
+                string,
+                string,
+              ],
+            ]),
       ],
       name: "Slice",
     },
@@ -27,6 +48,8 @@ export const sliceUnit = (
 });
 
 export const storeUnit = (input: {
+  readonly layout?: InstanceLayout;
+  readonly volumeMax?: number | undefined;
   readonly home: string;
   readonly binary: string;
   readonly data: string;
@@ -37,7 +60,7 @@ export const storeUnit = (input: {
   readonly restartOn: readonly string[];
 }): UnitProps => ({
   home: input.home,
-  name: storeListener.unit,
+  name: input.layout?.storeUnit ?? storeListener.unit,
   restartOn: input.restartOn,
   scope: "user",
   sections: [
@@ -57,9 +80,20 @@ export const storeUnit = (input: {
             "server",
             `-ip=${storeListener.address}`,
             `-ip.bind=${storeListener.address}`,
-            ...Object.entries(storeListener.ports).map(
-              ([flag, port]) => `-${flag}=${port}`
-            ),
+            ...Object.entries(
+              input.layout === undefined
+                ? storeListener.ports
+                : {
+                    "filer.port": input.layout.ports.filer,
+                    "filer.port.grpc": input.layout.ports.filerGrpc,
+                    "master.port": input.layout.ports.master,
+                    "master.port.grpc": input.layout.ports.masterGrpc,
+                    "s3.port": input.layout.ports.s3,
+                    "s3.port.grpc": input.layout.ports.s3Grpc,
+                    "volume.port": input.layout.ports.volume,
+                    "volume.port.grpc": input.layout.ports.volumeGrpc,
+                  }
+            ).map(([flag, port]) => `-${flag}=${port}`),
             "-filer",
             "-s3",
             "-s3.port.iceberg=0",
@@ -71,7 +105,7 @@ export const storeUnit = (input: {
             "-debug=false",
             "-volume.pprof=false",
             "-master.volumeSizeLimitMB=64",
-            "-volume.max=256",
+            `-volume.max=${input.volumeMax ?? 256}`,
           ].join(" "),
         ],
         ...(input.restartGate === undefined
@@ -79,13 +113,13 @@ export const storeUnit = (input: {
           : [
               [
                 "ExecStartPost",
-                `/usr/local/bin/node ${quote(input.restartGate.path)} ${quote(input.restartGate.address)} store`,
+                `/usr/local/bin/node ${quote(input.restartGate.path)} ${quote(input.restartGate.address)} store${input.layout !== undefined && input.layout.instance !== "rat-king" ? ` ${quote(input.layout.instance)} ${input.layout.portBase} ${quote(input.layout.dataRoot)}` : ""}`,
               ] satisfies readonly [string, string],
             ]),
         ["WorkingDirectory", input.data.replaceAll("%", "%%")],
         ["Environment", "SENTRY_DSN="],
         ["Environment", "OTEL_SDK_DISABLED=true"],
-        ["Slice", "rat-king.slice"],
+        ["Slice", input.layout?.slice ?? "rat-king.slice"],
         ["MemoryMax", "2G"],
         ["MemorySwapMax", "0"],
         ["CPUQuota", "100%"],
@@ -102,6 +136,7 @@ export const storeUnit = (input: {
 });
 
 export const nodeUnit = (input: {
+  readonly layout?: InstanceLayout;
   readonly host: Node;
   readonly workerIPv4?: string;
   readonly binary: string;
@@ -114,15 +149,15 @@ export const nodeUnit = (input: {
   readonly restartOn: readonly string[];
 }): UnitProps => ({
   home: input.host.home,
-  name: nodeListener.unit,
+  name: input.layout?.nodeUnit ?? nodeListener.unit,
   restartOn: input.restartOn,
   scope: "user",
   sections: [
     {
       lines: [
         ["Description", "Rat King cell node"],
-        ["Requires", "rat-king-seaweedfs.service"],
-        ["After", "rat-king-seaweedfs.service"],
+        ["Requires", input.layout?.storeUnit ?? "rat-king-seaweedfs.service"],
+        ["After", input.layout?.storeUnit ?? "rat-king-seaweedfs.service"],
         ["StartLimitIntervalSec", "0"],
       ],
       name: "Unit",
@@ -131,18 +166,18 @@ export const nodeUnit = (input: {
       lines: [
         [
           "ExecStart",
-          `${quote(input.binary)} --listen ${input.workerIPv4 ?? input.host.tailnetIPv4}:${nodeListener.port} --internal-listen ${nodeListener.internalAddress}:${nodeListener.internalPort}`,
+          `${quote(input.binary)} --listen ${input.workerIPv4 ?? input.host.tailnetIPv4}:${input.layout?.ports.public ?? nodeListener.port} --internal-listen ${nodeListener.internalAddress}:${input.layout?.ports.internal ?? nodeListener.internalPort}`,
         ],
         ...(input.restartGate === undefined
           ? []
           : [
               [
                 "ExecStartPre",
-                `/usr/local/bin/node ${quote(input.restartGate.path)} ${quote(input.restartGate.address)} before-node`,
+                `/usr/local/bin/node ${quote(input.restartGate.path)} ${quote(input.restartGate.address)} before-node${input.layout !== undefined && input.layout.instance !== "rat-king" ? ` ${quote(input.layout.instance)} ${input.layout.portBase} ${quote(input.layout.dataRoot)}` : ""}`,
               ] satisfies readonly [string, string],
               [
                 "ExecStartPost",
-                `/usr/local/bin/node ${quote(input.restartGate.path)} ${quote(input.restartGate.address)} node`,
+                `/usr/local/bin/node ${quote(input.restartGate.path)} ${quote(input.restartGate.address)} node${input.layout !== undefined && input.layout.instance !== "rat-king" ? ` ${quote(input.layout.instance)} ${input.layout.portBase} ${quote(input.layout.dataRoot)}` : ""}`,
               ] satisfies readonly [string, string],
             ]),
         ...(input.storageDiagnostic === undefined
@@ -159,7 +194,7 @@ export const nodeUnit = (input: {
         ["Environment", "CELLD_LTX_RETENTION_SECS=604800"],
         ["Environment", "CELLD_SHUTDOWN_TOTAL_MS=8000"],
         ["Environment", quote(`CELLD_TEST_DATA_DIR=${input.data}`)],
-        ["Slice", "rat-king.slice"],
+        ["Slice", input.layout?.slice ?? "rat-king.slice"],
         ["MemoryMax", "3G"],
         ["MemorySwapMax", "0"],
         ["CPUQuota", "200%"],

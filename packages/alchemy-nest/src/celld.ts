@@ -1,9 +1,11 @@
 import * as Namespace from "alchemy/Namespace";
 import * as Output from "alchemy/Output";
-import { Effect, Redacted } from "effect";
+import { Effect, Redacted, Schema } from "effect";
 
 import { Deployment, DeploymentProvider } from "./deployment.ts";
-import { textDigest } from "./files.ts";
+import { textDigest, refuse } from "./files.ts";
+import { InstanceNameSchema } from "./instance.ts";
+import type { InstanceProps } from "./instance.ts";
 import type { Node as HostNode } from "./inventory-schema.ts";
 import { NodeProvider, NodeResource } from "./node-provider.ts";
 import type { BucketOutput } from "./object-store.ts";
@@ -15,46 +17,65 @@ import { renderUnit } from "./systemd.ts";
 const envQuote = (value: string): string =>
   `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("\n", "\\n")}"`;
 
-export const Node = (
-  id: string,
-  props: {
-    readonly host: HostNode;
-    readonly workerIPv4?: string;
-    readonly prepared?: readonly Output.Output<string>[];
-    readonly bucket: BucketOutput;
-    readonly purgeOnDelete?: boolean;
-  }
-) =>
+export interface CelldProps extends InstanceProps {
+  readonly bucket: BucketOutput;
+  readonly host: HostNode;
+  readonly prepared?: readonly Output.Output<string>[];
+  readonly purgeOnDelete?: boolean;
+  readonly workerIPv4?: string;
+}
+
+export const Node = (id: string, props: CelldProps) =>
   Effect.gen(function* node() {
     const { host, bucket } = props;
+    const { layout } = bucket;
+
+    if (props.instance !== undefined) {
+      yield* Schema.decodeEffect(InstanceNameSchema)(props.instance).pipe(
+        Effect.mapError(() => refuse("Invalid node instance."))
+      );
+    }
+
+    if (layout.configuration !== `${host.home}/.config/${layout.instance}`) {
+      return yield* refuse("Node host must match its bucket.");
+    }
+
+    if (
+      (props.instance !== undefined && props.instance !== layout.instance) ||
+      (props.portBase !== undefined && props.portBase !== layout.portBase)
+    ) {
+      return yield* refuse("Node instance must match its bucket.");
+    }
+
     const workerIPv4 = props.workerIPv4 ?? host.tailnetIPv4;
 
     const data = yield* HostDirectory("data", {
       mode: 0o700,
       path: Output.interpolate`${bucket.dataRoot}/celld`,
       purgeOnDelete: props.purgeOnDelete ?? false,
-      purgeRoot: host.dataRoot,
+      purgeRoot: layout.dataRoot,
     });
 
     const binary = yield* ReleaseBinary("celld", {
-      ...celldBinary(`${host.home}/.local/share/rat-king/bin/celld`),
+      ...celldBinary(`${layout.bin}/celld`),
       path: Output.interpolate`${bucket.bin}/celld`,
     });
 
     const declaration = nodeUnit({
-      binary: `${host.home}/.local/share/rat-king/bin/celld`,
-      data: `${host.dataRoot}/celld`,
-      environment: `${host.home}/.config/rat-king/celld.env`,
+      binary: `${layout.bin}/celld`,
+      data: `${layout.dataRoot}/celld`,
+      environment: `${layout.configuration}/celld.env`,
       host,
+      layout,
       restartGate:
         bucket.restartGate === undefined
           ? undefined
           : {
               address: workerIPv4,
-              path: `${host.home}/.local/share/rat-king/bin/restart-gate.mjs`,
+              path: `${layout.bin}/restart-gate.mjs`,
             },
       restartOn: [],
-      storageDiagnostic: `${host.home}/.local/share/rat-king/bin/storage-maintenance.py`,
+      storageDiagnostic: `${layout.bin}/storage-maintenance.py`,
       workerIPv4,
     });
 
@@ -83,14 +104,14 @@ export const Node = (
       path: Output.interpolate`${bucket.configuration}/celld.env`,
       rotationOwner: {
         home: host.home,
-        name: "rat-king-celld.service",
+        name: layout.nodeUnit,
         sha256: textDigest(renderUnit(declaration)),
       },
     });
 
     const unit = yield* NodeResource("node", {
       ...declaration,
-      internalUrl: "http://127.0.0.1:18788",
+      internalUrl: `http://127.0.0.1:${layout.ports.internal}`,
       prepared: [
         binary.path,
         data.path,
@@ -100,13 +121,14 @@ export const Node = (
         bucket.storageMaintenance.sha256,
         ...(props.prepared ?? []),
       ],
-      publicUrl: `http://${workerIPv4}:18787`,
+      publicUrl: `http://${workerIPv4}:${layout.ports.public}`,
       restartOn: Output.all(environment.sha256, binary.sha256),
       version: "v0.6.1",
     });
 
     return {
       internalUrl: unit.internalUrl,
+      layout,
       publicUrl: unit.publicUrl,
       unit,
       version: unit.version,

@@ -20,13 +20,17 @@ import { startOwnedUnit } from "./systemd.ts";
 
 const OwnedStore = Schema.Struct({
   home: AbsolutePath,
-  name: Schema.Literal("rat-king-seaweedfs.service"),
+  name: Schema.String.check(
+    Schema.isPattern(/^[a-z][a-z0-9-]{0,15}-seaweedfs\.service$/u)
+  ),
   sha256: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u)),
 });
 
 const Props = Schema.Struct({
   config: AbsolutePath,
-  endpoint: Schema.Literal("http://127.0.0.1:18333"),
+  endpoint: Schema.String.check(
+    Schema.isPattern(/^http:\/\/127\.0\.0\.1:[0-9]{1,5}$/u)
+  ),
   name: Schema.String.check(
     Schema.isPattern(/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/u)
   ),
@@ -39,7 +43,7 @@ const Props = Schema.Struct({
 export type BucketProps = typeof Props.Type;
 
 export interface BucketAttributes {
-  readonly endpoint: "http://127.0.0.1:18333";
+  readonly endpoint: string;
   readonly name: string;
   readonly region: "us-east-1";
   readonly config: string;
@@ -277,7 +281,8 @@ export const BucketProvider = () =>
             if (
               unit?.sha256 !== store.sha256 ||
               unit.mode !== 0o644 ||
-              olds.config !== `${store.home}/.config/rat-king/s3.json` ||
+              olds.config !==
+                `${store.home}/.config/${store.name.slice(0, -"-seaweedfs.service".length)}/s3.json` ||
               !(yield* ownedPath(shell, olds.config))
             ) {
               return yield* refuse(

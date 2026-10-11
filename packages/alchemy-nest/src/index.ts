@@ -35,6 +35,25 @@ export type { BucketOutput } from "./object-store.ts";
 
 export { Celld } from "./celld.ts";
 
+export type { CelldProps } from "./celld.ts";
+
+export type { SliceProps, StoreProps } from "./object-store.ts";
+
+export {
+  InstanceNameSchema,
+  PortBaseSchema,
+  instanceLayout,
+} from "./instance.ts";
+
+export type {
+  InstanceLayout,
+  InstanceName,
+  InstanceProps,
+  PortBase,
+} from "./instance.ts";
+
+export { startupLayer } from "./instance-startup-contract.ts";
+
 export { prepareDeployment } from "./deployment-build.ts";
 
 export { stageDeploymentFiles } from "./deployment-stage.ts";

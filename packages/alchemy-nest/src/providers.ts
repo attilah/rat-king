@@ -8,6 +8,7 @@ import { Config, Effect, Layer, Option, Schema } from "effect";
 import { absent } from "./absent.ts";
 import { ownedPath, recovering, rotatingFile } from "./adoption.ts";
 import { legacyDeploymentFile } from "./deployment-file-adoption.ts";
+import { HostShell, HostError } from "./host-shell.ts";
 import {
   deleteDirectory,
   deleteFile,
@@ -21,14 +22,13 @@ import {
   textDigest,
   validateDirectory,
   validateFile,
-} from "./files.ts";
+} from "./instance-files.ts";
 import type {
   DirectoryAttributes,
   DirectoryProps,
   FileAttributes,
   FileProps,
-} from "./files.ts";
-import { HostShell, HostError } from "./host-shell.ts";
+} from "./instance-files.ts";
 import {
   binaryDigest,
   reconcileBinary,
@@ -299,7 +299,7 @@ export const SystemdUnitProvider = () =>
             operational,
             output,
             "prepared" in news &&
-              operational.name === "rat-king-seaweedfs.service"
+              operational.name.endsWith("-seaweedfs.service")
           );
 
           if (output === undefined) {
@@ -346,7 +346,7 @@ export const SystemdUnitProvider = () =>
             const owned = yield* ownedUnit(shell, olds, live);
 
             const recovered =
-              (yield* recovering) && olds.name === "rat-king-seaweedfs.service"
+              (yield* recovering) && olds.name.endsWith("-seaweedfs.service")
                 ? { ...live, configSha256: "" }
                 : live;
 
@@ -377,7 +377,7 @@ export const SystemdUnitProvider = () =>
                 news,
                 output,
                 news.prepared !== undefined &&
-                  news.name === "rat-king-seaweedfs.service"
+                  news.name.endsWith("-seaweedfs.service")
               ),
               yield* adoption
             );
