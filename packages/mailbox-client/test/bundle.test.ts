@@ -49,3 +49,29 @@ it.effect(
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   120_000
 );
+
+it.effect(
+  "the auth-only bundle imports only Effect and contains no messaging providers",
+  () =>
+    Effect.gen(function* authImports() {
+      const fs = yield* FileSystem.FileSystem;
+      const text = yield* fs.readFileString(`${here}/bundle/auth.js`);
+
+      const imports = [
+        ...text.matchAll(
+          /(?:from\s*|import\s*(?:\(\s*)?)["'](?<specifier>[^"']+)["']/gu
+        ),
+      ].map((match) => match.groups?.specifier);
+
+      expect(imports.length).toBeGreaterThan(0);
+      expect(
+        imports.every(
+          (specifier) =>
+            specifier === "effect" || specifier?.startsWith("effect/") === true
+        )
+      ).toBe(true);
+      expect(text).not.toMatch(
+        /@hpke|@ipld|@atproto|multiformats|xstate|dag-cbor/u
+      );
+    }).pipe(Effect.provide(NodeServices.layer))
+);

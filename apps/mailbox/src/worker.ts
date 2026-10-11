@@ -28,7 +28,7 @@ import type { Bindings } from "./bindings.ts";
 import { documentsLayer, didAllowlist, peerDocument } from "./documents.ts";
 import { logFailure } from "./failure-log.ts";
 import type { FailureScope } from "./failure-log.ts";
-import { failure } from "./failure.ts";
+import { errorResponse, failure } from "./failure.ts";
 import { issuerInstance } from "./issuer-object.ts";
 import { issuerMethods } from "./issuer.ts";
 import { validLease } from "./lease.ts";
@@ -86,12 +86,6 @@ const MessagePosition = Schema.Struct({
     senderDid: Schema.String,
   }),
 });
-
-const errorResponse = (error: XrpcFailure) =>
-  Response.json(
-    { error: error.error, message: error.message },
-    { status: error.status }
-  );
 
 const armTraffic = Effect.fn("Traffic.arm")(function* arm(
   ctx: DurableObjectState

@@ -8,6 +8,10 @@
     ".": {
       "types": "./types/mailbox-client/index.d.ts",
       "default": "./index.js"
+    },
+    "./auth": {
+      "types": "./types/mailbox-client/auth.d.ts",
+      "default": "./auth.js"
     }
   },
   "dependencies": {

@@ -21,7 +21,9 @@ Same sender and messageId with identical envelope bytes returns the original adm
 
 ## Public service auth and sealed journals
 
-`authenticateClaims({ authorization, audience, nsid, now })` verifies ES256 service auth against `DidResolver` and consumes the token through `ReplayAuthority`. `now` is milliseconds; claims use seconds. Supply the service audience DID and allowed lexicon method as `nsid`. Supply a replay implementation that atomically refuses a reused issuer and jti. The mailbox uses this same verifier.
+Import authentication alone from `@rat-king/mailbox-client/auth`. The separate bundle entry imports only Effect, without the messaging and lifecycle providers.
+
+`authenticateClaims({ authorization, audience, nsid, now, skewSeconds })` verifies ES256 service auth against `DidResolver` and consumes the token through `ReplayAuthority`. `now` is milliseconds; claims use seconds. Supply the service audience DID and allowed lexicon method as `nsid`. Optional `skewSeconds` defaults to zero and permits issuance that many seconds ahead of the verifier clock. It does not extend the 60-second maximum token lifetime or allow expired tokens. The mailbox supplies no skew allowance. Supply a replay implementation that atomically refuses a reused issuer and jti. The mailbox uses this same verifier.
 
 For named message payloads, pass `names: { from, peers }` to `prepare`, where `peers` maps recipient DIDs to resolved Rat King names. Provide the returned client with `Effect.provideService(PreparedMailbox, client)`. Then `seal(to, body, { summary, thread, replyTo, encrypt })` returns `{ envelope, messageId }`. It encodes the same payload as `nest seal`; absent names fail closed. `replyTo` is a message reference with senderDid and messageId. The existing `client.seal` still returns a bare envelope without wrapping its body.
 
