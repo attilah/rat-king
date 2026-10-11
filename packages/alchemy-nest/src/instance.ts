@@ -118,6 +118,20 @@ export const validateInstance = Effect.fn("Instance.validate")(
       );
     }
 
+    if (
+      layout.instance !== "rat-king" &&
+      [`${host.home}/.config`, `${host.home}/.local/share`].some(
+        (root) =>
+          layout.dataRoot === root ||
+          layout.dataRoot.startsWith(`${root}/`) ||
+          root.startsWith(`${layout.dataRoot}/`)
+      )
+    ) {
+      return yield* refuse(
+        "Named data roots must not overlap configuration or binary custody."
+      );
+    }
+
     const legacy = new Set([
       ...Object.values(instanceLayout(host, {}).ports),
       sidecarListener.port,

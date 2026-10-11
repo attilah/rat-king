@@ -31,6 +31,8 @@ export const makeFakeShell = Effect.fn("HostShell.fake")(() =>
       ["/home/example/.config/systemd/user", 0o755],
       ["/home/example/.config/rat-king", 0o700],
       ["/srv/example", 0o755],
+      ["/home/example/.config", 0o755],
+      ["/home/example/.local/share", 0o755],
     ]);
 
     const symlinks = new Map<string, string>();
@@ -64,7 +66,7 @@ export const makeFakeShell = Effect.fn("HostShell.fake")(() =>
 
     const reload = (): Result => {
       for (const [path, file] of files) {
-        if (!/\.(?:service|slice)$/u.test(path)) {
+        if (!/\.(?:service|slice|timer)$/u.test(path)) {
           continue;
         }
 

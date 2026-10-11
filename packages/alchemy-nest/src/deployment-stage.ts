@@ -23,13 +23,19 @@ export const stageDeploymentFiles = Effect.fn("Celld.stageDeploymentFiles")(
     home: string,
     prepared: Pick<DeploymentProps, "bundle" | "configuration">,
     mailboxOnly: boolean,
-    layout?: InstanceLayout
+    layout?: InstanceLayout,
+    configurationRoot?: Output.Output<string>
   ) {
     const stage = deploymentStageLayout(home, layout);
 
     const directory = yield* HostDirectory(`${stage.idPrefix}-directory`, {
       mode: 0o700,
-      path: stage.directory,
+      path:
+        layout !== undefined &&
+        layout.instance !== "rat-king" &&
+        configurationRoot !== undefined
+          ? Output.interpolate`${configurationRoot}/deployment`
+          : stage.directory,
     });
 
     const worker = yield* RemoteFile(`${stage.idPrefix}-worker`, {

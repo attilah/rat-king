@@ -58,7 +58,7 @@ Opt-in purge drains paginated bucket objects before DeleteBucket. Alchemy depend
 
 The live provider layer installs `UnitStartup` checks in both SystemdUnit and Celld.Node create/update reconciliation. Only missing allowed sockets may wait for up to ten seconds; any extra port, wrong process or wrong bind stops both units immediately and fails the reconcile. Store startup requires its exact eight ports; node startup requires the final ten. No diagnose runs before that gate. Probe diagnostics retain at most 16 KiB of stderr, redact generated credentials and host facts, and drain the stream.
 
-`Celld.Deployment` accepts optional `secretNames: readonly string[]`. Omit it to keep the mailbox allowlist: `AGENT_IDENTITIES_CREDENTIAL`, `MODEL_GATEWAY_CREDENTIAL` and `CLAUDE_SIDECAR_CREDENTIAL`. Custom deployments supply their own names; binding generation still refuses undeclared names and collisions with public vars. For named staging, pass the layout as the fourth argument: `stageDeploymentFiles(host.home, prepared, mailboxOnly, cells.layout)`. Named files stay under `${cells.layout.configuration}/deployment` with instance-scoped resource ids. Omitting the layout preserves the mailbox paths and ids.
+`Celld.Deployment` accepts optional `secretNames: readonly string[]`. Omit it to keep the mailbox allowlist: `AGENT_IDENTITIES_CREDENTIAL`, `MODEL_GATEWAY_CREDENTIAL` and `CLAUDE_SIDECAR_CREDENTIAL`. Custom deployments supply their own names; binding generation still refuses undeclared names and collisions with public vars. For named staging, pass the layout and the config-root resource output: `stageDeploymentFiles(host.home, prepared, mailboxOnly, cells.layout, bucket.configuration)`. The fifth argument orders fresh staging after its config root; omitting it keeps the older declaration-only API and does not establish that dependency. Named files stay under `${cells.layout.configuration}/deployment` with instance-scoped resource ids. Omitting the layout preserves the mailbox paths and ids.
 
 ## Live probes
 
@@ -67,6 +67,32 @@ The `live` package script requires `RAT_KING_LIVE_NODE` and an external `RAT_KIN
 The diagnose and race probes run in transient user scopes inside the same slice with a 64 MiB memory cap, no swap, 10% CPU, 64 tasks and nice level 10 through a nice wrapper, not an invalid scope property. The race issues exactly 50 simultaneous conditional creates for a fresh key, requires one HTTP 200 and 49 HTTP 412s, and deletes the key even on failure. A failed conformance probe stops the proof; it does not select another store.
 
 Run `pnpm --filter @rat-king/alchemy-nest live <command>` with those environment variables set. The normal test command never invokes these probes. Preserve the external state directory for the next packet.
+
+## Named-instance rollback proof
+
+The desk runs `test/live/instance-probe.ts`; the normal test suite never invokes it. It creates only `mischiefrb`, with ports 28010–28019 bound to `127.0.0.1`, including the public listener. The host comes from the same private inventory as the nest stack. Supply a fresh, instance-specific data root and a dedicated external state directory. Their parents must already exist.
+
+Run these commands from the repository root. The input variables below refer to private operator values, not checked-in configuration. Set the approval switches only for the approved proof actions.
+
+```sh
+export ALCHEMY_TELEMETRY_DISABLED=1
+export RATS_NEST_INSTANCE="${PRIVATE_INVENTORY_FILE:?}"
+export RAT_KING_LIVE_NODE="${PRIVATE_NODE_ALIAS:?}"
+export RAT_KING_PROBE_DATA_ROOT="${APPROVED_PROBE_DATA_ROOT:?}"
+export RAT_KING_STATE_DIR="${PRIVATE_PROBE_STATE_DIR:?}"
+node packages/alchemy-nest/test/live/instance-probe.ts plan
+RAT_KING_START_APPROVED=true node packages/alchemy-nest/test/live/instance-probe.ts deploy
+node packages/alchemy-nest/test/live/instance-probe.ts health
+node packages/alchemy-nest/test/live/instance-probe.ts destroy-plan
+RAT_KING_DESTROY_APPROVED=true node packages/alchemy-nest/test/live/instance-probe.ts destroy
+node packages/alchemy-nest/test/live/instance-probe.ts verify-gone
+```
+
+Inspect `destroy-plan` before running `destroy`. The stack uses the existing unit cleanup, bucket drain and guarded data-child purge. Named delete custody permits only the layout's exact files, directories, units, deployment directory and store ports. Default delete authority stays unchanged. Named data roots cannot overlap the mailbox data root or the user's configuration/binary trees.
+
+Before the first deploy, the launcher records both mailbox units' active MainPIDs in a mode-600 file in the external state directory. It never replaces that baseline on a retry. A different host, root or mailbox PID refuses the retry.
+
+`health` checks celld health, the probe worker identity and all ten loopback listeners over SSH. `verify-gone` runs a read-only teardown probe over SSH. It checks `systemctl --user list-unit-files 'mischiefrb-*'`, loaded units, `mischiefrb.slice`, wants links, `ss -ltn` for every port in 28010–28019, both SeaweedFS sockets, and the configuration, staging, binary and data directories. It requires `rat-king-celld.service` and `rat-king-seaweedfs.service` to remain active with the MainPIDs captured before deploy. Any leftover, changed PID, inactive mailbox unit or failed probe command exits non-zero. Retain external state and report failures; do not hand-clean the host.
 
 ## Checks
 

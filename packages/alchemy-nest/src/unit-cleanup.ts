@@ -1,5 +1,7 @@
 import { Effect } from "effect";
 
+import { assertDeleteUnit } from "./delete-custody.ts";
+import { refuse } from "./files.ts";
 import { must } from "./host-shell.ts";
 import type { Interface } from "./host-shell.ts";
 
@@ -44,6 +46,7 @@ export const wantsLink = Effect.fn("SystemdUnit.wantsLink")(function* link(
   name: string,
   operation: "check" | "remove"
 ) {
+  yield* assertDeleteUnit(shell, { home, name });
   yield* must(shell, ["python3", "-c", wantsLinkScript, home, name, operation]);
 });
 
@@ -52,6 +55,14 @@ export const removeStoreSockets = Effect.fn("SystemdUnit.storeSockets")(
     shell: Interface,
     ports?: { readonly s3: number; readonly s3Grpc: number }
   ) {
+    if (
+      shell.deleteCustody !== undefined &&
+      (ports?.s3 !== shell.deleteCustody.layout.ports.s3 ||
+        ports.s3Grpc !== shell.deleteCustody.layout.ports.s3Grpc)
+    ) {
+      return yield* refuse("Socket delete escapes its instance custody.");
+    }
+
     const script =
       ports === undefined
         ? storeSocketScript
@@ -62,6 +73,6 @@ export const removeStoreSockets = Effect.fn("SystemdUnit.storeSockets")(
               `seaweedfs-s3-grpc-${ports.s3Grpc}.sock`
             );
 
-    yield* must(shell, ["python3", "-c", script]);
+    return yield* must(shell, ["python3", "-c", script]).pipe(Effect.asVoid);
   }
 );

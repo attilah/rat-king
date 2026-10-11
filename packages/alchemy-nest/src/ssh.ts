@@ -2,6 +2,7 @@ import { Effect, Layer, Redacted, Schema, Semaphore, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { absent } from "./absent.ts";
+import { assertDeletePath, instanceDeleteCustody } from "./delete-custody.ts";
 import { HostError, HostShell } from "./host-shell.ts";
 import type { Diagnostics, Interface, Result } from "./host-shell.ts";
 import { validateInstance } from "./instance.ts";
@@ -185,6 +186,10 @@ export const layer = (
 
           return sha256;
         }),
+        deleteCustody:
+          layout.instance === "rat-king"
+            ? undefined
+            : instanceDeleteCustody(validated.home, layout),
         exec: Effect.fn("HostShell.exec")((argv, diagnostics) =>
           run(`exec ${argvText(argv)}`, undefined, diagnostics)
         ),
@@ -214,14 +219,20 @@ export const layer = (
 
           return Buffer.from(result.stdout, "base64");
         }),
-        remove: Effect.fn("HostShell.remove")((path) =>
-          checked(
+        remove: Effect.fn("HostShell.remove")(function* remove(path) {
+          yield* assertDeletePath(shell, path, "files");
+
+          return yield* checked(
             `test ! -L ${shellQuote(path)} && rm -f -- ${shellQuote(path)}`
-          ).pipe(Effect.asVoid)
-        ),
-        rmdir: Effect.fn("HostShell.rmdir")((path) =>
-          checked(argvText(["rmdir", "--", path])).pipe(Effect.asVoid)
-        ),
+          ).pipe(Effect.asVoid);
+        }),
+        rmdir: Effect.fn("HostShell.rmdir")(function* rmdir(path) {
+          yield* assertDeletePath(shell, path, "directories");
+
+          return yield* checked(argvText(["rmdir", "--", path])).pipe(
+            Effect.asVoid
+          );
+        }),
         stat: Effect.fn("HostShell.stat")(function* operation(path) {
           const p = shellQuote(path);
 

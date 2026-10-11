@@ -1,6 +1,7 @@
 import { Context, Effect, Layer } from "effect";
 import type { Redacted } from "effect";
 
+import type { DeleteCustody } from "./delete-custody.ts";
 import { HostError } from "./host-error.ts";
 
 export { HostError } from "./host-error.ts";
@@ -21,6 +22,7 @@ export interface Diagnostics {
 }
 
 export interface Interface {
+  readonly deleteCustody?: DeleteCustody | undefined;
   readonly purgeRoots: readonly string[];
   readonly checksum?: (path: string) => Effect.Effect<string, HostError>;
   readonly exec: (

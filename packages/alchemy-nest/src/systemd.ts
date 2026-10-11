@@ -2,15 +2,11 @@ import { Effect, Schema } from "effect";
 
 import { absent } from "./absent.ts";
 import { ownedPath } from "./adoption.ts";
-import {
-  AbsolutePath,
-  deleteFile,
-  readFile,
-  refuse,
-  textDigest,
-} from "./files.ts";
+import { assertDeleteUnit } from "./delete-custody.ts";
+import { AbsolutePath, readFile, refuse, textDigest } from "./files.ts";
 import { must } from "./host-shell.ts";
 import type { Interface } from "./host-shell.ts";
+import { deleteFile } from "./instance-files.ts";
 import { removeStoreSockets, wantsLink } from "./unit-cleanup.ts";
 
 const directive = Schema.String.check(Schema.isPattern(/^[^\r\n\0]*$/u));
@@ -286,6 +282,7 @@ export const deleteUnit = Effect.fn("SystemdUnit.delete")(function* deleteUnit(
   shell: Interface,
   output: UnitAttributes
 ) {
+  yield* assertDeleteUnit(shell, output);
   const live = yield* status(shell, output);
   const store = output.name.endsWith("-seaweedfs.service");
 
@@ -306,7 +303,10 @@ export const deleteUnit = Effect.fn("SystemdUnit.delete")(function* deleteUnit(
       !validSocketPort(s3) ||
       s3 === 18_333 ||
       !validSocketPort(s3Grpc) ||
-      s3Grpc === 28_333)
+      s3Grpc === 28_333 ||
+      (shell.deleteCustody !== undefined &&
+        (s3 !== shell.deleteCustody.layout.ports.s3 ||
+          s3Grpc !== shell.deleteCustody.layout.ports.s3Grpc)))
   ) {
     return yield* refuse("Store socket cleanup requires its declared ports.");
   }
@@ -341,6 +341,7 @@ export const deleteUnit = Effect.fn("SystemdUnit.delete")(function* deleteUnit(
 
 export const deleteDeclaredUnit = Effect.fn("SystemdUnit.deleteDeclared")(
   function* removeDeclared(shell: Interface, props: UnitProps) {
+    yield* assertDeleteUnit(shell, props);
     const output = yield* readUnit(shell, props);
 
     if (output === undefined) {
@@ -357,6 +358,7 @@ export const deleteDeclaredUnit = Effect.fn("SystemdUnit.deleteDeclared")(
 
 const cleanupCreatedUnit = Effect.fn("SystemdUnit.cleanupCreated")(
   function* cleanup(shell: Interface, props: UnitProps, sha256: string) {
+    yield* assertDeleteUnit(shell, props);
     const path = unitPath(props);
     const file = yield* readFile(shell, path);
 
