@@ -158,6 +158,18 @@ renderTest.provider(
         ];
 
       expect(store).toContain("-volume.max=32");
+      expect(store).toContain("Description=Mischief object storage");
+      expect(node).toContain("Description=Mischief cell node");
+
+      for (const text of [node, store]) {
+        expect(text).toContain("MemoryMax=1.5G");
+        expect(text).toContain("CPUQuota=100%");
+        expect(text).toContain("OOMPolicy=continue");
+      }
+
+      expect(
+        surface.files[`${host.home}/.config/systemd/user/mischief.slice`]
+      ).not.toContain("OOMPolicy");
       expect(node).toContain(
         "--listen 203.0.113.10:28000 --internal-listen 127.0.0.1:28001"
       );

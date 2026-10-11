@@ -6,13 +6,36 @@ import type { UnitProps } from "./systemd.ts";
 const quote = (value: string): string =>
   `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("%", "%%").replaceAll("$", "$$")}"`;
 
+export interface ServiceLimits {
+  readonly cpuQuota?: string | undefined;
+  readonly memoryMax?: string | undefined;
+  readonly oomPolicy?: "continue" | "stop" | "kill" | undefined;
+}
+
+const description = (layout?: InstanceLayout) =>
+  layout === undefined || layout.instance === "rat-king"
+    ? "Rat King"
+    : `${layout.instance.charAt(0).toUpperCase()}${layout.instance.slice(1)}`;
+
+const limitLines = (
+  input: ServiceLimits,
+  memoryMax: string,
+  cpuQuota: string
+): readonly (readonly [string, string])[] => [
+  ["MemoryMax", input.memoryMax ?? memoryMax],
+  ["MemorySwapMax", "0"],
+  ["CPUQuota", input.cpuQuota ?? cpuQuota],
+  ...(input.oomPolicy === undefined
+    ? []
+    : [["OOMPolicy", input.oomPolicy] satisfies readonly [string, string]]),
+];
+
 export const sliceUnit = (
   home: string,
   memoryMax = "4G",
   cpuQuota = "300%",
   props: InstanceProps & {
     readonly memoryHigh?: string;
-    readonly oomPolicy?: string;
   } = {}
 ): UnitProps => ({
   home,
@@ -33,32 +56,26 @@ export const sliceUnit = (
                 string,
               ],
             ]),
-        ...(props.oomPolicy === undefined
-          ? []
-          : [
-              ["OOMPolicy", props.oomPolicy] satisfies readonly [
-                string,
-                string,
-              ],
-            ]),
       ],
       name: "Slice",
     },
   ],
 });
 
-export const storeUnit = (input: {
-  readonly layout?: InstanceLayout;
-  readonly volumeMax?: number | undefined;
-  readonly home: string;
-  readonly binary: string;
-  readonly data: string;
-  readonly config: string;
-  readonly restartGate?:
-    | { readonly path: string; readonly address: string }
-    | undefined;
-  readonly restartOn: readonly string[];
-}): UnitProps => ({
+export const storeUnit = (
+  input: ServiceLimits & {
+    readonly layout?: InstanceLayout;
+    readonly volumeMax?: number | undefined;
+    readonly home: string;
+    readonly binary: string;
+    readonly data: string;
+    readonly config: string;
+    readonly restartGate?:
+      | { readonly path: string; readonly address: string }
+      | undefined;
+    readonly restartOn: readonly string[];
+  }
+): UnitProps => ({
   home: input.home,
   name: input.layout?.storeUnit ?? storeListener.unit,
   restartOn: input.restartOn,
@@ -66,7 +83,7 @@ export const storeUnit = (input: {
   sections: [
     {
       lines: [
-        ["Description", "Rat King object storage"],
+        ["Description", `${description(input.layout)} object storage`],
         ["StartLimitIntervalSec", "0"],
       ],
       name: "Unit",
@@ -120,9 +137,7 @@ export const storeUnit = (input: {
         ["Environment", "SENTRY_DSN="],
         ["Environment", "OTEL_SDK_DISABLED=true"],
         ["Slice", input.layout?.slice ?? "rat-king.slice"],
-        ["MemoryMax", "2G"],
-        ["MemorySwapMax", "0"],
-        ["CPUQuota", "100%"],
+        ...limitLines(input, "2G", "100%"),
         ["TasksMax", "512"],
         ["Nice", "10"],
         ["Restart", "on-failure"],
@@ -135,19 +150,21 @@ export const storeUnit = (input: {
   ],
 });
 
-export const nodeUnit = (input: {
-  readonly layout?: InstanceLayout;
-  readonly host: Node;
-  readonly workerIPv4?: string;
-  readonly binary: string;
-  readonly data: string;
-  readonly environment: string;
-  readonly storageDiagnostic?: string;
-  readonly restartGate?:
-    | { readonly path: string; readonly address: string }
-    | undefined;
-  readonly restartOn: readonly string[];
-}): UnitProps => ({
+export const nodeUnit = (
+  input: ServiceLimits & {
+    readonly layout?: InstanceLayout;
+    readonly host: Node;
+    readonly workerIPv4?: string;
+    readonly binary: string;
+    readonly data: string;
+    readonly environment: string;
+    readonly storageDiagnostic?: string;
+    readonly restartGate?:
+      | { readonly path: string; readonly address: string }
+      | undefined;
+    readonly restartOn: readonly string[];
+  }
+): UnitProps => ({
   home: input.host.home,
   name: input.layout?.nodeUnit ?? nodeListener.unit,
   restartOn: input.restartOn,
@@ -155,7 +172,7 @@ export const nodeUnit = (input: {
   sections: [
     {
       lines: [
-        ["Description", "Rat King cell node"],
+        ["Description", `${description(input.layout)} cell node`],
         ["Requires", input.layout?.storeUnit ?? "rat-king-seaweedfs.service"],
         ["After", input.layout?.storeUnit ?? "rat-king-seaweedfs.service"],
         ["StartLimitIntervalSec", "0"],
@@ -195,9 +212,7 @@ export const nodeUnit = (input: {
         ["Environment", "CELLD_SHUTDOWN_TOTAL_MS=8000"],
         ["Environment", quote(`CELLD_TEST_DATA_DIR=${input.data}`)],
         ["Slice", input.layout?.slice ?? "rat-king.slice"],
-        ["MemoryMax", "3G"],
-        ["MemorySwapMax", "0"],
-        ["CPUQuota", "200%"],
+        ...limitLines(input, "3G", "200%"),
         ["TasksMax", "1024"],
         ["Nice", "10"],
         ["Restart", "on-failure"],

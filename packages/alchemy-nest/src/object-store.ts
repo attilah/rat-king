@@ -18,6 +18,7 @@ import {
   providers as hostProviders,
 } from "./providers.ts";
 import { sliceUnit, storeUnit } from "./service-units.ts";
+import type { ServiceLimits } from "./service-units.ts";
 import { storageMaintenanceScript } from "./storage-maintenance-script.ts";
 import {
   storageRetentionTimer,
@@ -31,7 +32,6 @@ export interface SliceProps {
   readonly instance?: string;
   readonly memoryHigh?: string;
   readonly memoryMax?: string;
-  readonly oomPolicy?: "continue" | "stop" | "kill";
 }
 
 export const Slice = (
@@ -57,7 +57,7 @@ export const Slice = (
     );
   });
 
-export interface StoreProps extends InstanceProps {
+export interface StoreProps extends InstanceProps, ServiceLimits {
   readonly dataRoot?: string;
   readonly host: Node;
   readonly name: string;
@@ -135,9 +135,12 @@ export const Bucket = (id: string, props: StoreProps) =>
     const declaration = storeUnit({
       binary: `${layout.bin}/weed`,
       config: `${layout.configuration}/s3.json`,
+      cpuQuota: props.cpuQuota,
       data: `${layout.dataRoot}/seaweedfs`,
       home: host.home,
       layout,
+      memoryMax: props.memoryMax,
+      oomPolicy: props.oomPolicy,
       restartGate:
         gate === undefined
           ? undefined
