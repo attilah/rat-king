@@ -1,7 +1,7 @@
 {
   "effect": "4.0.1",
   "generatorVersion": "0.1.0",
-  "sourceDigest": "60a77a88175630480956d29793d40b983250395d776b66e132b058cbce7163ae",
+  "sourceDigest": "3db3eb62f98132c5ca2bf1a729fadd37be832978a2792d71e936ec062496ad19",
   "sources": [
     "lexicons/sh/mschf/agentgraph/checkin.json",
     "lexicons/sh/mschf/agentgraph/outcome.json",

@@ -69,7 +69,15 @@ it.live.prop(
   "record sends guard held readers before sealing and reuse one presence lookup",
   [
     Arbitrary.schema(
-      Schema.Literals(["old", "match", "exact", "wrong", "unheld", "failed"])
+      Schema.Literals([
+        "old",
+        "empty",
+        "match",
+        "exact",
+        "wrong",
+        "unheld",
+        "failed",
+      ])
     ),
   ],
   ([mode]) =>
@@ -90,6 +98,7 @@ it.live.prop(
             Match.when("match", () => ["sh.mschf.agentgraph.*"]),
             Match.when("exact", () => ["sh.mschf.agentgraph.outcome"]),
             Match.when("wrong", () => ["sh.example.*"]),
+            Match.when("empty", () => []),
             Match.orElse(() => {})
           );
 
@@ -157,7 +166,7 @@ it.live.prop(
           )
           .pipe(Effect.result);
 
-        const refused = mode === "old" || mode === "wrong";
+        const refused = mode === "empty" || mode === "wrong";
         expect(Result.isFailure(result)).toBe(refused);
         expect(sends).toBe(refused ? 0 : 1);
         expect(lookups).toBe(1);

@@ -15,11 +15,12 @@ export const readerCannotRender = (
   presence: ReaderPresence | undefined
 ): string | undefined =>
   presence?.held === true &&
-  presence.renders?.some((render) =>
+  presence.renders !== undefined &&
+  !presence.renders.some((render) =>
     render.endsWith(".*")
       ? type.startsWith(render.slice(0, -1))
       : type === render
-  ) !== true
+  )
     ? `NOT SENT: ReaderCannotRender. ${name}'s reader doesn't render ${type} (it predates typed records or doesn't declare it). Send prose instead, or ask them to restart.`
     : undefined;
 

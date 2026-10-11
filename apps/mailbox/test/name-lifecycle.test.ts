@@ -112,7 +112,7 @@ const retiredLine = (model: Model) =>
 
 const expectedPresence = (model: Model): Presence => {
   if (live(model)) {
-    return { held: true, lastHeldAt: model.now };
+    return { held: true, lastHeldAt: model.now, renders: [] };
   }
 
   return model.lastHeldAt === undefined
