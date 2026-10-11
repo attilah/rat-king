@@ -23,11 +23,11 @@ import { expect } from "vitest";
 import { projectLine } from "../../../stacks/nest/drain.ts";
 import {
   CONFLICT_STDERR,
+  EnvelopeJson,
   parseSeal,
   scriptSeal,
   scriptSendSealed,
   sealedSendFlags,
-  SealedJson,
 } from "../../../stacks/nest/seal.ts";
 import type { SealedValue } from "../../../stacks/nest/seal.ts";
 import type { LexJson } from "../../lexicon/src/runtime.ts";
@@ -45,8 +45,6 @@ const TEMPLATE = "did:web:{agent}.agents.example.invalid";
 const SENDER = "acme/job";
 
 const PRIMARY = "acme/inbox";
-
-const COPY = "acme/watch";
 
 const SECRET = "example_job_identity";
 
@@ -72,7 +70,7 @@ const Step = Schema.Literals([
 type StepValue = typeof Step.Type;
 
 const Printed = Schema.fromJsonString(
-  Schema.Struct({ id: Schema.String, seq: Schema.Int, to: Schema.String })
+  Schema.Struct({ id: Schema.String, seq: Schema.Int })
 );
 
 interface Model {
@@ -98,7 +96,8 @@ const key = (envelope: Defs.EncryptedEnvelopeValue) =>
   JSON.stringify([envelope.aad.senderDid, envelope.aad.messageId]);
 
 const remember = (model: Model, value: SealedValue) => {
-  for (const { envelope } of value.envelopes) {
+  const { envelope } = value;
+  {
     const id = JSON.stringify([envelope.aad.senderDid, envelope.aad.messageId]);
 
     if (!model.receipts.has(id)) {
@@ -133,10 +132,7 @@ const fakeMailbox = (server: Server) =>
         return respond({ error: "MailboxUnavailable" }, 503);
       }
 
-      if (
-        server.mode === "refused" &&
-        input.envelope.aad.recipientDid === did(COPY)
-      ) {
+      if (server.mode === "refused") {
         return respond(
           { error: "Retired", message: "current row is acme/watch-2" },
           410
@@ -168,10 +164,7 @@ const fakeMailbox = (server: Server) =>
         server.admitted.set(id, { bytes, envelope: input.envelope, receipt });
       }
 
-      if (
-        server.mode === "lost" &&
-        input.envelope.aad.recipientDid === did(COPY)
-      ) {
+      if (server.mode === "lost") {
         return respond({ error: "MailboxUnavailable" }, 503);
       }
 
@@ -186,10 +179,9 @@ it.live.prop(
     Effect.gen(function* sealedSendModel() {
       const sender = yield* identity(did(SENDER));
       const inbox = yield* identity(did(PRIMARY));
-      const watch = yield* identity(did(COPY));
       const documents = new Map<string, Defs.DidDocumentValue>();
 
-      for (const own of [sender, inbox, watch]) {
+      for (const own of [sender, inbox]) {
         documents.set(own.did, yield* document(own));
       }
 
@@ -263,15 +255,15 @@ it.live.prop(
         scriptSeal({
           as: SECRET,
           body: "Job complete",
-          cc: [COPY],
           summary: "Job result",
           to: PRIMARY,
         }).pipe(Effect.scoped, Effect.provide(context));
 
       const submit = (value: SealedValue, as = SECRET) =>
-        scriptSendSealed(as, Schema.encodeSync(SealedJson)(value)).pipe(
-          Effect.provide(context)
-        );
+        scriptSendSealed(
+          as,
+          Schema.encodeSync(EnvelopeJson)(value.envelope)
+        ).pipe(Effect.provide(context));
 
       const command = (step: StepValue): AsyncCommand<Model, Server> => ({
         check: () => true,
@@ -283,27 +275,18 @@ it.live.prop(
               const before = real.requests;
               journal = yield* newJournal();
               expect(real.requests).toBe(before);
-              expect(journal.envelopes).toHaveLength(2);
-              expect(journal.envelopes[0]?.envelope.aad.messageId).toBe(
-                journal.messageId
-              );
-
-              for (const { envelope } of journal.envelopes) {
-                expect(envelope.aad.expiresAt).toBeUndefined();
-              }
+              expect(journal.to).toBe(PRIMARY);
+              expect(journal.envelope.aad.messageId).toBe(journal.messageId);
+              expect(journal.envelope.aad.expiresAt).toBeUndefined();
             } else if (step === "send") {
               const result = yield* submit(journal);
               remember(model, journal);
               expect(result.code).toBe(0);
-              expect(result.stdout).toHaveLength(2);
+              expect(result.stdout).toHaveLength(1);
 
-              for (const [index, line] of result.stdout.entries()) {
+              for (const line of result.stdout) {
                 const printed = yield* Schema.decodeEffect(Printed)(line);
-                const entry = journal.envelopes[index];
-
-                if (entry === undefined) {
-                  throw new Error("Missing sealed recipient");
-                }
+                const entry = journal;
 
                 expect(printed).toEqual({
                   id: entry.envelope.aad.messageId,
@@ -313,7 +296,6 @@ it.live.prop(
                       entry.envelope.aad.messageId,
                     ])
                   ),
-                  to: entry.to,
                 });
 
                 const admitted = real.admitted.get(
@@ -349,15 +331,11 @@ it.live.prop(
               const retried = yield* submit(journal);
               remember(model, journal);
               expect(retried.code).toBe(0);
-              expect(retried.stdout).toHaveLength(2);
+              expect(retried.stdout).toHaveLength(1);
             } else if (step === "conflict") {
               yield* submit(journal);
               remember(model, journal);
-              const [first] = journal.envelopes;
-
-              if (first === undefined) {
-                throw new Error("Missing primary");
-              }
+              const first = journal;
 
               const signingKey = yield* importSigning(sender);
 
@@ -380,14 +358,9 @@ it.live.prop(
 
               const conflict = yield* submit({
                 ...journal,
-                envelopes: [
-                  {
-                    ...first,
-                    envelope: yield* Schema.encodeEffect(
-                      Defs.EncryptedEnvelope
-                    )(changed),
-                  },
-                ],
+                envelope: yield* Schema.encodeEffect(Defs.EncryptedEnvelope)(
+                  changed
+                ),
               });
 
               expect(conflict.code).toBe(5);
@@ -418,11 +391,7 @@ it.live.prop(
               const result = yield* submit(reply, INBOX_ENTRY);
               expect(result.code).toBe(0);
               remember(model, reply);
-              const [entry] = reply.envelopes;
-
-              if (entry === undefined) {
-                throw new Error("Missing reply");
-              }
+              const entry = reply;
 
               const envelope = yield* Schema.decodeEffect(
                 Defs.EncryptedEnvelope
@@ -466,17 +435,10 @@ it.live.prop(
 
               const result = yield* submit({
                 ...journal,
-                envelopes: journal.envelopes.map((entry, index) =>
-                  index === 1
-                    ? {
-                        ...entry,
-                        envelope: {
-                          ...entry.envelope,
-                          aad: { ...entry.envelope.aad, senderDid: inbox.did },
-                        },
-                      }
-                    : entry
-                ),
+                envelope: {
+                  ...journal.envelope,
+                  aad: { ...journal.envelope.aad, senderDid: inbox.did },
+                },
               });
 
               expect(result.code).toBe(2);
@@ -486,12 +448,8 @@ it.live.prop(
               journal = yield* newJournal();
               real.mode = "refused";
               const result = yield* submit(journal);
-              remember(model, {
-                ...journal,
-                envelopes: journal.envelopes.slice(0, 1),
-              });
               expect(result.code).toBe(2);
-              expect(result.stdout).toHaveLength(1);
+              expect(result.stdout).toHaveLength(0);
               expect(result.stderr).toContain("Retired");
               real.mode = "normal";
               expect((yield* submit(journal)).code).toBe(0);

@@ -26,7 +26,7 @@ A private launcher only needs to select the JSON and execute `stacks/nest/cli.ts
 | `mint-host` | Generate signing/agreement keys on the configured target. Refuse an existing secret-store entry. Send private keys only through target-local stdin to the secret store. Print only the DID after successful storage. |
 | `send` | Send one signed-plaintext message as a send-only script identity. Needs only this host's pi.json and secret store, not the stage config. See [Script sends](#script-sends). |
 | `seal` | Resolve recipients and seal signed plaintext without submitting it. Print one JSON journal for durable replay. See [Durable sends](#durable-sends). |
-| `send --as <identity-secret> --sealed -` | Submit a sealed journal from stdin without re-sealing. Print one receipt per accepted envelope. |
+| `send --as <identity-secret> --sealed -` | Submit bare sealed envelope JSON from stdin without re-sealing. Print its receipt. |
 | `drain`, `ack` | Read or acknowledge script inbox messages. See [DRAIN.md](DRAIN.md). |
 
 The Python collector is a read-only filesystem adapter. It emits frames; the Effect stream parses and classifies them. Call IDs are scoped to each session file. A send/ask/reply/handover whose result contains `Rat King` is network-routed; other returned results count as raw intercom. Calls without a tool result count as unanswered, not raw, and do not affect the done-bar. Digest exposes their aggregate as `unanswered_24h`; older history without that field still parses. Malformed session lines follow the old collector's skip behavior. Invalid route receipts, missing inputs, SSH failures and collector timeouts fail rather than reporting zero.
@@ -55,56 +55,55 @@ node stacks/nest/cli.ts send --as <identity-secret> --to <project/row> [--cc <na
 
 ### Durable sends
 
-A durable job must save its sealed envelopes before submitting them. Ordinary `send` seals again on each invocation, so invoking it after a crash can deliver a duplicate. Use the split commands instead:
+A durable job must save its sealed envelope before submitting it. Ordinary `send` seals again on each invocation, so a crash retry can deliver a duplicate. Use the split commands:
 
 ```sh
 node stacks/nest/cli.ts seal --as example_job_identity \
-  --to acme/inbox --cc acme/watch --body "Job complete" --summary "Job result"
+  --to acme/inbox --body "Job complete" --summary "Job result"
 
-node stacks/nest/cli.ts send --as example_job_identity --sealed - < /private/job/sealed.json
+# Save seal's complete output privately, and confirm durable persistence first.
+# Send only its envelope value, as Mischief's Rat King adapter does.
+jq -c '.envelope' /private/job/sealed.json \
+  | node stacks/nest/cli.ts send --as example_job_identity --sealed -
 ```
 
-`seal` accepts `--body -` for stdin and optional `--summary`, `--thread <tid>` and `--reply-to <tid>`. Summary rules match ordinary `send`. Without a summary, that payload field is absent. Without a thread, the payload thread is the primary envelope's messageId. `--reply-to` marks the payload as a reply and signs the envelope's reply reference to the primary recipient; its sender DID is the resolved primary recipient's DID. `--thread` is independent, so pass the original thread when replying within an existing conversation.
+Version 1 seals **one recipient**. `--cc` is refused; ordinary `send` still supports CC. `seal` accepts `--body -` for stdin and optional `--summary`, `--thread <tid>` and `--reply-to <tid>`. Without a summary, that payload field is absent. Without a thread, the payload thread equals the envelope's messageId. `--reply-to` marks the payload as a reply and signs the reference to the resolved recipient's DID. `--thread` is independent; pass the original thread when replying within an existing conversation.
 
-`seal` prints exactly one JSON line, always using the array form even for one recipient:
+Seal stdout is exactly one JSON line with `messageId`, `to` and `envelope`:
 
 ```json
 {
   "messageId": "3mxmfmbk52a6q",
-  "envelopes": [
-    {
-      "to": "acme/inbox",
-      "envelope": {
-        "aad": {
-          "messageId": "3mxmfmbk52a6q",
-          "recipientDid": "did:web:acme.inbox.agents.example.invalid",
-          "recipientKeyId": "did:web:acme.inbox.agents.example.invalid#encryption",
-          "senderDid": "did:web:acme.job.agents.example.invalid"
-        },
-        "ciphertext": { "$bytes": "<signed-message bytes in base64>" },
-        "enc": { "$bytes": "AA==" },
-        "suite": { "aeadId": 0, "kdfId": 0, "kemId": 0 },
-        "version": 1
-      }
-    }
-  ]
+  "to": "acme/inbox",
+  "envelope": {
+    "aad": {
+      "messageId": "3mxmfmbk52a6q",
+      "recipientDid": "did:web:acme.inbox.agents.example.invalid",
+      "recipientKeyId": "did:web:acme.inbox.agents.example.invalid#encryption",
+      "senderDid": "did:web:acme.job.agents.example.invalid"
+    },
+    "ciphertext": { "$bytes": "<signed-message bytes in base64>" },
+    "enc": { "$bytes": "AA==" },
+    "suite": { "aeadId": 0, "kdfId": 0, "kemId": 0 },
+    "version": 1
+  }
 }
 ```
 
-The example shows the shape, not a submit-ready signature. The actual output contains the complete signed bytes. The top-level `messageId` is the primary envelope's TID and the reply target. Each CC has its own sealed envelope and TID, as in pi-ratking transmit; every copy carries the primary thread and recipient list. No expiry is set. Sealing can read public recipient documents and update the local directory cache, but never writes a network mailbox or acquires a reader lease.
+This shows the shape, not a submit-ready signature. Actual output contains complete signed bytes. `messageId` is the sealed TID and the reply target. No expiry is set. Seal can read public documents and update the local directory cache, but never submits a network message or acquires a reader lease.
 
-The caller owns the journal: save the complete JSON in private durable storage and confirm persistence before sending. Do not pipe `seal` straight into `send` for a crash-safe job. The journal contains readable signed plaintext, not encrypted private content. Keep it outside the checkout and public logs.
+The caller owns persistence. Save the complete output in private durable storage and confirm it is durable before sending. Do not pipe seal straight into send for a crash-safe job. Signed plaintext is readable; keep the journal outside the checkout and public logs.
 
-`send --sealed` accepts only `--as` and `--sealed -`. It validates the whole batch before the first submission, including matching every `senderDid` to the leased identity. It needs no name lookup, reader lease or re-sealing. Envelope values and signed bytes are preserved; JSON whitespace and object key order are not part of the server's canonical admission comparison.
+`send --sealed -` accepts **bare envelope JSON**, not seal's wrapper. It accepts only `--as` and `--sealed -`, verifies `senderDid` against the leased identity before writing, and does not look up names or re-seal. The envelope values and signed bytes are preserved; JSON whitespace and key order do not affect the server's canonical admission comparison.
 
 | Exit | Meaning | Output / next action |
 | --- | --- | --- |
-| `0` | All envelopes accepted, including identical replays. | stdout: one `{"id","seq","to"}` line per envelope, with the original receipt on replay. |
-| `2` | Terminal refusal, including `UnknownName`, `Retired`, `Expired`, `Unauthorized`, `Self`, invalid journal or missing identity. | stderr: `NOT DELIVERED: <code>. <reason>`. Fix the cause; do not blindly retry. |
-| `3` | Transport failed or admission is unconfirmed. | stderr begins `NOT SENT:` or `UNCERTAIN:`. Retry later with the **same saved JSON**, even if some receipts were already printed. |
+| `0` | Accepted, including identical replay. | stdout: one `{"id","seq"}` line; replay returns the original receipt. |
+| `2` | Terminal refusal, including `UnknownName`, `Retired`, `Expired`, `Unauthorized`, `Self`, invalid envelope or missing identity. | stderr: `NOT DELIVERED: <code>. <reason>`. Fix the cause rather than blindly retrying. |
+| `3` | Transport failed or admission is unconfirmed. | stderr starts with `NOT SENT:` or `UNCERTAIN:`. Retry later with the **same saved envelope**, never re-seal. |
 | `5` | Different canonical bytes under an admitted sender DID and TID. Terminal caller bug. | stderr exactly: `NOT DELIVERED: Conflict (409). Different bytes under an admitted tid; terminal caller bug. Do not re-seal or retry this envelope.` |
 
-Submission stops at the first failure and retains stdout receipts for earlier accepted envelopes. Replaying the whole unchanged journal is safe: earlier recipients return their original receipts. This path makes one attempt per envelope, leaving retry timing to the durable caller. Never regenerate the journal to recover from exit 3.
+Submission makes one attempt; the durable caller owns retry timing. Replaying the unchanged envelope after exit 3 is safe even if the first request landed. The real CLI test exercises `seal → send → send` with invented identities and an isolated fake mailbox, checking the same output keys Mischief reads.
 
 ### Provision a script identity
 

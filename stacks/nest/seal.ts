@@ -21,7 +21,6 @@ import {
 } from "../../packages/pi-ratking/src/config.ts";
 import { directoryLayer } from "../../packages/pi-ratking/src/directory.ts";
 import { reasonOf } from "../../packages/pi-ratking/src/errors.ts";
-import { didFor } from "../../packages/pi-ratking/src/name.ts";
 import {
   PayloadJson,
   SUMMARY_MAX,
@@ -45,7 +44,6 @@ const MessageId = lexString({ format: "tid", type: "string" });
 export const SealRequest = Schema.Struct({
   as: SendRequest.fields.as,
   body: Schema.String,
-  cc: SendRequest.fields.cc,
   replyTo: Schema.optionalKey(MessageId),
   summary: Schema.optionalKey(
     Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(SUMMARY_MAX))
@@ -54,14 +52,14 @@ export const SealRequest = Schema.Struct({
   to: SendRequest.fields.to,
 });
 
+export const EnvelopeJson = Schema.fromJsonString(
+  Schema.toEncoded(Defs.EncryptedEnvelope)
+);
+
 export const Sealed = Schema.Struct({
-  envelopes: Schema.Array(
-    Schema.Struct({
-      envelope: Schema.toEncoded(Defs.EncryptedEnvelope),
-      to: SendRequest.fields.to,
-    })
-  ).check(Schema.isMinLength(1)),
+  envelope: Schema.toEncoded(Defs.EncryptedEnvelope),
   messageId: MessageId,
+  to: SendRequest.fields.to,
 });
 
 export const SealedJson = Schema.fromJsonString(Sealed);
@@ -69,11 +67,10 @@ export const SealedJson = Schema.fromJsonString(Sealed);
 export type SealedValue = typeof Sealed.Type;
 
 const sealUsage =
-  "seal --as <identity-secret> --to <name> [--cc <name>]... --body <text | -> [--summary <line>] [--thread <id>] [--reply-to <id>]";
+  "seal --as <identity-secret> --to <name> --body <text | -> [--summary <line>] [--thread <id>] [--reply-to <id>]";
 
 export const parseSeal = (argv: readonly string[]) => {
   const values = new Map<string, string>();
-  const cc: string[] = [];
 
   for (let index = 0; index < argv.length; index += 2) {
     const flag = argv[index];
@@ -83,9 +80,7 @@ export const parseSeal = (argv: readonly string[]) => {
       return Result.fail(`${flag ?? ""} needs a value. Usage: ${sealUsage}`);
     }
 
-    if (flag === "--cc") {
-      cc.push(value);
-    } else if (
+    if (
       flag !== undefined &&
       [
         "--as",
@@ -108,7 +103,6 @@ export const parseSeal = (argv: readonly string[]) => {
   const raw = {
     as: values.get("--as"),
     body: values.get("--body"),
-    cc,
     to: values.get("--to"),
   };
 
@@ -132,14 +126,18 @@ export const parseSeal = (argv: readonly string[]) => {
 export const scriptSeal = Effect.fn("Nest.scriptSeal")(function* scriptSeal(
   request: typeof SealRequest.Type
 ) {
-  const { client, from, primary, targets } = yield* prepareScript(request);
+  const { client, from, primary } = yield* prepareScript({
+    ...request,
+    cc: [],
+  });
+
   let json: string | undefined;
 
   const encodeForId = (id: string) => {
     if (json === undefined) {
       const payload: PayloadValue = {
         body: request.body,
-        cc: targets.slice(1).map((target) => target.name),
+        cc: [],
         from,
         kind: request.replyTo === undefined ? "message" : "reply",
         thread: request.thread ?? id,
@@ -168,28 +166,17 @@ export const scriptSeal = Effect.fn("Nest.scriptSeal")(function* scriptSeal(
           senderDid: primary.did,
         });
 
-  const envelopes: SealedValue["envelopes"][number][] = [];
+  const envelope = yield* client.seal(
+    primary.did,
+    encodeForId,
+    replyTo === undefined ? { encrypt: false } : { encrypt: false, replyTo }
+  );
 
-  for (const target of targets) {
-    const envelope = yield* client.seal(
-      target.did,
-      encodeForId,
-      replyTo === undefined ? { encrypt: false } : { encrypt: false, replyTo }
-    );
-
-    envelopes.push({
-      envelope: yield* Schema.encodeEffect(Defs.EncryptedEnvelope)(envelope),
-      to: target.name,
-    });
-  }
-
-  const [first] = envelopes;
-
-  if (first === undefined) {
-    return yield* Effect.fail(refused("NotAttempted", "No envelope"));
-  }
-
-  return { envelopes, messageId: first.envelope.aad.messageId };
+  return {
+    envelope: yield* Schema.encodeEffect(Defs.EncryptedEnvelope)(envelope),
+    messageId: envelope.aad.messageId,
+    to: primary.name,
+  };
 });
 
 class Conflict extends Data.TaggedClass("Conflict") {}
@@ -217,11 +204,11 @@ export const scriptSendSealed = Effect.fn("Nest.scriptSendSealed")(
     const stdout: string[] = [];
 
     const result = yield* Effect.gen(function* submitJournal() {
-      const journal = yield* Schema.decodeEffect(SealedJson)(text).pipe(
+      const envelope = yield* Schema.decodeEffect(EnvelopeJson)(text).pipe(
         Effect.mapError(() =>
           refused(
             "Usage",
-            "Invalid sealed JSON; pass the unchanged nest seal output"
+            "Invalid sealed envelope JSON; pass only nest seal's envelope value"
           )
         )
       );
@@ -229,119 +216,93 @@ export const scriptSendSealed = Effect.fn("Nest.scriptSendSealed")(
       const settings = yield* Settings;
       const identity = yield* leaseScriptIdentity(as);
 
-      if (journal.envelopes[0]?.envelope.aad.messageId !== journal.messageId) {
+      if (envelope.aad.senderDid !== identity.did) {
         return yield* Effect.fail(
           refused(
-            "Usage",
-            "messageId must equal the primary envelope's messageId"
+            "Unauthorized",
+            "Sender identity does not match sealed senderDid"
           )
         );
       }
 
-      for (const { to, envelope } of journal.envelopes) {
-        if (envelope.aad.senderDid !== identity.did) {
-          return yield* Effect.fail(
-            refused(
-              "Unauthorized",
-              "Sender identity does not match sealed senderDid"
-            )
-          );
-        }
-
-        if (envelope.aad.recipientDid === identity.did) {
-          return yield* Effect.fail(
-            refused("Self", "Cannot submit a sealed message to itself")
-          );
-        }
-
-        if (
-          didFor(settings.didTemplate, settings.reserved, to) !==
-          envelope.aad.recipientDid
-        ) {
-          return yield* Effect.fail(
-            refused(
-              "Usage",
-              "Recipient name does not match sealed recipientDid"
-            )
-          );
-        }
+      if (envelope.aad.recipientDid === identity.did) {
+        return yield* Effect.fail(
+          refused("Self", "Cannot submit a sealed message to itself")
+        );
       }
 
-      return yield* Effect.gen(function* sendEnvelopes() {
+      return yield* Effect.gen(function* sendEnvelope() {
         const transport = yield* Transport;
 
-        for (const { to, envelope } of journal.envelopes) {
-          const response = yield* transport
-            .request({
-              input: { envelope },
-              method: "POST",
-              nsid: Send.Method.nsid,
-              params: undefined,
-            })
-            .pipe(
-              Effect.mapError((): SealedFailure =>
-                Verdicts.Uncertain({
-                  reason: "Service-auth HTTP call failed",
-                  sent: true,
-                })
-              )
-            );
-
-          if (response.status === 409) {
-            return yield* Effect.fail<SealedFailure>(new Conflict());
-          }
-
-          if (response.status >= 400 && response.status < 500) {
-            const error = Schema.decodeUnknownResult(Send.ErrorBody)(
-              response.body
-            );
-
-            const code = Result.isSuccess(error)
-              ? error.success.error
-              : "Rejected";
-
-            const reason = Result.isSuccess(error)
-              ? (error.success.message ?? "Mailbox refused admission")
-              : "Mailbox refused admission";
-
-            return yield* Effect.fail(
-              refused(
-                code === "AuthRequired" || code === "Forbidden"
-                  ? "Unauthorized"
-                  : code,
-                reason
-              )
-            );
-          }
-
-          if (response.status !== 200 || response.kind !== "json") {
-            return yield* Effect.fail<SealedFailure>(
+        const response = yield* transport
+          .request({
+            input: { envelope },
+            method: "POST",
+            nsid: Send.Method.nsid,
+            params: undefined,
+          })
+          .pipe(
+            Effect.mapError((): SealedFailure =>
               Verdicts.Uncertain({
-                reason: "Admission not confirmed",
-                sent: true,
-              })
-            );
-          }
-
-          const receipt = yield* Schema.decodeUnknownEffect(Send.Output)(
-            response.body
-          ).pipe(
-            Effect.mapError(() =>
-              Verdicts.Uncertain({
-                reason: "Invalid admission receipt",
+                reason: "Service-auth HTTP call failed",
                 sent: true,
               })
             )
           );
 
-          stdout.push(
-            JSON.stringify({
-              id: receipt.receipt.message.messageId,
-              seq: receipt.receipt.seq,
-              to,
+        if (response.status === 409) {
+          return yield* Effect.fail<SealedFailure>(new Conflict());
+        }
+
+        if (response.status >= 400 && response.status < 500) {
+          const error = Schema.decodeUnknownResult(Send.ErrorBody)(
+            response.body
+          );
+
+          const code = Result.isSuccess(error)
+            ? error.success.error
+            : "Rejected";
+
+          const reason = Result.isSuccess(error)
+            ? (error.success.message ?? "Mailbox refused admission")
+            : "Mailbox refused admission";
+
+          return yield* Effect.fail(
+            refused(
+              code === "AuthRequired" || code === "Forbidden"
+                ? "Unauthorized"
+                : code,
+              reason
+            )
+          );
+        }
+
+        if (response.status !== 200 || response.kind !== "json") {
+          return yield* Effect.fail<SealedFailure>(
+            Verdicts.Uncertain({
+              reason: "Admission not confirmed",
+              sent: true,
             })
           );
         }
+
+        const receipt = yield* Schema.decodeUnknownEffect(Send.Output)(
+          response.body
+        ).pipe(
+          Effect.mapError(() =>
+            Verdicts.Uncertain({
+              reason: "Invalid admission receipt",
+              sent: true,
+            })
+          )
+        );
+
+        stdout.push(
+          JSON.stringify({
+            id: receipt.receipt.message.messageId,
+            seq: receipt.receipt.seq,
+          })
+        );
 
         return yield* Effect.void;
       }).pipe(
