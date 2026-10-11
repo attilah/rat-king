@@ -1,4 +1,4 @@
-import { NodePath } from "@effect/platform-node";
+import { NodePath, NodeServices } from "@effect/platform-node";
 import { it } from "@effect/vitest";
 import * as Plan from "alchemy/Plan";
 import * as Provider from "alchemy/Provider";
@@ -18,10 +18,12 @@ import { makeFakeShell } from "../src/fake-shell.ts";
 import { textDigest } from "../src/files.ts";
 import { HostShell } from "../src/host-shell.ts";
 import { deleteDirectory, deleteFile } from "../src/instance-files.ts";
+import { declaredListeners } from "../src/instance-listener-contract.ts";
 import {
   instanceProbeProgram,
   probeIdentity,
 } from "../src/instance-probe-stack.ts";
+import { startupLayer } from "../src/instance-startup-contract.ts";
 import { InstanceNameSchema, instanceLayout } from "../src/instance.ts";
 import { ObjectStore } from "../src/object-store.ts";
 import { ReleaseBinary } from "../src/providers.ts";
@@ -53,7 +55,11 @@ it.effect.prop(
         Schema.makeFilter(([own, other]) => own !== other)
       )
     ),
-    suffix: Arbitrary.schema(Schema.String),
+    suffix: Arbitrary.schema(
+      Schema.String.check(
+        Schema.makeFilter((value) => !value.startsWith("bootstrap-"))
+      )
+    ),
   },
   ({ names: [own, other], suffix }) =>
     Effect.gen(function* custodyProperty() {
@@ -169,16 +175,45 @@ class Fake extends Context.Service<
 
 const runtime = Layer.effectContext(
   Effect.gen(function* runtime() {
-    const fake = yield* makeFakeShell();
+    const custody = instanceDeleteCustody(host.home, probeLayout);
+    const fake = yield* makeFakeShell(custody);
 
     yield* fake.shell.mkdir({ mode: 0o700, path: "/srv/example/mailbox" });
     let bucketExists = false;
-    const custody = instanceDeleteCustody(host.home, probeLayout);
 
     const shell = {
       ...fake.shell,
       deleteCustody: custody,
       exec: (argv: readonly string[]) => {
+        if (argv[0] === "systemd-run") {
+          return Effect.succeed({ code: 0, stdout: "bootstrap deployed" });
+        }
+
+        if (argv[0] === "ss") {
+          return Effect.gen(function* listeners() {
+            const node = yield* fake.shell.exec([
+              "systemctl",
+              "--user",
+              "is-active",
+              probeLayout.nodeUnit,
+            ]);
+
+            const text = declaredListeners(
+              "127.0.0.1",
+              node.code === 0,
+              false,
+              probeLayout
+            )
+              .map(
+                ({ address, port, unit }) =>
+                  `LISTEN 0 128 ${address}:${port} 0.0.0.0:* cgroup:/${probeLayout.slice}/${unit}`
+              )
+              .join("\n");
+
+            return { code: 0, stdout: text };
+          });
+        }
+
         if (argv[2] === s3Script) {
           if (argv[6] === "create") {
             bucketExists = true;
@@ -193,7 +228,10 @@ const runtime = Layer.effectContext(
           return Effect.succeed({
             code: 0,
             stdout: JSON.stringify({
-              status: argv[6] === "read" && !bucketExists ? 404 : status,
+              status:
+                argv[6] === "pointer" || (argv[6] === "read" && !bucketExists)
+                  ? 404
+                  : status,
               version: "",
             }),
           });
@@ -261,6 +299,24 @@ const binaryProvider = Provider.effect(
   })
 );
 
+const startupRuntime = Layer.unwrap(
+  Effect.gen(function* startupRuntime() {
+    const shell = yield* HostShell;
+
+    return startupLayer(
+      "127.0.0.1",
+      "scope",
+      `${probeLayout.dataRoot}/.mailbox-restore-objects.tar`,
+      shell.write({
+        bytes: new TextEncoder().encode("invented restored objects"),
+        mode: 0o600,
+        path: `${probeLayout.dataRoot}/.mailbox-restore-objects.tar`,
+      }),
+      probeLayout
+    );
+  })
+).pipe(Layer.provideMerge(runtime), Layer.provideMerge(NodeServices.layer));
+
 const { test } = Test.make({
   providers: Layer.mergeAll(
     ObjectStore.providers(),
@@ -268,7 +324,7 @@ const { test } = Test.make({
     Celld.deploymentProvider(),
     binaryProvider
   ).pipe(
-    Layer.provideMerge(runtime),
+    Layer.provideMerge(startupRuntime),
     Layer.provide(NodePath.layer),
     Layer.provide(
       Layer.succeed(ReleaseSource, {
@@ -361,5 +417,87 @@ test.provider(
       expect(
         mutations.every(({ argv }) => argv[0]?.includes("mischiefrb") === true)
       ).toBe(true);
+    })
+);
+
+test.provider(
+  "custody-enabled fresh deploy executes bootstrap and restore cleanup, then destroys interrupted bootstrap leftovers",
+  (scratch) =>
+    Effect.gen(function* interruptedBootstrap() {
+      const fake = yield* Fake;
+      const stack = checkedStack(scratch);
+
+      const result = yield* Arbitrary.checkEffect(
+        Arbitrary.schema(
+          Schema.Struct({
+            files: Schema.Array(Schema.Literals(["index.js", "wrangler.json"])),
+            uuid: Schema.String.check(Schema.isUUID(4)),
+          })
+        ),
+        ({ files, uuid }) =>
+          Effect.gen(function* cycle() {
+            yield* stack.destroy();
+            yield* fake.clear();
+            yield* stack.deploy(
+              instanceProbeProgram(host, probeLayout.dataRoot)
+            );
+
+            const calls = yield* fake.calls();
+
+            const bootstrap = calls.find(
+              ({ operation, argv }) =>
+                operation === "rmdir" &&
+                argv[0]?.startsWith(
+                  `${probeLayout.configuration}/bootstrap-`
+                ) === true
+            )?.argv[0];
+
+            expect(bootstrap).toBeDefined();
+            expect(
+              calls.some(
+                ({ operation, argv }) =>
+                  operation === "remove" &&
+                  argv[0] ===
+                    `${probeLayout.dataRoot}/.mailbox-restore-objects.tar`
+              )
+            ).toBe(true);
+            expect(
+              calls.some(
+                ({ operation, argv }) =>
+                  operation === "remove" && argv[0] === `${bootstrap}/index.js`
+              )
+            ).toBe(true);
+            expect(
+              calls.some(
+                ({ operation, argv }) =>
+                  operation === "remove" &&
+                  argv[0] === `${bootstrap}/wrangler.json`
+              )
+            ).toBe(true);
+
+            const leftover = `${probeLayout.configuration}/bootstrap-${uuid.toLowerCase()}`;
+            yield* fake.shell.mkdir({ mode: 0o700, path: leftover });
+
+            for (const name of files) {
+              yield* fake.shell.write({
+                bytes: new TextEncoder().encode("interrupted bootstrap"),
+                mode: 0o600,
+                path: `${leftover}/${name}`,
+              });
+            }
+
+            yield* stack.destroy();
+            expect(
+              yield* fake.shell.stat(probeLayout.configuration)
+            ).toBeUndefined();
+            expect(yield* fake.shell.stat(leftover)).toBeUndefined();
+            expect(yield* fake.shell.stat(host.dataRoot)).toBeDefined();
+
+            return true;
+          }),
+        { runs: 8 }
+      );
+
+      expect(result._tag, Arbitrary.formatCheckFailure(result)).toBe("Passed");
     })
 );

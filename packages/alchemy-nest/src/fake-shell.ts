@@ -1,6 +1,9 @@
 import { Effect, Layer } from "effect";
 
 import { absent } from "./absent.ts";
+import { bootstrapCleanupScript } from "./bootstrap-cleanup.ts";
+import { assertDeletePath, isBootstrapDirectory } from "./delete-custody.ts";
+import type { DeleteCustody as Custody } from "./delete-custody.ts";
 import { HostShell, HostError } from "./host-shell.ts";
 import type { Interface, Result } from "./host-shell.ts";
 import { purgeScript, validatePurgePath } from "./purge.ts";
@@ -23,7 +26,7 @@ interface Unit {
   readonly enabled: boolean;
 }
 
-export const makeFakeShell = Effect.fn("HostShell.fake")(() =>
+export const makeFakeShell = Effect.fn("HostShell.fake")((custody?: Custody) =>
   Effect.sync(() => {
     const files = new Map<string, StoredFile>();
 
@@ -129,9 +132,39 @@ export const makeFakeShell = Effect.fn("HostShell.fake")(() =>
       return { code: 0, stdout: "" };
     };
 
-    const control = (action: string, name: string): Result => {
+    const control = (
+      action: string,
+      name: string,
+      argv: readonly string[]
+    ): Result => {
       if (action === "daemon-reload") {
         return reload();
+      }
+
+      if (action === "is-active") {
+        const active = units.get(name)?.active === true;
+
+        return {
+          code: active ? 0 : 3,
+          stdout: active ? "active\n" : "inactive\n",
+        };
+      }
+
+      if (action === "show" && argv.includes("--value")) {
+        if (argv.includes("--property=ActiveState")) {
+          return {
+            code: 0,
+            stdout:
+              units.get(name)?.active === true ? "active\n" : "inactive\n",
+          };
+        }
+
+        if (argv.includes("--property=ControlGroup") && units.has(name)) {
+          return {
+            code: 0,
+            stdout: `/${custody?.layout.slice ?? "rat-king.slice"}/${name}\n`,
+          };
+        }
       }
 
       if (action === "show") {
@@ -141,9 +174,48 @@ export const makeFakeShell = Effect.fn("HostShell.fake")(() =>
       return changeUnit(action, name);
     };
 
+    const bootstrapCleanup = (root: string): Result => {
+      if (files.has(root) || symlinks.has(root)) {
+        return { code: 1, stdout: "" };
+      }
+
+      const paths = [
+        ...directories.keys(),
+        ...files.keys(),
+        ...symlinks.keys(),
+      ].filter((path) => isBootstrapDirectory(root, path));
+
+      for (const path of paths) {
+        const children = [
+          ...files.keys(),
+          ...directories.keys(),
+          ...symlinks.keys(),
+        ].filter((child) => child.startsWith(`${path}/`));
+
+        if (
+          !directories.has(path) ||
+          symlinks.has(path) ||
+          children.some(
+            (child) =>
+              !files.has(child) ||
+              symlinks.has(child) ||
+              ![`${path}/index.js`, `${path}/wrangler.json`].includes(child)
+          )
+        ) {
+          return { code: 1, stdout: "" };
+        }
+      }
+
+      return { code: 0, stdout: JSON.stringify(paths) };
+    };
+
     const unitCleanup = (argv: readonly string[]): Result | undefined => {
       if (argv[0] !== "python3") {
         return absent;
+      }
+
+      if (argv[2] === bootstrapCleanupScript) {
+        return bootstrapCleanup(argv[3] ?? "");
       }
 
       if (argv[2] === storeSocketScript) {
@@ -172,6 +244,7 @@ export const makeFakeShell = Effect.fn("HostShell.fake")(() =>
     };
 
     const shell: Interface = {
+      deleteCustody: custody,
       exec: Effect.fn("HostShell.fake.exec")(function* exec(argv) {
         record("exec", argv);
         const [program, scope, action = "", name = ""] = argv;
@@ -226,7 +299,7 @@ export const makeFakeShell = Effect.fn("HostShell.fake")(() =>
           });
         }
 
-        return control(action, name);
+        return control(action, name, argv);
       }),
       mkdir: Effect.fn("HostShell.fake.mkdir")(function* mkdir({ path, mode }) {
         record("mkdir", [path]);
@@ -259,13 +332,13 @@ export const makeFakeShell = Effect.fn("HostShell.fake")(() =>
           return file === undefined ? undefined : new Uint8Array(file.bytes);
         })
       ),
-      remove: Effect.fn("HostShell.fake.remove")((path) =>
-        Effect.sync(() => {
-          record("remove", [path]);
-          files.delete(path);
-        })
-      ),
+      remove: Effect.fn("HostShell.fake.remove")(function* remove(path) {
+        yield* assertDeletePath(shell, path, "files");
+        record("remove", [path]);
+        files.delete(path);
+      }),
       rmdir: Effect.fn("HostShell.fake.rmdir")(function* rmdir(path) {
+        yield* assertDeletePath(shell, path, "directories");
         record("rmdir", [path]);
 
         if (

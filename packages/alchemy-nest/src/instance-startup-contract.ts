@@ -1,6 +1,7 @@
 import type { Crypto, FileSystem, Redacted } from "effect";
 import { Effect, Layer, Predicate, Result, Schema } from "effect";
 
+import { assertDeletePath } from "./delete-custody.ts";
 import { refuse } from "./files.ts";
 import { HostShell } from "./host-shell.ts";
 import type { HostError, Interface } from "./host-shell.ts";
@@ -140,6 +141,16 @@ const importRestoredObjects = Effect.fn("UnitStartup.importRestoredObjects")(
     if (archive === undefined) {
       return yield* Effect.void;
     }
+
+    if (
+      shell.deleteCustody !== undefined &&
+      archive !==
+        `${shell.deleteCustody.layout.dataRoot}/.mailbox-restore-objects.tar`
+    ) {
+      return yield* refuse("Restore archive escapes its instance data root.");
+    }
+
+    yield* assertDeletePath(shell, archive, "files");
 
     const file = yield* shell.stat(archive);
 

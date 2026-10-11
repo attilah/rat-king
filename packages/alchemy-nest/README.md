@@ -90,6 +90,18 @@ node packages/alchemy-nest/test/live/instance-probe.ts verify-gone
 
 Inspect `destroy-plan` before running `destroy`. The stack uses the existing unit cleanup, bucket drain and guarded data-child purge. Named delete custody permits only the layout's exact files, directories, units, deployment directory and store ports. Default delete authority stays unchanged. Named data roots cannot overlap the mailbox data root or the user's configuration/binary trees.
 
+Named bootstrap cleanup admits only `${configuration}/bootstrap-<lowercase UUIDv4>` and its `index.js` and `wrangler.json`. UUIDs must have version 4 and the RFC variant. Config-root deletion discovers these leftovers, refuses symlinks and unknown children, removes only the two known files, then uses non-recursive `rmdir`. Other entries remain untouched and prevent config-root removal. Interrupted deployments can resume or destroy with the original external state and baseline.
+
+Create-time cleanup audit:
+
+- `instance-probes.ts`: removes the bootstrap `index.js` and `wrangler.json`, then removes their UUIDv4 directory.
+- `instance-startup-contract.ts`: removes only `${dataRoot}/.mailbox-restore-objects.tar` after successful import. Named restores reject any other archive before archive stat or import.
+- `ssh.ts`: atomic writes trap-remove only the temporary file assigned by that write's `mktemp`. This does not grant generic delete authority over temporary-file prefixes.
+- `unit-cleanup.ts`: store socket cleanup uses the layout's exact S3 socket ports and owned store unit. Wants-link removal runs only during teardown and checks the exact owned unit target.
+- `files.ts`: direct file removal and directory `rmdir` are resource deletion, not startup cleanup. Named wrappers retain their exact custody checks. The separate default probe and startup modules remain unchanged.
+
+The offline deployment test installs the real startup layer and a custody-enabled fake shell. It exercises bootstrap and restore cleanup, then destroys generated leftover bootstrap directories containing any subset of the two known files. A separate property executes the actual discovery script against local filesystem entries, including symlinks and unknown children.
+
 Before the first deploy, the launcher records both mailbox units' active MainPIDs in a mode-600 file in the external state directory. It never replaces that baseline on a retry. A different host, root or mailbox PID refuses the retry.
 
 `health` checks celld health, the probe worker identity and all ten loopback listeners over SSH. `verify-gone` runs a read-only teardown probe over SSH. It checks `systemctl --user list-unit-files 'mischiefrb-*'`, loaded units, `mischiefrb.slice`, wants links, `ss -ltn` for every port in 28010–28019, both SeaweedFS sockets, and the configuration, staging, binary and data directories. It requires `rat-king-celld.service` and `rat-king-seaweedfs.service` to remain active with the MainPIDs captured before deploy. Any leftover, changed PID, inactive mailbox unit or failed probe command exits non-zero. Retain external state and report failures; do not hand-clean the host.
