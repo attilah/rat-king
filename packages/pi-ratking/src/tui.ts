@@ -87,7 +87,7 @@ export const frame = (
     const tailFits =
       right !== undefined &&
       left !== undefined &&
-      span - visibleWidth(tail) - 1 >= 3 + Math.min(8, visibleWidth(left));
+      span - 3 - visibleWidth(tail) - 2 >= Math.min(8, visibleWidth(left));
 
     const rightPart = tailFits ? tail : "";
 

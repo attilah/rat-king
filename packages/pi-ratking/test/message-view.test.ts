@@ -257,3 +257,26 @@ describe("inbound rendering", () => {
     }
   );
 });
+
+it("an unverified tagged reply keeps its warning mark when the tag crowds a narrow frame", () => {
+  for (let width = 16; width <= 60; width += 1) {
+    const [top = ""] =
+      messageView({
+        details: {
+          body: "",
+          cc: true,
+          did: "did:web:peer.example.invalid",
+          from: "peer",
+          id: "3m7x2ka4xv22a",
+          kind: "reply",
+          label: "",
+          verified: false,
+        },
+        expanded: false,
+        theme: plainTheme,
+        tool: "ratking",
+      })?.render(width) ?? [];
+
+    expect(stripTerminalSequences(top)).toContain("⚠");
+  }
+});
