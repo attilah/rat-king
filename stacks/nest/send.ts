@@ -21,6 +21,8 @@ import {
   Identity,
   ownIdentity,
   prepare,
+  readerCannotRender,
+  recordType,
   SendOutcomes,
 } from "../../packages/mailbox-client/src/index.ts";
 import type { SendOutcome } from "../../packages/mailbox-client/src/index.ts";
@@ -119,8 +121,8 @@ export const render = (verdict: Verdict) =>
     Refused: ({ code, reason }) => ({
       code: 2,
       stderr:
-        code === "InvalidRecord"
-          ? `NOT SENT: InvalidRecord. ${reason}`
+        code === "InvalidRecord" || code === "ReaderCannotRender"
+          ? `NOT SENT: ${code}. ${reason}`
           : `NOT DELIVERED: ${code}. ${oneLine(reason)}`,
       stdout: undefined,
     }),
@@ -378,6 +380,33 @@ export const scriptSend = Effect.fn("Nest.scriptSend")(
 
     return yield* Effect.gen(function* sealAndSend() {
       const { client, from, primary, targets } = yield* prepareScript(request);
+
+      if (request.kind === "data") {
+        const type = recordType(request.body);
+
+        for (const target of targets) {
+          const presence = yield* client.presence(target.did).pipe(
+            Effect.timeoutOption("2 seconds"),
+            Effect.orElseSucceed(() => Option.none())
+          );
+
+          const cannot = readerCannotRender(
+            target.name,
+            type,
+            Option.getOrUndefined(presence)
+          );
+
+          if (cannot !== undefined) {
+            return yield* Effect.fail(
+              refused(
+                "ReaderCannotRender",
+                cannot.replace("NOT SENT: ReaderCannotRender. ", "")
+              )
+            );
+          }
+        }
+      }
+
       let json: string | undefined;
 
       const encodeForId = (id: string) => {
