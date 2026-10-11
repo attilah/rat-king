@@ -48,7 +48,6 @@ const settings = Schema.decodeUnknownSync(AlarmSettings)({
   },
   owners: { issuer: "desk-invalid", ship: "owner-invalid" },
   page: { node: "node", script: "/fixture.invalid/page.mjs" },
-  readers: [],
 });
 
 const facts: typeof AlarmFacts.Type = {
@@ -61,7 +60,7 @@ const facts: typeof AlarmFacts.Type = {
   health: 200,
   measurementFailed: false,
   quarantinedHour: 0,
-  readers: {},
+  readers: null,
   receipts: [],
   receiptsKnown: true,
   slots: { free: 100, max: 100 },

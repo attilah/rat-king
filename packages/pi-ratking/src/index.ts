@@ -36,6 +36,15 @@ export {
 export type { Delivered, Deliver, SendOptions, Status } from "./ratking.ts";
 
 export {
+  HeartbeatJson,
+  READER_STUCK_MS,
+  ReaderHeartbeat,
+  readerVerdict,
+} from "./reader-health.ts";
+
+export type { ReaderHeartbeatValue, ReaderVerdict } from "./reader-health.ts";
+
+export {
   MESSAGE_EVENT,
   RECORD_EVENT,
   SEND_EVENT,

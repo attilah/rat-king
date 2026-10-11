@@ -91,13 +91,8 @@ Usage:
 export const promptSnippet = (tool: string) =>
   `Message other agents over Rat King with ${tool}: send, ask and wait, reply by id, list the directory.`;
 
-export const statusText = (tool: string, status: Status) => {
-  const self = Option.match(status.self, {
-    onNone: () => "no identity yet",
-    onSome: ({ did, name }) => `${name} (${did})`,
-  });
-
-  const reader = ReaderState.$match(status.reader, {
+const readerText = (reader: ReaderState) =>
+  ReaderState.$match(reader, {
     Acquiring: () => "acquiring lease",
     Live: ({ expiresAt, generation }) =>
       `live, lease generation ${generation} until ${expiresAt}`,
@@ -108,6 +103,19 @@ export const statusText = (tool: string, status: Status) => {
     SendOnly: ({ reason }) => `send-only: ${reason}`,
     Starting: () => "starting",
   });
+
+export const readerFooter = (reader: ReaderState) =>
+  ReaderState.$is("Live")(reader) || ReaderState.$is("SendOnly")(reader)
+    ? undefined
+    : `Rat King reader ${readerText(reader)}`;
+
+export const statusText = (tool: string, status: Status) => {
+  const self = Option.match(status.self, {
+    onNone: () => "no identity yet",
+    onSome: ({ did, name }) => `${name} (${did})`,
+  });
+
+  const reader = readerText(status.reader);
 
   const quarantine =
     status.quarantine.count === 0

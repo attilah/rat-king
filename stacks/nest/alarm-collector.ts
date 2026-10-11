@@ -6,87 +6,143 @@ import {
   Option,
   Result,
   Schema,
+  Stream,
 } from "effect";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
-import { prepareAlarmMail } from "./alarm-mail.ts";
+import { shellQuote } from "../../packages/alchemy-nest/src/ssh.ts";
+import { HeartbeatJson } from "../../packages/pi-ratking/src/reader-health.ts";
 import type { DeployMarker } from "./alarm-sources.ts";
-import { AlarmFacts, CacheBreach } from "./alarm-sources.ts";
+import { AlarmFacts, CacheBreach, sightReaders } from "./alarm-sources.ts";
 import { collectComms } from "./comms.ts";
 import { configDoctor } from "./config-doctor.ts";
 import { FleetDigest } from "./digest.ts";
 import type { HealthDigest } from "./health.ts";
-import { execute } from "./ship-command.ts";
 import { ShipReceipt } from "./ship-config.ts";
 import { FleetError } from "./stage-config.ts";
 import type { StageConfigValue } from "./stage-config.ts";
 
-const Alive = Schema.Struct({ alive: Schema.Boolean });
-
 type CacheBreachValue = typeof CacheBreach.Type;
 
-const readerStatus = Effect.fn("Alarm.readerStatus")(function* readerStatus(
-  config: StageConfigValue,
-  name: string,
-  command: readonly string[],
-  now: number
-) {
-  const [program, ...args] = command;
+const HeartbeatLine = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("now"), now: Schema.Finite }),
+  Schema.Struct({
+    alive: Schema.Boolean,
+    kind: Schema.Literal("beat"),
+    text: Schema.String,
+  }),
+]);
 
-  if (program === undefined) {
-    return "unknown" as const;
-  }
+export const READER_PROBE_LIMIT = "10 seconds";
 
-  const process = yield* execute(
-    program,
-    args,
-    config.runtime.RAT_KING_STATE_DIR
-  ).pipe(Effect.timeout("5 seconds"), Effect.option);
+export const readHeartbeats = Effect.fn("Alarm.readHeartbeats")(
+  function* readHeartbeats(source: {
+    readonly dir: string;
+    readonly host: string;
+    readonly ssh?: string;
+  }) {
+    const fs = yield* FileSystem.FileSystem;
 
-  if (Option.isNone(process) || process.value.code !== 0) {
-    return "unknown" as const;
-  }
+    const script = yield* fs.readFileString(
+      new URL("reader-heartbeats.py", import.meta.url).pathname
+    );
 
-  const alive = yield* Schema.decodeEffect(Schema.fromJsonString(Alive))(
-    process.value.output
-  ).pipe(Effect.option);
+    const [command, args] =
+      source.ssh === undefined
+        ? ["python3", ["-I", "-c", script, source.dir]]
+        : [
+            "ssh",
+            [
+              "-o",
+              "BatchMode=yes",
+              "-o",
+              "StrictHostKeyChecking=yes",
+              "-o",
+              "ConnectTimeout=5",
+              "--",
+              source.ssh,
+              `python3 -I -c ${shellQuote(script)} ${shellQuote(source.dir)}`,
+            ],
+          ];
 
-  if (Option.isNone(alive)) {
-    return "unknown" as const;
-  }
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
 
-  if (!alive.value.alive) {
-    return "inactive" as const;
-  }
+    const handle = yield* spawner.spawn(
+      ChildProcess.make(command, args, { stdin: "ignore" })
+    );
 
-  const prepared = yield* prepareAlarmMail(config, [name], "");
-  const target = prepared.targets.find((item) => item.name === name);
+    const [lines, code] = yield* Effect.all(
+      [
+        handle.stdout.pipe(
+          Stream.decodeText(),
+          Stream.splitLines,
+          Stream.filter((line) => line.length > 0),
+          Stream.mapEffect((line) =>
+            Schema.decodeEffect(Schema.fromJsonString(HeartbeatLine))(line)
+          ),
+          Stream.runCollect
+        ),
+        handle.exitCode,
+        Stream.runDrain(handle.stderr),
+      ],
+      { concurrency: "unbounded" }
+    );
 
-  if (target === undefined) {
-    return "unknown" as const;
-  }
+    const now = lines.find((line) => line.kind === "now");
 
-  const lease = yield* prepared.client
-    .resolveLease(target.did)
-    .pipe(Effect.result);
+    if (code !== 0 || now === undefined || now.kind !== "now") {
+      return yield* new FleetError({ reason: "Reader heartbeats unreadable" });
+    }
 
-  if (Result.isFailure(lease)) {
-    return lease.failure.error === "LeaseNotFound"
-      ? ("missing" as const)
-      : ("unknown" as const);
-  }
+    const beats = lines.flatMap((line) =>
+      line.kind === "beat"
+        ? Result.match(Schema.decodeResult(HeartbeatJson)(line.text), {
+            onFailure: () => [],
+            onSuccess: (beat) => [{ alive: line.alive, beat }],
+          })
+        : []
+    );
 
-  const expires = yield* Schema.decodeEffect(Schema.DateTimeUtcFromString)(
-    lease.success.expiresAt
-  ).pipe(Effect.option);
+    return sightReaders(source.host, beats, now.now);
+  },
+  Effect.scoped,
+  (effect) =>
+    effect.pipe(
+      Effect.timeoutOrElse({
+        duration: READER_PROBE_LIMIT,
+        orElse: () =>
+          Effect.fail(
+            new FleetError({ reason: "Reader heartbeats timed out" })
+          ),
+      }),
+      Effect.mapError(
+        () => new FleetError({ reason: "Reader heartbeats unavailable" })
+      )
+    )
+);
 
-  if (Option.isNone(expires)) {
-    return "unknown" as const;
-  }
+const observeReaders = (
+  sources: NonNullable<StageConfigValue["alarm"]>["readerHeartbeats"]
+) =>
+  sources === undefined
+    ? Effect.succeed({ facts: null, failed: false })
+    : Effect.forEach(
+        sources,
+        (source) => readHeartbeats(source).pipe(Effect.option),
+        { concurrency: "unbounded" }
+      ).pipe(
+        Effect.map((hosts) => {
+          const complete = hosts.every(Option.isSome);
 
-  return DateTime.toEpochMillis(expires.value) > now
-    ? ("present" as const)
-    : ("missing" as const);
-}, Effect.scoped);
+          return {
+            facts: {
+              complete,
+              seen: hosts.flatMap((host) => Option.getOrElse(host, () => [])),
+            },
+            failed: !complete,
+          };
+        })
+      );
 
 const probe = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   effect.pipe(
@@ -170,24 +226,7 @@ export const collectAlarmFacts = Effect.fn("Alarm.collect")(
           Effect.timeout("30 seconds"),
           Effect.option
         ),
-        readers: Effect.forEach(
-          config.alarm.readers,
-          (reader) =>
-            readerStatus(config, reader.name, reader.aliveCommand, now).pipe(
-              Effect.catch(() => Effect.succeed("unknown" as const)),
-              Effect.map((status) => [reader.name, status] as const)
-            ),
-          { concurrency: 4 }
-        ).pipe(
-          Effect.timeout("30 seconds"),
-          Effect.catchCause(() =>
-            Effect.succeed(
-              config.alarm?.readers.map(
-                (reader) => [reader.name, "unknown"] as const
-              ) ?? []
-            )
-          )
-        ),
+        readers: observeReaders(config.alarm.readerHeartbeats),
         receipts: fs.exists(config.ship.receipts).pipe(
           Effect.flatMap((exists) =>
             exists
@@ -215,7 +254,6 @@ export const collectAlarmFacts = Effect.fn("Alarm.collect")(
     );
 
     const healthy = Option.getOrNull(observations.health);
-    const readers = Object.fromEntries(observations.readers);
 
     return yield* Schema.decodeUnknownEffect(AlarmFacts)({
       cacheBreaches: Option.getOrNull(observations.cache),
@@ -236,9 +274,9 @@ export const collectAlarmFacts = Effect.fn("Alarm.collect")(
         Option.isNone(observations.quarantine) ||
         Option.isNone(observations.digest) ||
         Option.isNone(observations.receipts) ||
-        Object.values(readers).includes("unknown"),
+        observations.readers.failed,
       quarantinedHour: Option.getOrNull(observations.quarantine),
-      readers,
+      readers: observations.readers.facts,
       receipts: Option.getOrElse(observations.receipts, () => []),
       receiptsKnown: Option.isSome(observations.receipts),
       slots: healthy?.storage.slots ?? null,

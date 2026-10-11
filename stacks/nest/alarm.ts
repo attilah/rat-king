@@ -187,7 +187,12 @@ export const alarmCycle = Effect.fn("Alarm.cycle")(function* alarmCycle<R>(
       incident: next.state.context.since,
       key,
       kind: next.notice,
-      recipients: alarmRecipients(settings, key),
+      recipients: [
+        ...new Set([
+          ...alarmRecipients(settings, key),
+          ...(reading.status === "firing" ? (reading.recipients ?? []) : []),
+        ]),
+      ],
       text,
     };
 

@@ -16,13 +16,13 @@ Critical incidents reserve a Joel page slot before attempting the configured gat
 
 - `enabled`: explicit boolean, initially false.
 - `broadcast`: destination agent name for every alarm.
-- `musterDesk`: the configured Muster desk name, included for `readers.*` and `issuer.*`.
+- `musterDesk`: the configured Muster desk name, included for `readers.*` and `issuer.*`. A firing `readers.stuck` also goes to each stuck reader's owner, named in its heartbeat (`MUSTER_OWNER_NAME`). The all-clear goes to the static recipients only.
 - `owners`: key or dotted-prefix to owning desk. The longest matching prefix wins. Recipient fan-out is deduplicated.
 - `renotifyMinutes`: optional positive integer, default 120.
 - `notify`: operator identity secret, directory path and optional Pi config path. The sender is always `operator`; its identity must match the directory's operator DID.
 - `page`: Node executable and the approved notification gateway script path.
 - `launchd`: label, Node executable, checkout `source`, PATH and output/error log paths.
-- `readers`: names to monitor and an `aliveCommand` for each. The command must return JSON `{ "alive": true | false }` based on positive evidence of that specific Pi process. Do not substitute an existing pane, directory entry or network ping. Unknown/failed probes do not establish absence. An empty list means reader monitoring is unknown, not healthy.
+- `readerHeartbeats`: one entry per host, with a display `host`, the Pi state's `readers` directory as `dir`, and an `ssh` destination for every host but the alarm's own. The worker reads each host's heartbeats with one bounded call per check (10 seconds, `BatchMode=yes`). Pid liveness is checked on that host. If the list is omitted, reader monitoring is unknown, not healthy. If a host's directory is missing, that host has no readers. The older `readers` list with `aliveCommand` is ignored. It is accepted only so existing configs keep loading, so delete it when you add `readerHeartbeats`.
 
 Use a fresh copy of the live stage config. Do not promote an older proposal that loses approval fields or notification recipients.
 
@@ -32,7 +32,7 @@ Use a fresh copy of the live stage config. Do not promote an older proposal that
 - `celld.down`: two failed health checks outside a fresh `restarting` marker's 180-second window. The marker is read on the configured live node, not from the alarm host's filesystem. Unknown marker readback cannot prove that a restart window has ended.
 - `celld.restarted`: ActiveEnter moves after the initial baseline without a receipt that reports a real restart spanning that instant. It remains firing until an explaining receipt appears. Deploy-time observations wait for receipt/window resolution.
 - `issuer.broken`: failed or unavailable configuration doctor.
-- `readers.stuck`: a configured Pi is positively alive and its resolved lease is absent/expired for at least ten minutes. Unknown checks reset the absence proof; they do not clear a firing key.
+- `readers.stuck`: warn when a heartbeat's pid is alive and its reader has made no lease or consume progress for over 5 minutes. Progress is `lastConsumeOk`, or `startedAt` before the first lease. Evidence names each reader, its host, state, last error tag and idle minutes. A heartbeat whose pid is dead is stale and ignored. An unreadable host makes the reading unknown, unless another host already shows a stuck reader.
 - `filer.slots`: free/max below 10 percent, critical below 5 percent. Missing values or zero capacity are unknown.
 - `quarantine.growth`: more than twenty files with fresh modification times in the preceding hour, summed across both configured quarantine roots. The quarantine-only collector does not read sessions or route receipts.
 - `digest.fail`: latest digest is fail, or a source measurement was unavailable. Missing history is unknown.
@@ -41,6 +41,6 @@ Source probes have bounded deadlines. The worker targets a 60-second cadence and
 
 ## Qualification
 
-Run property/model tests, then `alarm-check` with approved private selectors. Verify every reader's Pi-alive command separately before enablement. The desk should test operator fan-out and the configured Joel gateway under its live-message approval, install the printed plist once, and inspect journal delivery/page claims. Roll back by disabling or unloading this one desk-owned job; no infrastructure or mailbox data rollback is involved.
+Run property/model tests, then `alarm-check` with approved private selectors. Run `alarm-check` and confirm that each configured host's heartbeats are read. The desk should test operator fan-out and the configured Joel gateway under its live-message approval, install the printed plist once, and inspect journal delivery/page claims. Roll back by disabling or unloading this one desk-owned job; no infrastructure or mailbox data rollback is involved.
 
-Untested by this lane: live fan-out, a real Joel page, launchd restart supervision, and each operator-supplied Pi-alive probe. The property suite covers lifecycle/restart replay, stable-key dedupe, page budgets, source thresholds, deploy grace and encoded envelope replay. Filesystem quarantine freshness uses modification time, not a claim about file birth time.
+Untested by this lane: live fan-out, a real Joel page, launchd restart supervision and the ssh path to a remote heartbeat host. The property suite covers lifecycle/restart replay, stable-key dedupe, page budgets, source thresholds, deploy grace and encoded envelope replay. Filesystem quarantine freshness uses modification time, not a claim about file birth time.
