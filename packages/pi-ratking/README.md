@@ -69,7 +69,9 @@ The forwarded signed record is `{ $type: "sh.mschf.ratking.relay#message", id, f
 
 `front` saves originals in `state/relay/<name-label>.json` before mailbox ack and suppresses their injection. Verified staff confirms with `{ $type: "sh.mschf.ratking.relay#handled", id: "<original id>" }`, sent as a record to the desk. A failed forward or expired deadline injects the original with `[staff did not handle]`, even if it previously settled an ask waiter; a restarted Pi no longer has that waiter. A one-second sweep handles deadlines; startup recovers overdue pending mail before consumption. Only a verified staff envelope can settle pending mail. Journal files and their directory are private (0600/0700). Malformed journals fail closed and retry, never reset themselves.
 
-The desk records every original in its thread store before routing, as it does for any inbound mail, so `reply` with `replyTo: <original id>` works from the desk even though front mode never injected it. Reply-all reaches the original sender, `to` and `cc`, never the EA unless the original named it. Like all thread records, this lives in memory: a restarted desk can no longer reply to an original it received before the restart.
+The desk records every original in its thread store before routing, as it does for any inbound mail, so `reply` with `replyTo: <original id>` works from the desk even though front mode never injected it. Reply-all reaches the original sender, `to` and `cc`, never the EA unless the original named it. On start, the desk also seeds its thread store from the front journal, so it can still reply to originals received before a restart.
+
+The desk closes loops itself. When its `reply` to an original is accepted, that original is marked handled. When any accepted `send`, `ask` or `reply` names the sender of a pending original in `to` or `cc`, every pending original from that sender is marked handled. Either way the fallback never injects `[staff did not handle]` for it. A journal write failure here is logged and never fails the send.
 
 ### Outbound copies
 

@@ -36,7 +36,7 @@ import { Directory } from "../src/directory.ts";
 import { PayloadJson } from "../src/payload.ts";
 import type { Inbound, InboundRecord } from "../src/payload.ts";
 import { RatKing } from "../src/ratking.ts";
-import { RelayOutbound, RelayRecord } from "../src/relay.ts";
+import { RelayJournal, RelayOutbound, RelayRecord } from "../src/relay.ts";
 import { SecretStore } from "../src/secrets.ts";
 import { harness } from "./harness.ts";
 
@@ -62,6 +62,7 @@ const Original = Schema.Struct({
 
 interface Model {
   copies: number;
+  open: boolean;
 }
 
 const ENDPOINT = "https://mailbox.example.invalid";
@@ -192,6 +193,7 @@ it.live.prop(
 
       const acked = yield* Deferred.make<boolean>();
       let acquired = false;
+      let restarted = false;
       let copyMode: (typeof Step.Type)["copy"] = "accept";
 
       const sends: Defs.EncryptedEnvelopeValue[] = [];
@@ -216,17 +218,18 @@ it.live.prop(
                 const output = yield* Schema.decodeUnknownEffect(
                   Schema.toType(List.Output)
                 )({
-                  events: acquired
-                    ? [
-                        {
-                          $type: "sh.mschf.ratking.defs#messageEvent",
-                          envelope: sealed,
-                          receipt,
-                          seq: 1,
-                        },
-                      ]
-                    : [],
-                  throughSeq: acquired ? 1 : 0,
+                  events:
+                    acquired && !restarted
+                      ? [
+                          {
+                            $type: "sh.mschf.ratking.defs#messageEvent",
+                            envelope: sealed,
+                            receipt,
+                            seq: 1,
+                          },
+                        ]
+                      : [],
+                  throughSeq: acquired && !restarted ? 1 : 0,
                 });
 
                 return HttpClientResponse.fromWeb(
@@ -355,6 +358,24 @@ it.live.prop(
         }).pipe(Effect.orDie)
       );
 
+      const journalState = fs.readFileString(`${state}/relay/tester.json`).pipe(
+        Effect.flatMap(
+          Schema.decodeEffect(Schema.fromJsonString(RelayJournal))
+        ),
+        Effect.map(
+          (entries) => entries.find((entry) => entry.record.id === X)?.state
+        )
+      );
+
+      const desk = {
+        alive: () => false,
+        env: Option.some("tester"),
+        pane: Option.none(),
+        pid: 1,
+        reads: true,
+        session: "desk",
+      };
+
       const layer = Layer.effectDiscard(
         Effect.gen(function* seed() {
           const secrets = yield* SecretStore;
@@ -383,23 +404,14 @@ it.live.prop(
         )
       );
 
-      yield* Effect.gen(function* desk() {
+      yield* Effect.gen(function* firstRun() {
         const ratking = yield* RatKing;
         const injected: (Inbound | InboundRecord)[] = [];
 
-        yield* ratking.run(
-          {
-            alive: () => false,
-            env: Option.some("tester"),
-            pane: Option.none(),
-            pid: 1,
-            reads: true,
-            session: "desk",
-          },
-          (inbound) =>
-            Effect.sync(() => {
-              injected.push(inbound);
-            })
+        yield* ratking.run(desk, (inbound) =>
+          Effect.sync(() => {
+            injected.push(inbound);
+          })
         );
 
         yield* Deferred.await(acked).pipe(Effect.timeout("5 seconds"));
@@ -516,6 +528,14 @@ it.live.prop(
               }
 
               expect(copies).toHaveLength(model.copies);
+
+              if (expected.includes("person" satisfies NameValue)) {
+                model.open = false;
+              }
+
+              expect(yield* journalState).toBe(
+                model.open ? "pending" : "handled"
+              );
             });
 
             // oxlint-disable-next-line effect-tests/no-manual-effect-runtime-in-tests -- fast-check reuses the test context.
@@ -526,19 +546,8 @@ it.live.prop(
 
         yield* Effect.promise(() =>
           asyncModelRun(
-            () => ({ model: { copies: 0 }, real: {} }),
+            () => ({ model: { copies: 0, open: true }, real: {} }),
             [
-              command(
-                {
-                  action: "reply",
-                  cc: [],
-                  copy: "reject",
-                  encrypt: true,
-                  replyAll: true,
-                  to: "person",
-                },
-                -1
-              ),
               command(
                 {
                   action: "send",
@@ -551,6 +560,17 @@ it.live.prop(
                 -2
               ),
               ...steps.map(command),
+              command(
+                {
+                  action: "reply",
+                  cc: [],
+                  copy: "reject",
+                  encrypt: true,
+                  replyAll: true,
+                  to: "person",
+                },
+                -1
+              ),
             ]
           )
         );
@@ -559,6 +579,32 @@ it.live.prop(
         expect(forwards).toHaveLength(1);
         expect(injected).toEqual([]);
       }).pipe(Effect.provide(layer));
+
+      acquired = false;
+      restarted = true;
+
+      yield* Effect.gen(function* restartedRun() {
+        const ratking = yield* RatKing;
+        const injected: (Inbound | InboundRecord)[] = [];
+
+        yield* ratking.run(desk, (inbound) =>
+          Effect.sync(() => {
+            injected.push(inbound);
+          })
+        );
+
+        yield* until(() => acquired);
+
+        const before = sends.length;
+
+        yield* ratking.reply(X, "after restart", { replyAll: false });
+
+        expect(
+          sends.slice(before).map((each) => nameOf.get(each.aad.recipientDid))
+        ).toEqual(["person"]);
+        expect(yield* journalState).toBe("handled");
+        expect(injected).toEqual([]);
+      }).pipe(Effect.provide(layer));
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
-  { arbitrary: { runs: 8 }, timeout: 120_000 }
+  { arbitrary: { runs: 30 }, timeout: 120_000 }
 );

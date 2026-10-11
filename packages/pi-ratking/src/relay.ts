@@ -279,6 +279,19 @@ export const openRelay = <E>(config: RelaySettingValue, ports: RelayPorts<E>) =>
       });
 
     const relay = {
+      answered: (names: readonly string[]) =>
+        mutex.withPermit(
+          Effect.gen(function* answered() {
+            for (const entry of entries.values()) {
+              if (
+                entry.state === "pending" &&
+                names.includes(entry.record.from)
+              ) {
+                yield* finish(entry, "handled");
+              }
+            }
+          })
+        ),
       failed: (id: string) =>
         mutex.withPermit(
           Effect.gen(function* failed() {
@@ -299,6 +312,9 @@ export const openRelay = <E>(config: RelaySettingValue, ports: RelayPorts<E>) =>
             }
           })
         ),
+      originals: Effect.sync(() =>
+        [...entries.values()].map((entry) => relayedInbound(entry.record))
+      ),
       receive: (
         inbound: Inbound,
         settled: boolean,
