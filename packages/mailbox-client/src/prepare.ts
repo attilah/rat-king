@@ -8,6 +8,7 @@ import { canonical } from "@rat-king/envelope/canonical";
 import * as Defs from "@rat-king/lexicon/defs";
 import { MailboxClient, clientLayer } from "@rat-king/lexicon/mailbox-client";
 import * as Peer from "@rat-king/lexicon/mailbox.getPeerDocument";
+import * as Presence from "@rat-king/lexicon/mailbox.getPresence";
 import * as Send from "@rat-king/lexicon/mailbox.send";
 import { Transport } from "@rat-king/lexicon/transport";
 import {
@@ -390,6 +391,33 @@ export const prepare = Effect.fn("Mailbox.prepare")(function* prepare(
     return peer;
   });
 
+  const presence = Effect.fn("Mailbox.presence")(function* presence(
+    did: string
+  ) {
+    const params = yield* Schema.decodeUnknownEffect(Presence.Params)({
+      did,
+    }).pipe(Effect.mapError(clientError));
+
+    const response = yield* transport
+      .request({
+        input: undefined,
+        method: "GET",
+        nsid: Presence.Method.nsid,
+        params: yield* Schema.encodeEffect(Presence.Params)(params).pipe(
+          Effect.mapError(clientError)
+        ),
+      })
+      .pipe(Effect.mapError(clientError));
+
+    if (response.kind !== "json" || response.status !== 200) {
+      return yield* failure("Presence request refused");
+    }
+
+    return yield* Schema.decodeUnknownEffect(Presence.Output)(
+      response.body
+    ).pipe(Effect.mapError(clientError));
+  });
+
   return {
     consume: <E, R>(
       handler: (
@@ -417,6 +445,7 @@ export const prepare = Effect.fn("Mailbox.prepare")(function* prepare(
       .list({ afterSeq: 0, limit: 1 })
       .pipe(Effect.map(({ throughSeq }) => throughSeq)),
     open: mailbox.open,
+    presence,
     refresh,
     resolveLease: mailbox.lease.resolve,
     seal,

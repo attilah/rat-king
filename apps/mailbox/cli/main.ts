@@ -28,6 +28,7 @@ import { CliError, readIdentity } from "./identity.ts";
 import { provision } from "./provision.ts";
 import { registerDocument } from "./register-document.ts";
 import { provisionAgent } from "./register.ts";
+import { listRetired, retireName, unretireName } from "./retire.ts";
 import { secretStoreLayer } from "./secrets.ts";
 import { sendBody } from "./send-body.ts";
 import { traffic } from "./traffic.ts";
@@ -91,6 +92,9 @@ type CliOutput =
   | Effect.Success<ReturnType<typeof provisionAgent>>
   | Effect.Success<ReturnType<typeof registerDocument>>
   | Effect.Success<ReturnType<typeof enrollHost>>
+  | Effect.Success<ReturnType<typeof retireName>>
+  | Effect.Success<ReturnType<typeof unretireName>>
+  | Effect.Success<ReturnType<typeof listRetired>>
   | OpenedMessage
   | { released: true };
 
@@ -335,6 +339,55 @@ const enrollHostCommand = Command.make(
   })
 );
 
+const authority = Effect.gen(function* authority() {
+  const env = yield* environment;
+
+  return {
+    endpoint: env.endpoint,
+    operatorSecret: yield* Config.String("RAT_KING_OPERATOR_IDENTITY"),
+    serviceDid: env.serviceDid,
+  };
+});
+
+const retireCommand = Command.make(
+  "retire",
+  {
+    name: Flag.String("name"),
+    successor: Flag.String("successor").pipe(Flag.optional),
+  },
+  Effect.fn("MailboxCli.retire")(function* retire(args) {
+    yield* print(
+      yield* retireName(yield* authority, args.name, args.successor).pipe(
+        Effect.provide([FetchHttpClient.layer, secretStoreLayer({})])
+      )
+    );
+  })
+);
+
+const unretireCommand = Command.make(
+  "unretire",
+  { name: Flag.String("name") },
+  Effect.fn("MailboxCli.unretire")(function* unretire(args) {
+    yield* print(
+      yield* unretireName(yield* authority, args.name).pipe(
+        Effect.provide([FetchHttpClient.layer, secretStoreLayer({})])
+      )
+    );
+  })
+);
+
+const retiredCommand = Command.make(
+  "retired",
+  { cursor: Flag.String("cursor").pipe(Flag.optional) },
+  Effect.fn("MailboxCli.retired")(function* retired(args) {
+    yield* print(
+      yield* listRetired(yield* authority, args.cursor).pipe(
+        Effect.provide([FetchHttpClient.layer, secretStoreLayer({})])
+      )
+    );
+  })
+);
+
 const acquireCommand = Command.make(
   "acquire",
   {
@@ -505,6 +558,9 @@ const command = Command.make("mailbox").pipe(
     provisionCommand,
     registerCommand,
     enrollHostCommand,
+    retireCommand,
+    unretireCommand,
+    retiredCommand,
     leaseCommand,
     deliverCommand,
     ackCommand,

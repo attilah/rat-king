@@ -1,7 +1,7 @@
 {
   "effect": "4.0.1",
   "generatorVersion": "0.1.0",
-  "sourceDigest": "17fbc6a369e8173bb3da07645b2e0f7b9739833e642b2c95f227768cd40af101",
+  "sourceDigest": "eb1d44743005f4713b36e94614ef851fc0000a1d53b213803fae63557ffc25fb",
   "sources": [
     "lexicons/sh/mschf/ratking/admin/putDidDocument.json",
     "lexicons/sh/mschf/ratking/agent/profile.json",
@@ -12,10 +12,14 @@
     "lexicons/sh/mschf/ratking/desk/update.json",
     "lexicons/sh/mschf/ratking/identity/enrollHost.json",
     "lexicons/sh/mschf/ratking/identity/listNames.json",
+    "lexicons/sh/mschf/ratking/identity/listRetired.json",
     "lexicons/sh/mschf/ratking/identity/register.json",
+    "lexicons/sh/mschf/ratking/identity/retireName.json",
+    "lexicons/sh/mschf/ratking/identity/unretireName.json",
     "lexicons/sh/mschf/ratking/mailbox/ack.json",
     "lexicons/sh/mschf/ratking/mailbox/deliver.json",
     "lexicons/sh/mschf/ratking/mailbox/getPeerDocument.json",
+    "lexicons/sh/mschf/ratking/mailbox/getPresence.json",
     "lexicons/sh/mschf/ratking/mailbox/list.json",
     "lexicons/sh/mschf/ratking/mailbox/listTraffic.json",
     "lexicons/sh/mschf/ratking/mailbox/send.json",

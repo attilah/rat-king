@@ -35,6 +35,15 @@ export const Lease = Schema.Union([
 
 export type LeaseValue = typeof Lease.Type;
 
+export const Retirement = Schema.Struct({
+  by: Schema.String,
+  name: Schema.String,
+  retiredAt: Schema.Int,
+  successor: Schema.optionalKey(Schema.String),
+});
+
+export type RetirementValue = typeof Retirement.Type;
+
 export type Event = List.OutputValue["events"][number];
 
 export interface Transaction {
@@ -53,6 +62,8 @@ export interface Transaction {
   readonly cursorSecret: () => Uint8Array;
   readonly document: () => Defs.DidDocumentValue | undefined;
   readonly setDocument: (document: Defs.DidDocumentValue) => void;
+  readonly retirement: () => RetirementValue | undefined;
+  readonly setRetirement: (retirement: RetirementValue | undefined) => void;
 }
 
 export class MailboxStore extends Context.Service<

@@ -13,6 +13,7 @@ import { LeaseAuthority, leaseLayer, validLease } from "./lease.ts";
 import type { MailboxPolicy } from "./lease.ts";
 import { advance } from "./lifecycle.ts";
 import type { DeliveryCommand } from "./lifecycle.ts";
+import { refuseRetired } from "./retirement.ts";
 import { SenderFence } from "./sender-fence.ts";
 import { MailboxStore } from "./store.ts";
 import type { Message, Transaction } from "./store.ts";
@@ -404,6 +405,8 @@ export const mailboxHandlers = (policy: MailboxPolicy) =>
 
               return { receipt: existing.admission };
             }
+
+            refuseRetired(tx);
 
             if (
               envelope.aad.expiresAt &&

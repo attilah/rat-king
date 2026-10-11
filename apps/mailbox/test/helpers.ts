@@ -10,9 +10,12 @@ import {
   senderDid,
 } from "../../../packages/envelope/test/helpers.ts";
 import { Documents } from "../src/auth.ts";
+import { RetirementRegistry } from "../src/issuer.ts";
+import { markRetired } from "../src/retirement.ts";
 import { SenderFence } from "../src/sender-fence.ts";
 import { sqliteStore } from "../src/sqlite.ts";
 import type { Sql } from "../src/sqlite.ts";
+import type { MailboxStore } from "../src/store.ts";
 
 export const documents = Effect.fn("Test.documents")(function* documents(
   sender: CryptoKey,
@@ -94,3 +97,35 @@ export const testStoreFor = (did: string) =>
   );
 
 export const testStore = testStoreFor(recipientDid);
+
+export const storeRetirements = (
+  mailbox: (did: string) => Effect.Effect<typeof MailboxStore.Service>
+) =>
+  Layer.succeed(
+    RetirementRegistry,
+    RetirementRegistry.of({
+      clear: (did) =>
+        mailbox(did).pipe(
+          Effect.flatMap((store) =>
+            store.transaction((tx) => {
+              const cleared = tx.retirement() !== undefined;
+              tx.setRetirement(undefined);
+
+              return cleared;
+            })
+          )
+        ),
+      current: (did) =>
+        mailbox(did).pipe(
+          Effect.flatMap((store) => store.transaction((tx) => tx.retirement()))
+        ),
+      retire: (did, retirement) =>
+        mailbox(did).pipe(
+          Effect.flatMap((store) =>
+            store.transaction((tx) => {
+              markRetired(tx, [], retirement);
+            })
+          )
+        ),
+    })
+  );

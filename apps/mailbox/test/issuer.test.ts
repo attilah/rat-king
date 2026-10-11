@@ -29,7 +29,7 @@ import {
 import { storeDocument } from "../src/mailbox.ts";
 import { MailboxStore } from "../src/store.ts";
 import { TestFailure } from "./celld.ts";
-import { testStoreFor } from "./helpers.ts";
+import { storeRetirements, testStoreFor } from "./helpers.ts";
 
 const didTemplate = "did:web:{agent}.pi.example.invalid";
 
@@ -383,6 +383,7 @@ it.effect.prop(
         }).pipe(
           Layer.provide(issuerStore(issuer.sql)),
           Layer.provide(registry),
+          Layer.provide(storeRetirements(mailbox)),
           Layer.provide(Layer.succeed(Caller, { did: caller }))
         );
 

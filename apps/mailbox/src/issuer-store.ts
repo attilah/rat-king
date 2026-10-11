@@ -6,11 +6,16 @@ import { Document } from "./auth.ts";
 import type { Binding, PublicDocument } from "./issuer-policy.ts";
 import type { Sql } from "./sqlite.ts";
 import { storageOperation } from "./store.ts";
+import type { RetirementValue } from "./store.ts";
 
 export interface IssuedName {
   readonly name: string;
   readonly did: string;
   readonly document: PublicDocument;
+}
+
+export interface RetiredName extends RetirementValue {
+  readonly did: string;
 }
 
 export interface IssuerTransaction {
@@ -23,6 +28,9 @@ export interface IssuerTransaction {
     document: PublicDocument
   ) => void;
   readonly names: (after: string, limit: number) => readonly IssuedName[];
+  readonly retire: (retired: RetiredName) => void;
+  readonly unretire: (name: string, retiredAt?: number) => void;
+  readonly retired: (after: string, limit: number) => readonly RetiredName[];
 }
 
 export class IssuerStore extends Context.Service<
@@ -46,10 +54,21 @@ const NameRow = Schema.Struct({
   name: Schema.String,
 });
 
+const RetiredRow = Schema.Struct({
+  by: Schema.String,
+  did: Schema.String,
+  name: Schema.String,
+  retiredAt: Schema.Int,
+  successor: Schema.String,
+});
+
 export const issuerStore = (sql: Sql) => {
   sql.exec("CREATE TABLE IF NOT EXISTS hosts (did TEXT PRIMARY KEY)");
   sql.exec(
     "CREATE TABLE IF NOT EXISTS names (name TEXT PRIMARY KEY, did TEXT NOT NULL UNIQUE, host TEXT NOT NULL, fingerprint TEXT NOT NULL, document TEXT NOT NULL)"
+  );
+  sql.exec(
+    "CREATE TABLE IF NOT EXISTS retired (name TEXT PRIMARY KEY, did TEXT NOT NULL, retired_at INTEGER NOT NULL, successor TEXT NOT NULL, by TEXT NOT NULL)"
   );
 
   const transaction: IssuerTransaction = {
@@ -89,6 +108,41 @@ export const issuerStore = (sql: Sql) => {
         ),
         (row) => Schema.decodeUnknownSync(NameRow)(row)
       ),
+    retire: (retired) => {
+      sql.exec(
+        "INSERT INTO retired (name,did,retired_at,successor,by) VALUES (?,?,?,?,?) ON CONFLICT(name) DO UPDATE SET did=excluded.did, retired_at=excluded.retired_at, successor=excluded.successor, by=excluded.by",
+        retired.name,
+        retired.did,
+        retired.retiredAt,
+        retired.successor ?? "",
+        retired.by
+      );
+    },
+    retired: (after, limit) =>
+      Array.from(
+        sql.exec(
+          "SELECT name,did,retired_at AS retiredAt,successor,by FROM retired WHERE name > ? ORDER BY name ASC LIMIT ?",
+          after,
+          limit
+        ),
+        (row) => {
+          const { successor, ...decoded } =
+            Schema.decodeUnknownSync(RetiredRow)(row);
+
+          return successor === "" ? decoded : { ...decoded, successor };
+        }
+      ),
+    unretire: (name, retiredAt) => {
+      if (retiredAt === undefined) {
+        sql.exec("DELETE FROM retired WHERE name=?", name);
+      } else {
+        sql.exec(
+          "DELETE FROM retired WHERE name=? AND retired_at=?",
+          name,
+          retiredAt
+        );
+      }
+    },
   };
 
   return Layer.succeed(

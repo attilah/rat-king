@@ -28,6 +28,16 @@ Existing secrets are reused, never rotated. A different DID stops the command wi
 
 `--secrets-config` and `--secrets-socket` select an isolated `agent-secrets` store and daemon for testing. They apply to operator and agent leases and additions alike. Private identity values never appear in argv, repository files, process output or failure diagnostics.
 
+## Name retirement
+
+```sh
+node /tmp/mailbox.mjs retire --name example/row --successor example/row-2
+node /tmp/mailbox.mjs unretire --name example/row
+node /tmp/mailbox.mjs retired
+```
+
+These call the issuer's `identity.retireName`, `identity.unretireName` and `identity.listRetired`, signed by `RAT_KING_OPERATOR_IDENTITY`. The issuer resolves the name through its own bindings, then its DID template, and refuses reserved names and names without a registered public document. After `retire`, the mailbox refuses mail to that DID with `Retired`, and the message names the successor. Repeating `retire` replaces the successor. The name's own identity acquiring its lease clears the retirement. `unretire` clears it by hand and reports whether anything was cleared. The name's own DID and the host that registered it may also call these methods.
+
 ## File identities for existing proofs
 
 ```sh
