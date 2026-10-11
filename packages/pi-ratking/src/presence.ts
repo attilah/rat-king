@@ -44,6 +44,14 @@ export const presenceLine = (
     );
   }
 
+  const elapsed = now - Date.parse(presence.lastHeldAt);
+
+  if (Number.isFinite(elapsed) && elapsed >= 0 && elapsed <= 900_000) {
+    return Option.some(
+      `No live reader; last read ${Math.floor(elapsed / 60_000)} min ago. The mail is queued for batch intake.`
+    );
+  }
+
   return Option.some(
     `No reader holding this name since ${age(now - Date.parse(presence.lastHeldAt))} ago (${presence.lastHeldAt}); the message waits in its mailbox.`
   );
