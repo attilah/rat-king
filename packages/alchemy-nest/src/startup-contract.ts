@@ -74,6 +74,8 @@ const stopBoth = Effect.fn("UnitStartup.stopBoth")(function* stop(
   }
 });
 
+const UNIT_UP = new Set(["active", "activating", "reloading"]);
+
 export const assertStarted = Effect.fn("UnitStartup.assertStarted")(
   function* check(
     shell: Pick<Interface, "exec">,
@@ -212,11 +214,13 @@ export const startupLayer = (
             const active = (unit: string) =>
               shell.exec(["systemctl", "--user", "is-active", unit]);
 
-            const nodeActive =
-              (yield* active("rat-king-celld.service")).code === 0;
+            const nodeActive = UNIT_UP.has(
+              (yield* active("rat-king-celld.service")).stdout.trim()
+            );
 
-            const sidecarActive =
-              (yield* active("rat-king-claude-sidecar.service")).code === 0;
+            const sidecarActive = UNIT_UP.has(
+              (yield* active("rat-king-claude-sidecar.service")).stdout.trim()
+            );
 
             const readiness = assertStarted(
               shell,
