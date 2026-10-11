@@ -9,7 +9,7 @@ import * as Plan from "alchemy/Plan";
 import { evalStack } from "alchemy/Stack";
 import { localState } from "alchemy/State/LocalState";
 import { Clock, Config, Effect, FileSystem, Layer, Schema } from "effect";
-import { FetchHttpClient } from "effect/http";
+import { FetchHttpClient, HttpClient } from "effect/http";
 
 import { provision } from "../../apps/mailbox/cli/provision.ts";
 import { secretStoreLayer } from "../../apps/mailbox/cli/secrets.ts";
@@ -33,6 +33,7 @@ import { isDeferredAdoption, qualifyRecoveryPlan } from "./recovery-plan.ts";
 import { preflightRestore, restoreSnapshot } from "./restore.ts";
 import { announceRestart } from "./ship-notice.ts";
 import { sendShipNotification } from "./ship-notify.ts";
+import { recoverStorageUnits } from "./ship-recover.ts";
 import { appendRestartEvent, guardRestartPlan } from "./ship-restart.ts";
 import { stageShipUnits } from "./ship-unit-stage.ts";
 import { connection, nestStack, nest } from "./stack.ts";
@@ -582,3 +583,34 @@ export const healthDigest = (previous?: string) =>
       )
     )
   );
+
+export const recoverStorage = Effect.gen(function* recoverNestStorage() {
+  const stage = yield* stageName;
+
+  const host = yield* (yield* Host).node(
+    yield* Config.String("RAT_KING_LIVE_NODE")
+  );
+
+  const client = yield* HttpClient.HttpClient;
+
+  const healthy = client
+    .get(`${workerUrl(stage, host)}/.well-known/celld/health`)
+    .pipe(
+      Effect.map((response) => response.status === 200),
+      Effect.timeout("10 seconds"),
+      Effect.orElseSucceed(() => false)
+    );
+
+  return yield* recoverStorageUnits(yield* HostShell, healthy);
+}).pipe(
+  Effect.provide(
+    Layer.mergeAll(
+      NodeServices.layer,
+      FetchHttpClient.layer,
+      connection.pipe(Layer.provide(NodeServices.layer))
+    )
+  ),
+  Effect.mapError(
+    () => new FleetError({ reason: "Storage recovery unavailable" })
+  )
+);

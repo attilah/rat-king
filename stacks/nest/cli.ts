@@ -25,7 +25,7 @@ import { commsCounts, digest } from "./digest.ts";
 import { DigestJson, summarize } from "./health.ts";
 import { mintHost } from "./mint-host.ts";
 import { launchdPlist, shipCommand } from "./ship-command.ts";
-import { loadStageConfig, stageProvider } from "./stage-config.ts";
+import { FleetError, loadStageConfig, stageProvider } from "./stage-config.ts";
 
 const program = Effect.gen(function* launcher() {
   const stageConfigPath = yield* Config.String("RAT_KING_STAGE_CONFIG");
@@ -120,7 +120,15 @@ const program = Effect.gen(function* launcher() {
         return yield* Effect.void;
       })
     ),
-    Match.when("ship", () => shipCommand(config)),
+    Match.when("ship", () =>
+      shipCommand(
+        config,
+        Effect.tryPromise({
+          catch: () => new FleetError({ reason: "Nest runtime import failed" }),
+          try: async () => await import("./runtime.ts"),
+        }).pipe(Effect.flatMap((runtime) => runtime.recoverStorage))
+      )
+    ),
     Match.when("alarm", () => alarmCommand(config, resolvedConfigPath)),
     Match.when("alarm-plist", () =>
       config.alarm === undefined

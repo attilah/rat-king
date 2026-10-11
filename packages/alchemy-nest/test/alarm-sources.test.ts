@@ -209,3 +209,74 @@ it.effect.prop(
       }
     })
 );
+
+const at = (time: string) => Date.parse(`2026-10-11T${time}Z`);
+
+const Replay = Schema.Struct({
+  cadence: Schema.Int.check(Schema.isBetween({ maximum: 60, minimum: 15 })),
+  offset: Schema.Int.check(Schema.isBetween({ maximum: 59, minimum: 0 })),
+});
+
+it.effect.prop(
+  "the 10:07 outage pages celld.down once the failed deploy's receipt exists, though deploy.json stays restarting",
+  [Replay],
+  ([{ cadence, offset }]) =>
+    Effect.sync(() => {
+      const sha = "b".repeat(40);
+      const down = at("10:07:46");
+
+      const receipt = {
+        celldRestarted: null,
+        end: at("10:07:47") / 1000,
+        restartSeconds: null,
+        result: "failed" as const,
+        sha,
+        start: at("10:04:00") / 1000,
+      };
+
+      let sources = emptySources;
+      let paged: number | undefined;
+
+      for (
+        let now = at("10:06:00") + (offset % cadence) * 1000;
+        now < at("10:12:00") && paged === undefined;
+        now += cadence * 1000
+      ) {
+        const observed = observeAlarms(
+          sources,
+          {
+            cacheBreaches: null,
+            deploy: {
+              phase: "restarting",
+              sha,
+              started: at("10:07:15") / 1000,
+            },
+            deployKnown: true,
+            digest: "ok",
+            doctor: true,
+            entered: null,
+            health: now < down ? 200 : 503,
+            measurementFailed: false,
+            quarantinedHour: 0,
+            readers: {},
+            receipts: now >= receipt.end * 1000 ? [receipt] : [],
+            receiptsKnown: true,
+            slots: null,
+          },
+          now
+        );
+
+        ({ sources } = observed);
+        const { "celld.down": reading } = observed.readings;
+
+        if (reading.status === "firing" && reading.severity === "critical") {
+          paged = now;
+        }
+      }
+
+      expect(paged).toBeDefined();
+      expect(paged).toBeLessThanOrEqual(
+        receipt.end * 1000 + 2 * cadence * 1000
+      );
+    })
+);

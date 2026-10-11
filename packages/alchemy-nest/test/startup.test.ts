@@ -1,6 +1,7 @@
 import { NodeServices } from "@effect/platform-node";
 import { it } from "@effect/vitest";
-import { Arbitrary, Effect, Layer, Result, Schema } from "effect";
+import { Arbitrary, Effect, Fiber, Layer, Result, Schema } from "effect";
+import { TestClock } from "effect/testing";
 import { expect } from "vitest";
 
 import { makeFakeShell } from "../src/fake-shell.ts";
@@ -77,8 +78,13 @@ it("rejects wildcard internal listeners and wrong unit or user ownership", () =>
 });
 
 it.prop(
-  "only the declared unit/address/port set passes, independently of process names and PIDs",
+  "a listener outside the full declared set is always a violation; a declared listener arriving early never is",
   {
+    early: Arbitrary.schema(
+      Schema.Array(
+        Schema.Int.check(Schema.isBetween({ maximum: 2, minimum: 0 }))
+      )
+    ),
     extras: Arbitrary.schema(
       Schema.Array(
         Schema.Struct({
@@ -126,7 +132,14 @@ it.prop(
     ),
     sidecar: Arbitrary.schema(Schema.Boolean),
   },
-  ({ node, sidecar, full, included, extras, process, pid }) => {
+  ({ node, sidecar, full, included, early, extras, process, pid }) => {
+    const declared = [
+      ...ports.map((port) => ({ bind: "127.0.0.1", port, unit: storeUnit })),
+      { bind: address, port: 18_787, unit: nodeUnit },
+      { bind: "127.0.0.1", port: 18_788, unit: nodeUnit },
+      { bind: "127.0.0.1", port: 18_789, unit: sidecarUnit },
+    ];
+
     const allowed = [
       ...ports.map((port) => ({ bind: "127.0.0.1", port, unit: storeUnit })),
       ...(node
@@ -140,8 +153,17 @@ it.prop(
         : []),
     ];
 
+    const allowedKeys = new Set(allowed.map(key));
+    const declaredKeys = new Set(declared.map(key));
+
     const listeners = [
       ...allowed.filter((_, index) => full || included.includes(index)),
+      ...declared
+        .slice(ports.length)
+        .filter(
+          (listener, index) =>
+            early.includes(index) && !allowedKeys.has(key(listener))
+        ),
       ...extras,
     ];
 
@@ -154,15 +176,25 @@ it.prop(
         reserved.has(port)
     );
 
-    const allowedKeys = new Set(allowed.map(key));
     const seen = new Set(scoped.map(key));
 
     const violation =
-      scoped.some((listener) => !allowedKeys.has(key(listener))) ||
+      scoped.some((listener) => !declaredKeys.has(key(listener))) ||
       seen.size !== scoped.length;
 
-    const accepted = seen.size === allowedKeys.size ? "Ready" : "Waiting";
-    const expected = violation ? "Violation" : accepted;
+    const arrivedEarly = scoped.some(
+      (listener) => !allowedKeys.has(key(listener))
+    );
+
+    let expected = seen.size === allowedKeys.size ? "Ready" : "Waiting";
+
+    if (arrivedEarly) {
+      expected = "Early";
+    }
+
+    if (violation) {
+      expected = "Violation";
+    }
 
     const output = listeners
       .map(({ unit, bind, port }) => {
@@ -226,22 +258,49 @@ it.effect(
     })
 );
 
+const sidecarLine = line(18_789, sidecarUnit);
+
+const Failure = Schema.Literals([
+  "exposure",
+  "early",
+  "deadline",
+  "unreadable",
+]);
+
 it.effect.prop(
-  "stops both units and preserves the startup violation even if cleanup fails",
-  { stopFails: Arbitrary.schema(Schema.Boolean) },
-  ({ stopFails }) =>
+  "a failed post-start check stops both units only on a real exposure, even if cleanup fails",
+  {
+    failure: Arbitrary.schema(Failure),
+    stopFails: Arbitrary.schema(Schema.Boolean),
+  },
+  ({ failure, stopFails }) =>
     Effect.gen(function* testStop() {
       const fake = yield* makeFakeShell();
       const stopped: string[][] = [];
+
+      const listening = {
+        deadline: store,
+        early: `${complete}\n${sidecarLine}`,
+        exposure: `${complete}\n${line(9101)}`,
+        unreadable: "",
+      }[failure];
 
       const shell = {
         ...fake.shell,
         exec: (argv: readonly string[]) => {
           if (argv[0] === "ss") {
             return Effect.succeed({
-              code: 0,
-              stdout: `${complete}\n${line(9101)}`,
+              code: failure === "unreadable" ? 1 : 0,
+              stdout: listening,
             });
+          }
+
+          if (argv[0] === "systemctl" && argv[2] === "is-active") {
+            return Effect.succeed(
+              argv[3] === sidecarUnit
+                ? { code: 3, stdout: "inactive" }
+                : { code: 0, stdout: "active" }
+            );
           }
 
           if (
@@ -271,22 +330,24 @@ it.effect.prop(
       yield* Effect.gen(function* invoke() {
         const startup = yield* UnitStartup;
 
-        const result = yield* Effect.result(
-          startup.afterStart("rat-king-celld.service")
+        const fiber = yield* Effect.forkChild(
+          Effect.result(startup.afterStart(nodeUnit))
         );
+
+        yield* TestClock.adjust("1 minute");
+        const result = yield* Fiber.join(fiber);
 
         expect(Result.isFailure(result)).toBe(true);
 
-        if (Result.isFailure(result)) {
+        if (Result.isFailure(result) && failure === "exposure") {
           expect(result.failure.reason).toContain(
             "Startup listener contract violated"
           );
         }
 
-        expect(stopped).toEqual([
-          ["rat-king-celld.service"],
-          ["rat-king-seaweedfs.service"],
-        ]);
+        expect(stopped).toEqual(
+          failure === "exposure" ? [[nodeUnit], [storeUnit]] : []
+        );
       }).pipe(
         Effect.provide(
           startupLayer(address).pipe(

@@ -75,6 +75,7 @@ export const RestartEvent = Schema.Struct({
 export const ShipReceipt = Schema.Struct({
   celldRestarted: Schema.NullOr(Schema.Boolean),
   end: Schema.Number,
+  recovered: Schema.optionalKey(Schema.Boolean),
   restartSeconds: Schema.NullOr(Schema.Number),
   result: Schema.Literals(["success", "failed", "deferred"]),
   retryAt: Schema.optionalKey(Schema.Number),

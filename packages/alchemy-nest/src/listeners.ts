@@ -7,13 +7,28 @@ import { declaredListeners, listenerUnits } from "./listener-contract.ts";
 export type ListenerAssessment =
   | { readonly _tag: "Ready"; readonly receipt: string }
   | { readonly _tag: "Waiting" }
+  | { readonly _tag: "Early"; readonly receipt: string }
   | { readonly _tag: "Violation"; readonly receipt: string };
 
 const Assessment = Data.taggedEnum<ListenerAssessment>();
 
+export class ListenerExposure extends Data.TaggedError("ListenerExposure")<{
+  readonly receipt: string;
+}> {}
+
 const reservedPorts = new Set(
   declaredListeners("", true, true).map(({ port }) => port)
 );
+
+const listenerKey = ({
+  unit,
+  address,
+  port,
+}: {
+  readonly unit: string;
+  readonly address: string;
+  readonly port: number;
+}) => `${unit}|${address}|${port}`;
 
 export const stackListeners = (
   text: string,
@@ -65,13 +80,19 @@ export const assessListeners = (
   sidecarExpected = false,
   unitCgroups: ReadonlyMap<string, string> = new Map()
 ): ListenerAssessment => {
-  const expected = declaredListeners(publicIPv4, nodeExpected, sidecarExpected);
-
-  const remaining = new Set(
-    expected.map(({ unit, address, port }) => `${unit}|${address}|${port}`)
+  const declared = new Set(
+    declaredListeners(publicIPv4, true, true).map(listenerKey)
   );
 
+  const remaining = new Set(
+    declaredListeners(publicIPv4, nodeExpected, sidecarExpected).map(
+      listenerKey
+    )
+  );
+
+  const seen = new Set<string>();
   const lines: string[] = [];
+  let early = false;
 
   for (const { address, line, port, unit } of stackListeners(
     text,
@@ -79,9 +100,19 @@ export const assessListeners = (
   )) {
     lines.push(line);
 
-    if (unit === undefined || !remaining.delete(`${unit}|${address}|${port}`)) {
+    const key =
+      unit === undefined ? undefined : listenerKey({ address, port, unit });
+
+    if (key === undefined || !declared.has(key) || seen.has(key)) {
       return Assessment.Violation({ receipt: lines.join("\n") });
     }
+
+    seen.add(key);
+    early ||= !remaining.delete(key);
+  }
+
+  if (early) {
+    return Assessment.Early({ receipt: lines.join("\n") });
   }
 
   return remaining.size === 0

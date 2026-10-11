@@ -2,13 +2,14 @@ import { Schema } from "effect";
 
 import { AlarmKey, AlarmReading } from "./alarm-config.ts";
 import type { AlarmReadingValue } from "./alarm-config.ts";
-import { ShipReceipt } from "./ship-config.ts";
+import { Sha, ShipReceipt } from "./ship-config.ts";
 import { sanitizeCandidateStderr } from "./ship-diagnostics.ts";
 
 const Count = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 
 export const DeployMarker = Schema.Struct({
   phase: Schema.Literals(["restarting", "done"]),
+  sha: Schema.optionalKey(Sha),
   started: Schema.Finite,
 });
 
@@ -22,12 +23,7 @@ export const CacheBreach = Schema.Struct({
 
 export const AlarmFacts = Schema.Struct({
   cacheBreaches: Schema.NullOr(Schema.Array(CacheBreach)),
-  deploy: Schema.NullOr(
-    Schema.Struct({
-      phase: Schema.Literals(["restarting", "done"]),
-      started: Schema.Finite,
-    })
-  ),
+  deploy: Schema.NullOr(DeployMarker),
   deployKnown: Schema.Boolean,
   digest: Schema.NullOr(Schema.Literals(["ok", "warn", "fail"])),
   doctor: Schema.Boolean,
@@ -71,10 +67,18 @@ const firing = (
 
 export const RESTART_MEMORY_MS = 3_600_000;
 
-export const deployWindow = (facts: typeof AlarmFacts.Type, now: number) =>
-  facts.deploy?.phase === "restarting" &&
-  now >= facts.deploy.started * 1000 &&
-  now - facts.deploy.started * 1000 < 180_000;
+export const deployWindow = (facts: typeof AlarmFacts.Type, now: number) => {
+  const { deploy } = facts;
+
+  return (
+    deploy?.phase === "restarting" &&
+    now >= deploy.started * 1000 &&
+    now - deploy.started * 1000 < 180_000 &&
+    !facts.receipts.some(
+      (receipt) => receipt.sha === deploy.sha && receipt.end >= deploy.started
+    )
+  );
+};
 
 const trackSources = (
   prior: typeof SourceState.Type,
