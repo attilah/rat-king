@@ -2,26 +2,43 @@ import * as Output from "alchemy/Output";
 import { Effect } from "effect";
 
 import type { DeploymentProps } from "./deployment.ts";
+import type { InstanceLayout } from "./instance.ts";
 import { HostDirectory, RemoteFile } from "./providers.ts";
+
+export const deploymentStageLayout = (
+  home: string,
+  layout?: InstanceLayout
+) => {
+  const legacy = layout === undefined || layout.instance === "rat-king";
+  const configuration = layout?.configuration ?? `${home}/.config/rat-king`;
+
+  return {
+    directory: `${configuration}/${legacy ? "mailbox-deployment" : "deployment"}`,
+    idPrefix: legacy ? "mailbox-stage" : `${layout.instance}-deployment-stage`,
+  };
+};
 
 export const stageDeploymentFiles = Effect.fn("Celld.stageDeploymentFiles")(
   function* stageDeploymentFiles(
     home: string,
     prepared: Pick<DeploymentProps, "bundle" | "configuration">,
-    mailboxOnly: boolean
+    mailboxOnly: boolean,
+    layout?: InstanceLayout
   ) {
-    const directory = yield* HostDirectory("mailbox-stage-directory", {
+    const stage = deploymentStageLayout(home, layout);
+
+    const directory = yield* HostDirectory(`${stage.idPrefix}-directory`, {
       mode: 0o700,
-      path: `${home}/.config/rat-king/mailbox-deployment`,
+      path: stage.directory,
     });
 
-    const worker = yield* RemoteFile("mailbox-stage-worker", {
+    const worker = yield* RemoteFile(`${stage.idPrefix}-worker`, {
       content: prepared.bundle,
       mode: 0o600,
       path: Output.interpolate`${directory.path}/worker.mjs`,
     });
 
-    const configuration = yield* RemoteFile("mailbox-stage-configuration", {
+    const configuration = yield* RemoteFile(`${stage.idPrefix}-configuration`, {
       content: prepared.configuration,
       mode: 0o600,
       path: Output.interpolate`${directory.path}/${mailboxOnly ? "wrangler.json" : "wrangler.public.json"}`,
