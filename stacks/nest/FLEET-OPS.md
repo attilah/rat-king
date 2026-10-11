@@ -25,6 +25,9 @@ A private launcher only needs to select the JSON and execute `stacks/nest/cli.ts
 | `mailbox` | Forward any mailbox CLI command and flags under the same configuration. |
 | `mint-host` | Generate signing/agreement keys on the configured target. Refuse an existing secret-store entry. Send private keys only through target-local stdin to the secret store. Print only the DID after successful storage. |
 | `send` | Send one signed-plaintext message as a send-only script identity. Needs only this host's pi.json and secret store, not the stage config. See [Script sends](#script-sends). |
+| `seal` | Resolve recipients and seal signed plaintext without submitting it. Print one JSON journal for durable replay. See [Durable sends](#durable-sends). |
+| `send --as <identity-secret> --sealed -` | Submit bare sealed envelope JSON from stdin without re-sealing. Print its receipt. |
+| `drain`, `ack` | Read or acknowledge script inbox messages. See [DRAIN.md](DRAIN.md). |
 
 The Python collector is a read-only filesystem adapter. It emits frames; the Effect stream parses and classifies them. Call IDs are scoped to each session file. A send/ask/reply/handover whose result contains `Rat King` is network-routed; other returned results count as raw intercom. Calls without a tool result count as unanswered, not raw, and do not affect the done-bar. Digest exposes their aggregate as `unanswered_24h`; older history without that field still parses. Malformed session lines follow the old collector's skip behavior. Invalid route receipts, missing inputs, SSH failures and collector timeouts fail rather than reporting zero.
 
@@ -49,6 +52,58 @@ node stacks/nest/cli.ts send --as <identity-secret> --to <project/row> [--cc <na
 | `0` | Every recipient's mailbox accepted the message. | stdout: one JSON line `{"id","seq","to"}` for the primary recipient. |
 | `2` | Refused. Retrying will not help until something changes. | stderr: `NOT DELIVERED: <code>. <reason>`. Codes: `UnknownName`, `Retired` (the reason names the current row when there is a successor), `Unauthorized`, `Self`, `Partial` (names who already accepted; do not resend to them), `NoIdentity`, `NotConfigured`, `Usage`, `NotAttempted`, or the mailbox's own rejection code. |
 | `3` | Transport failed or admission is unconfirmed. | stderr: `NOT SENT: <reason>` when nothing reached a mailbox (safe to retry), or `UNCERTAIN: <reason>` when the message may have landed (a resend can duplicate it). Uncertain admission retries the same envelope for about 90 seconds first; the mailbox treats a repeat as the same message. |
+
+### Durable sends
+
+A durable job must save its sealed envelope before submitting it. Ordinary `send` seals again on each invocation, so a crash retry can deliver a duplicate. Use the split commands:
+
+```sh
+node stacks/nest/cli.ts seal --as example_job_identity \
+  --to acme/inbox --body "Job complete" --summary "Job result"
+
+# Save seal's complete output privately, and confirm durable persistence first.
+# Send only its envelope value, as Mischief's Rat King adapter does.
+jq -c '.envelope' /private/job/sealed.json \
+  | node stacks/nest/cli.ts send --as example_job_identity --sealed -
+```
+
+Version 1 seals **one recipient**. `--cc` is refused; ordinary `send` still supports CC. `seal` accepts `--body -` for stdin and optional `--summary`, `--thread <tid>` and `--reply-to <tid>`. Without a summary, that payload field is absent. Without a thread, the payload thread equals the envelope's messageId. `--reply-to` marks the payload as a reply and signs the reference to the resolved recipient's DID. `--thread` is independent; pass the original thread when replying within an existing conversation.
+
+Seal stdout is exactly one JSON line with `messageId`, `to` and `envelope`:
+
+```json
+{
+  "messageId": "3mxmfmbk52a6q",
+  "to": "acme/inbox",
+  "envelope": {
+    "aad": {
+      "messageId": "3mxmfmbk52a6q",
+      "recipientDid": "did:web:acme.inbox.agents.example.invalid",
+      "recipientKeyId": "did:web:acme.inbox.agents.example.invalid#encryption",
+      "senderDid": "did:web:acme.job.agents.example.invalid"
+    },
+    "ciphertext": { "$bytes": "<signed-message bytes in base64>" },
+    "enc": { "$bytes": "AA==" },
+    "suite": { "aeadId": 0, "kdfId": 0, "kemId": 0 },
+    "version": 1
+  }
+}
+```
+
+This shows the shape, not a submit-ready signature. Actual output contains complete signed bytes. `messageId` is the sealed TID and the reply target. No expiry is set. Seal can read public documents and update the local directory cache, but never submits a network message or acquires a reader lease.
+
+The caller owns persistence. Save the complete output in private durable storage and confirm it is durable before sending. Do not pipe seal straight into send for a crash-safe job. Signed plaintext is readable; keep the journal outside the checkout and public logs.
+
+`send --sealed -` accepts **bare envelope JSON**, not seal's wrapper. It accepts only `--as` and `--sealed -`, verifies `senderDid` against the leased identity before writing, and does not look up names or re-seal. The envelope values and signed bytes are preserved; JSON whitespace and key order do not affect the server's canonical admission comparison.
+
+| Exit | Meaning | Output / next action |
+| --- | --- | --- |
+| `0` | Accepted, including identical replay. | stdout: one `{"id","seq"}` line; replay returns the original receipt. |
+| `2` | Terminal refusal, including `UnknownName`, `Retired`, `Expired`, `Unauthorized`, `Self`, invalid envelope or missing identity. | stderr: `NOT DELIVERED: <code>. <reason>`. Fix the cause rather than blindly retrying. |
+| `3` | Transport failed or admission is unconfirmed. | stderr starts with `NOT SENT:` or `UNCERTAIN:`. Retry later with the **same saved envelope**, never re-seal. |
+| `5` | Different canonical bytes under an admitted sender DID and TID. Terminal caller bug. | stderr exactly: `NOT DELIVERED: Conflict (409). Different bytes under an admitted tid; terminal caller bug. Do not re-seal or retry this envelope.` |
+
+Submission makes one attempt; the durable caller owns retry timing. Replaying the unchanged envelope after exit 3 is safe even if the first request landed. The real CLI test exercises `seal → send → send` with invented identities and an isolated fake mailbox, checking the same output keys Mischief reads.
 
 ### Provision a script identity
 
