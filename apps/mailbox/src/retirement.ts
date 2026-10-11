@@ -59,11 +59,5 @@ export const presenceOf = (
     return { held: false, lastHeldAt: lease.expiresAt };
   }
 
-  const presence: Presence = { held: true, lastHeldAt: now };
-
-  if (lease.renders !== undefined) {
-    Object.assign(presence, { renders: lease.renders });
-  }
-
-  return presence;
+  return { held: true, lastHeldAt: now, renders: lease.renders ?? [] };
 };

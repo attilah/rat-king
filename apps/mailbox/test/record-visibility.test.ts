@@ -12,7 +12,7 @@ import { MailboxStore } from "../src/store.ts";
 import { testStore } from "./helpers.ts";
 
 it.effect.prop(
-  "render declarations persist through acquire and renewal; old and released holders omit them",
+  "render declarations persist through acquire and renewal; old holders declare none and released holders omit them",
   [Arbitrary.schema(Schema.Boolean)],
   ([declares]) =>
     Effect.gen(function* roundTrip() {
@@ -49,7 +49,7 @@ it.effect.prop(
           store.transaction((tx) => presenceOf(tx.lease(), now));
 
         const acquired = yield* presence();
-        expect(acquired.renders).toEqual(declares ? renders : undefined);
+        expect(acquired.renders).toEqual(declares ? renders : []);
 
         const encoded = yield* Schema.decodeUnknownEffect(Presence.Output)({
           did: recipientDid,
@@ -57,7 +57,7 @@ it.effect.prop(
           lastHeldAt: expiresAt,
         });
 
-        expect(encoded.renders).toEqual(declares ? renders : undefined);
+        expect(encoded.renders).toEqual(declares ? renders : []);
         yield* leases.renew(
           yield* Schema.decodeUnknownEffect(Renew.Input)({
             did: recipientDid,
@@ -66,9 +66,7 @@ it.effect.prop(
             leaseId: lease.leaseId,
           })
         );
-        expect((yield* presence()).renders).toEqual(
-          declares ? renders : undefined
-        );
+        expect((yield* presence()).renders).toEqual(declares ? renders : []);
         const changed = ["sh.example.next.*"];
         yield* leases.renew(
           yield* Schema.decodeUnknownEffect(Renew.Input)({

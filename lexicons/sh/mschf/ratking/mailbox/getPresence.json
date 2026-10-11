@@ -42,7 +42,7 @@
               "items": {
                 "type": "string"
               },
-              "description": "Declared renderers of the current lease holder. Absent for old readers or when not held."
+              "description": "Declared renderers of the current lease holder; an empty array for a holder that declared none. Absent when not held or on old servers."
             }
           }
         }
