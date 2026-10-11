@@ -158,6 +158,13 @@ export interface Delivered {
   readonly presence?: string;
 }
 
+interface FrontLoops {
+  readonly answered: (
+    names: readonly string[]
+  ) => Effect.Effect<void, NotDelivered>;
+  readonly handled: (id: string) => Effect.Effect<void, NotDelivered>;
+}
+
 interface Sent {
   readonly from: string;
   readonly to: string;
@@ -297,6 +304,8 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
   const established = yield* Ref.make(Option.none<Self>());
   const fence = yield* Ref.make(Option.none<LeaseFence>());
   const lastLease = yield* Ref.make(Option.none<LeaseFence>());
+
+  const front = yield* Ref.make(Option.none<FrontLoops>());
   const seen = new Set<string>();
 
   const presences = new Map<
@@ -1124,6 +1133,15 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
           ),
       });
 
+      for (const original of yield* relay.originals) {
+        if (Option.isNone(yield* threads.lookup(original.id))) {
+          yield* threads.remember(original);
+        }
+      }
+
+      yield* Ref.set(front, Option.some(relay));
+      yield* Effect.addFinalizer(() => Ref.set(front, Option.none()));
+
       const recoverRelay = Clock.currentTimeMillis.pipe(
         Effect.flatMap(relay.recover)
       );
@@ -1331,6 +1349,24 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
     );
   };
 
+  const closeLoops = (sent: Sent, original?: string) =>
+    Ref.get(front).pipe(
+      Effect.flatMap(
+        Option.match({
+          onNone: () => Effect.void,
+          onSome: (relay) =>
+            (original === undefined
+              ? Effect.void
+              : relay.handled(original)
+            ).pipe(Effect.andThen(relay.answered([sent.to, ...sent.cc]))),
+        })
+      ),
+      Effect.tapError((failure) =>
+        Effect.logWarning("Rat King relay handled journal failed", failure.code)
+      ),
+      Effect.ignore
+    );
+
   const confirmHandled = Effect.fn("RatKing.confirmHandled")(
     function* confirmHandled(id: string) {
       const record = yield* threads.lookup(id);
@@ -1398,6 +1434,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
         );
 
         yield* copyOut(delivered, sent);
+        yield* closeLoops(sent);
 
         const reply = yield* Deferred.await(extra).pipe(
           Effect.timeoutOrElse({
@@ -1518,6 +1555,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       );
 
       yield* copyOut(delivered, sent);
+      yield* closeLoops(sent, id);
       yield* threads.answer(id);
 
       if (
@@ -1607,6 +1645,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       );
 
       yield* copyOut(delivered, sent);
+      yield* closeLoops(sent);
 
       return delivered;
     }),
