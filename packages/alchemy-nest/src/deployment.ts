@@ -7,12 +7,14 @@ import { HttpClient } from "effect/http";
 
 import { absent } from "./absent.ts";
 import { ownedPath } from "./adoption.ts";
+import { deploymentDeleteRoot } from "./delete-custody.ts";
 import {
   DeploymentError,
   GeneratedConfiguration,
 } from "./deployment-config.ts";
-import { AbsolutePath, deleteDirectory, digest, textDigest } from "./files.ts";
+import { AbsolutePath, digest, textDigest } from "./files.ts";
 import { HostShell, must } from "./host-shell.ts";
+import { deleteDirectory } from "./instance-files.ts";
 import { shellQuote } from "./ssh.ts";
 
 export interface DeploymentProps {
@@ -234,14 +236,9 @@ export const DeploymentProvider = () =>
         delete: Effect.fn("Celld.Deployment.delete")(function* remove({
           output,
         }) {
-          const root = shell.purgeRoots.find((path) =>
-            path.endsWith("/.config/rat-king")
-          );
+          const root = deploymentDeleteRoot(shell, output.directory);
 
-          if (
-            root === undefined ||
-            output.directory !== `${root}/mailbox-deployment`
-          ) {
+          if (root === undefined) {
             return yield* new DeploymentError({
               reason: "Deployment delete escapes owned configuration",
             });

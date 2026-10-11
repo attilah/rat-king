@@ -1,19 +1,20 @@
 import { Effect, Redacted, Schema } from "effect";
 
+import { assertDeletePath } from "./delete-custody.ts";
 import {
   AbsolutePath,
+  deleteDirectory as deleteMailboxDirectory,
+  deleteFile as deleteMailboxFile,
   FileSchema as MailboxFileSchema,
   reconcileBytes,
   refuse,
 } from "./files.ts";
-import type { FileAttributes } from "./files.ts";
+import type { DirectoryAttributes, FileAttributes } from "./files.ts";
 import type { Interface } from "./host-shell.ts";
 
 export {
   AbsolutePath,
   DirectorySchema,
-  deleteDirectory,
-  deleteFile,
   directoryPolicy,
   fileText,
   readDirectory,
@@ -28,6 +29,23 @@ export type {
   DirectoryProps,
   FileAttributes,
 } from "./files.ts";
+
+export const deleteFile = Effect.fn("InstanceFile.delete")(function* remove(
+  shell: Interface,
+  output: FileAttributes
+) {
+  yield* assertDeletePath(shell, output.path, "files");
+
+  return yield* deleteMailboxFile(shell, output);
+});
+
+export const deleteDirectory = Effect.fn("InstanceDirectory.delete")(
+  function* remove(shell: Interface, output: DirectoryAttributes) {
+    yield* assertDeletePath(shell, output.path, "directories");
+
+    return yield* deleteMailboxDirectory(shell, output);
+  }
+);
 
 export const FileSchema = Schema.Struct({
   ...MailboxFileSchema.fields,

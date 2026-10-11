@@ -187,6 +187,19 @@ export const BucketProvider = () =>
           output,
           olds,
         }) {
+          const custody = shell.deleteCustody;
+
+          if (
+            custody !== undefined &&
+            (output.config !== `${custody.layout.configuration}/s3.json` ||
+              output.endpoint !==
+                `http://127.0.0.1:${custody.layout.ports.s3}` ||
+              output.ownedStore?.home !== custody.home ||
+              output.ownedStore.name !== custody.layout.storeUnit)
+          ) {
+            return yield* refuse("Bucket delete escapes its instance custody.");
+          }
+
           const version = yield* deleteVersion(shell, output, olds);
 
           if (
