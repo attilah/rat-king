@@ -3,6 +3,7 @@ import { Context, Effect, Layer, Schema } from "effect";
 import { ReplayAuthority } from "./replay.js";
 export { sign, verify, lowS, normalizeSignature, p256Order, } from "../envelope/es256.js";
 export { ReplayAuthority } from "./replay.js";
+export { ServiceAuthFailure } from "./auth-failure.js";
 export type { ReplayInterface } from "./replay.js";
 export declare const base64url: (bytes: Uint8Array) => string;
 export declare const unbase64url: (text: string) => Uint8Array<ArrayBuffer>;

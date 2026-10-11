@@ -17,6 +17,8 @@ export {
 
 export { ReplayAuthority } from "./replay.ts";
 
+export { ServiceAuthFailure } from "./auth-failure.ts";
+
 export type { ReplayInterface } from "./replay.ts";
 
 const failure = (

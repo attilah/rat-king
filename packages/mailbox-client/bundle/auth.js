@@ -246,6 +246,7 @@ export {
   Document,
   Documents,
   ReplayAuthority,
+  ServiceAuthFailure,
   authenticateClaims,
   base64url,
   documentResolver,
