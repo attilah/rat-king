@@ -1,5 +1,7 @@
-import { Schema } from "effect";
+import { DateTime, Schema } from "effect";
 
+import { readerVerdict } from "../../packages/pi-ratking/src/reader-health.ts";
+import type { ReaderHeartbeatValue } from "../../packages/pi-ratking/src/reader-health.ts";
 import { AlarmKey, AlarmReading } from "./alarm-config.ts";
 import type { AlarmReadingValue } from "./alarm-config.ts";
 import { Sha, ShipReceipt } from "./ship-config.ts";
@@ -21,6 +23,50 @@ export const CacheBreach = Schema.Struct({
   session: Schema.String,
 });
 
+export const ReaderSighting = Schema.Struct({
+  host: Schema.String,
+  idleSeconds: Count,
+  lastError: Schema.NullOr(Schema.String),
+  name: Schema.String,
+  owner: Schema.NullOr(Schema.String),
+  state: Schema.String,
+  verdict: Schema.Literals(["running", "stuck"]),
+});
+
+export type ReaderSightingValue = typeof ReaderSighting.Type;
+
+export const sightReaders = (
+  host: string,
+  beats: readonly {
+    readonly alive: boolean;
+    readonly beat: ReaderHeartbeatValue;
+  }[],
+  now: number
+): ReaderSightingValue[] =>
+  beats.flatMap(({ alive, beat }) => {
+    const verdict = readerVerdict(beat, alive, now);
+
+    if (verdict === "stale") {
+      return [];
+    }
+
+    const progress = DateTime.toEpochMillis(
+      beat.lastConsumeOk ?? beat.startedAt
+    );
+
+    return [
+      {
+        host,
+        idleSeconds: Math.max(0, Math.floor((now - progress) / 1000)),
+        lastError: beat.lastError,
+        name: beat.name,
+        owner: beat.owner ?? null,
+        state: beat.state,
+        verdict,
+      },
+    ];
+  });
+
 export const AlarmFacts = Schema.Struct({
   cacheBreaches: Schema.NullOr(Schema.Array(CacheBreach)),
   deploy: Schema.NullOr(DeployMarker),
@@ -31,9 +77,11 @@ export const AlarmFacts = Schema.Struct({
   health: Schema.NullOr(Schema.Int),
   measurementFailed: Schema.Boolean,
   quarantinedHour: Schema.NullOr(Count),
-  readers: Schema.Record(
-    Schema.String,
-    Schema.Literals(["present", "missing", "inactive", "unknown"])
+  readers: Schema.NullOr(
+    Schema.Struct({
+      complete: Schema.Boolean,
+      seen: Schema.Array(ReaderSighting),
+    })
   ),
   receipts: Schema.Array(ShipReceipt),
   receiptsKnown: Schema.Boolean,
@@ -43,14 +91,12 @@ export const AlarmFacts = Schema.Struct({
 export const SourceState = Schema.Struct({
   downChecks: Count,
   entered: Schema.NullOr(Schema.Finite),
-  missingReaders: Schema.Record(Schema.String, Schema.Finite),
   unexplained: Schema.Array(Schema.Finite),
 });
 
 export const emptySources: typeof SourceState.Type = {
   downChecks: 0,
   entered: null,
-  missingReaders: {},
   unexplained: [],
 };
 
@@ -106,21 +152,12 @@ const trackSources = (
     unexplained.push(facts.entered);
   }
 
-  const missingReaders: Record<string, number> = {};
-
-  for (const [name, status] of Object.entries(facts.readers)) {
-    if (status === "missing") {
-      missingReaders[name] = prior.missingReaders[name] ?? now;
-    }
-  }
-
   return {
     downChecks:
       !facts.deployKnown || deployWindow(facts, now) || facts.health === 200
         ? 0
         : Math.min(prior.downChecks + 1, 2),
     entered: facts.entered ?? prior.entered,
-    missingReaders,
     unexplained,
   };
 };
@@ -159,27 +196,34 @@ const slotReading = (facts: typeof AlarmFacts.Type): AlarmReadingValue => {
   );
 };
 
-const readerReading = (
-  facts: typeof AlarmFacts.Type,
-  sources: typeof SourceState.Type,
-  now: number
-): AlarmReadingValue => {
-  if (Object.keys(facts.readers).length === 0) {
+const readerReading = (facts: typeof AlarmFacts.Type): AlarmReadingValue => {
+  if (facts.readers === null) {
     return unknown;
   }
 
-  const stuck = Object.values(sources.missingReaders).filter(
-    (since) => now - since >= 600_000
-  ).length;
+  const stuck = facts.readers.seen.filter(
+    (reader) => reader.verdict === "stuck"
+  );
 
-  if (stuck > 0) {
-    return firing(
-      "warn",
-      `${stuck} configured readers have no lease for at least 10 minutes with Pi alive`
+  if (stuck.length > 0) {
+    const owners = stuck.flatMap((reader) =>
+      reader.owner === null ? [] : [reader.owner]
     );
+
+    return {
+      evidence: `${stuck.length} live Pi readers made no lease or consume progress for over 5 minutes: ${stuck
+        .map(
+          (reader) =>
+            `${reader.name} on ${reader.host} ${reader.state}${reader.lastError === null ? "" : ` (${reader.lastError})`} idle ${Math.floor(reader.idleSeconds / 60)}m`
+        )
+        .join("; ")}`,
+      recipients: [...new Set(owners)],
+      severity: "warn",
+      status: "firing",
+    };
   }
 
-  return Object.values(facts.readers).includes("unknown") ? unknown : ok;
+  return facts.readers.complete ? ok : unknown;
 };
 
 const downReading = (
@@ -311,7 +355,7 @@ export const observeAlarms = (
           "Configuration doctor failed; input values withheld"
         ),
     "quarantine.growth": quarantineReading(facts),
-    "readers.stuck": readerReading(facts, sources, now),
+    "readers.stuck": readerReading(facts),
     "ship.failed": shipReading(facts),
   };
 

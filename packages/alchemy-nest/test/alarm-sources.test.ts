@@ -15,7 +15,7 @@ const Inputs = Schema.Struct({
   explained: Schema.Boolean,
   free: Schema.Int.check(Schema.isBetween({ maximum: 100, minimum: 0 })),
   quarantine: Schema.Int.check(Schema.isBetween({ maximum: 30, minimum: 0 })),
-  reader: Schema.Literals(["present", "missing", "inactive", "unknown"]),
+  reader: Schema.Literals(["complete", "partial", "unconfigured"]),
 });
 
 it.effect.prop(
@@ -24,6 +24,16 @@ it.effect.prop(
   ([input]) =>
     Effect.sync(() => {
       const now = 1_000_000;
+
+      const running = {
+        host: "host.invalid",
+        idleSeconds: 30,
+        lastError: null,
+        name: "desk-invalid",
+        owner: null,
+        state: "Live",
+        verdict: "running" as const,
+      };
 
       const facts: typeof AlarmFacts.Type = {
         cacheBreaches: null,
@@ -38,7 +48,10 @@ it.effect.prop(
         health: 503,
         measurementFailed: false,
         quarantinedHour: input.quarantine,
-        readers: { "desk.invalid": input.reader },
+        readers:
+          input.reader === "unconfigured"
+            ? null
+            : { complete: input.reader === "complete", seen: [running] },
         receipts: [],
         receiptsKnown: true,
         slots: { free: input.free, max: 100 },
@@ -102,10 +115,9 @@ it.effect.prop(
       expect(fourth.readings["celld.restarted"].status).toBe("ok");
 
       const expectedReader = {
-        inactive: "ok",
-        missing: "firing",
-        present: "ok",
-        unknown: "unknown",
+        complete: "ok",
+        partial: "unknown",
+        unconfigured: "unknown",
       } as const;
 
       expect(third.readings["readers.stuck"].status).toBe(
@@ -119,7 +131,7 @@ it.effect.prop(
           health: 200,
           measurementFailed: true,
           quarantinedHour: null,
-          readers: { "desk.invalid": "unknown" },
+          readers: { complete: false, seen: [running] },
           receiptsKnown: false,
           slots: null,
         },
@@ -177,7 +189,7 @@ it.effect.prop(
         health: 200,
         measurementFailed: false,
         quarantinedHour: 0,
-        readers: {},
+        readers: null,
         receipts: [],
         receiptsKnown: true,
         slots: { free: 100, max: 100 },
@@ -258,7 +270,7 @@ it.effect.prop(
             health: now < down ? 200 : 503,
             measurementFailed: false,
             quarantinedHour: 0,
-            readers: {},
+            readers: null,
             receipts: now >= receipt.end * 1000 ? [receipt] : [],
             receiptsKnown: true,
             slots: null,

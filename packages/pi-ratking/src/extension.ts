@@ -38,6 +38,7 @@ import {
   notConfiguredText,
   notDeliveredText,
   promptSnippet,
+  readerFooter,
   runAction,
   ToolParams,
 } from "./tool.ts";
@@ -149,6 +150,8 @@ export const collectFacts = (
       ? yield* paneLabel(paneId.value)
       : Option.none<string>();
 
+    const owner = yield* Config.option(Config.String("MUSTER_OWNER_NAME"));
+
     return {
       alive,
       env,
@@ -160,6 +163,7 @@ export const collectFacts = (
           ),
           () => pane
         ),
+      owner,
       pane,
       pid: process.pid,
       reads: interactive || Option.isSome(env),
@@ -201,6 +205,7 @@ export interface SessionStart {
   readonly interactive?: boolean;
   readonly session: string;
   readonly sessionName?: () => string | undefined;
+  readonly status?: (text: string | undefined) => void;
   readonly warn: (message: string) => void;
 }
 
@@ -226,6 +231,9 @@ const piHost = (pi: ExtensionAPI): PiHost => ({
         interactive: ctx.hasUI,
         session: ctx.sessionManager.getSessionId(),
         sessionName: () => pi.getSessionName(),
+        status: (text) => {
+          ctx.ui.setStatus("ratking", text);
+        },
         warn: (message) => {
           ctx.ui.notify(message, "warning");
         },
@@ -648,9 +656,16 @@ export const ratkingExtension = (options: ExtensionOptions) =>
 
       await stop();
 
-      const facts = await Effect.runPromise(
+      const collected = await Effect.runPromise(
         options.facts(start.session, start.sessionName, start.interactive)
       );
+
+      const facts: SessionFacts = {
+        ...collected,
+        onState: (reader) => {
+          start.status?.(readerFooter(reader));
+        },
+      };
 
       const live: Runtime = ManagedRuntime.make(
         Layer.effectDiscard(

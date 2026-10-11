@@ -25,6 +25,7 @@ import {
   secretName,
 } from "./name.ts";
 import type { OwnName } from "./name.ts";
+import type { ReaderState } from "./ratking.ts";
 import { SecretStore } from "./secrets.ts";
 
 export class IdentityError extends Schema.TaggedError<IdentityError>()(
@@ -40,6 +41,8 @@ export interface SessionFacts {
   readonly label?: () => Option.Option<string>;
   readonly alive: (pid: number) => boolean;
   readonly reads?: boolean;
+  readonly owner?: Option.Option<string>;
+  readonly onState?: (reader: ReaderState) => void;
 }
 
 const Claims = Schema.Record(

@@ -14,6 +14,7 @@ import {
   Clock,
   Context,
   Data,
+  DateTime,
   Deferred,
   Duration,
   Effect,
@@ -26,6 +27,7 @@ import {
   Result,
   Schedule,
   Schema,
+  Semaphore,
 } from "effect";
 import type { Scope } from "effect";
 import { HttpClient } from "effect/http";
@@ -61,6 +63,8 @@ import type {
 } from "./payload.ts";
 import { quarantined, recover } from "./quarantine.ts";
 import type { Quarantined } from "./quarantine.ts";
+import { errorTag, HEARTBEAT_EVERY, HeartbeatJson } from "./reader-health.ts";
+import type { ReaderHeartbeatValue } from "./reader-health.ts";
 import {
   openRelay,
   deliverRelay,
@@ -223,6 +227,8 @@ const peersOf = (documents: readonly PeerDocument[]) => [
   ...new Map(documents.map((document) => [document.id, document])).values(),
 ];
 
+const instant = (millis: number) => DateTime.makeUnsafe(millis);
+
 const backoff = (attempt: number) =>
   Duration.millis(Math.min(30_000, 1000 * 2 ** Math.min(attempt, 5)));
 
@@ -239,6 +245,21 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
   const state = yield* Ref.make<ReaderState>(
     ReaderState.Starting({ reason: "Rat King is starting" })
   );
+
+  const health = yield* Ref.make({
+    lastConsumeOk: Option.none<number>(),
+    lastError: Option.none<string>(),
+    leaseHeldSince: Option.none<number>(),
+  });
+
+  const session = yield* Ref.make(Option.none<SessionFacts>());
+
+  const heartbeat = yield* Ref.make(
+    Option.none<{ readonly name: string; readonly startedAt: number }>()
+  );
+
+  const beatLock = yield* Semaphore.make(1);
+  let closing = false;
 
   const attempts = yield* Ref.make(0);
   const self = yield* Deferred.make<Self, NotDelivered>();
@@ -291,6 +312,119 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       Effect.option
     );
 
+  const heartbeatFile = (name: string) =>
+    path.join(settings.state, "readers", `${provisionLabel(name)}.json`);
+
+  const publish = beatLock
+    .withPermits(1)(
+      Effect.gen(function* publishHeartbeat() {
+        const beat = yield* Ref.get(heartbeat);
+        const facts = yield* Ref.get(session);
+
+        if (closing || Option.isNone(beat) || Option.isNone(facts)) {
+          return;
+        }
+
+        const now = yield* Clock.currentTimeMillis;
+        const reader = yield* Ref.get(state);
+        const current = yield* Ref.get(health);
+
+        const value: ReaderHeartbeatValue = {
+          lastConsumeOk: current.lastConsumeOk.pipe(
+            Option.map(instant),
+            Option.getOrNull
+          ),
+          lastError: Option.getOrNull(current.lastError),
+          leaseHeldSince: current.leaseHeldSince.pipe(
+            Option.map(instant),
+            Option.getOrNull
+          ),
+          name: beat.value.name,
+          pid: facts.value.pid,
+          startedAt: instant(beat.value.startedAt),
+          state: reader._tag,
+          updatedAt: instant(now),
+        };
+
+        const owner = (facts.value.owner ?? Option.none()).pipe(
+          Option.filter(Schema.is(AgentName))
+        );
+
+        if (Option.isSome(owner)) {
+          Object.assign(value, { owner: owner.value });
+        }
+
+        const json = yield* Schema.encodeEffect(HeartbeatJson)(value);
+        const file = heartbeatFile(beat.value.name);
+
+        const temp = path.join(
+          path.dirname(file),
+          `.${path.basename(file)}.${facts.value.pid}.tmp`
+        );
+
+        yield* fs.makeDirectory(path.dirname(file), {
+          mode: 0o700,
+          recursive: true,
+        });
+        yield* fs.writeFileString(temp, json, { mode: 0o600 });
+        yield* fs.rename(temp, file);
+      })
+    )
+    .pipe(
+      Effect.tapError(() =>
+        Effect.logWarning("Rat King reader heartbeat not written")
+      ),
+      Effect.ignore
+    );
+
+  const retireHeartbeat = beatLock.withPermits(1)(
+    Effect.gen(function* retireHeartbeat() {
+      closing = true;
+
+      const beat = yield* Ref.get(heartbeat);
+      const facts = yield* Ref.get(session);
+
+      if (Option.isNone(beat) || Option.isNone(facts)) {
+        return;
+      }
+
+      const file = heartbeatFile(beat.value.name);
+
+      const written = yield* fs
+        .readFileString(file)
+        .pipe(
+          Effect.flatMap(Schema.decodeUnknownEffect(HeartbeatJson)),
+          Effect.option
+        );
+
+      if (Option.exists(written, (saved) => saved.pid === facts.value.pid)) {
+        yield* fs.remove(file).pipe(Effect.ignore);
+      }
+    })
+  );
+
+  const setState = (next: ReaderState) =>
+    Ref.set(state, next).pipe(
+      Effect.andThen(Ref.get(session)),
+      Effect.flatMap((facts) =>
+        Effect.try(() => {
+          if (Option.isSome(facts)) {
+            facts.value.onState?.(next);
+          }
+        }).pipe(Effect.ignore)
+      ),
+      Effect.andThen(publish)
+    );
+
+  const consumed = Clock.currentTimeMillis.pipe(
+    Effect.flatMap((now) =>
+      Ref.update(health, (current) => ({
+        ...current,
+        lastConsumeOk: Option.some(now),
+      }))
+    )
+  );
+
   const quarantineDir = (name: string) =>
     path.join(settings.state, "quarantine", provisionLabel(name));
 
@@ -316,8 +450,12 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
 
       const attempt = yield* Ref.updateAndGet(attempts, (count) => count + 1);
 
-      yield* Ref.set(
-        state,
+      yield* Ref.update(health, (current) => ({
+        ...current,
+        lastError: Option.some(errorTag(result.failure)),
+      }));
+
+      yield* setState(
         ReaderState.Retrying({
           attempt,
           name,
@@ -415,14 +553,12 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
         }
 
         yield* writeCursor(own.name, meta.seq);
+        yield* consumed;
       });
 
   const consumeOnce = (own: Self, facts: SessionFacts, route: RelayRoute) =>
     Effect.gen(function* consumeLease() {
-      yield* Ref.set(
-        state,
-        ReaderState.Acquiring({ did: own.did, name: own.name })
-      );
+      yield* setState(ReaderState.Acquiring({ did: own.did, name: own.name }));
 
       const handle = yield* ownIdentity(own.identity);
 
@@ -450,6 +586,18 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
         onLease: (lease) =>
           Effect.all([
             Ref.set(attempts, 0),
+            Clock.currentTimeMillis.pipe(
+              Effect.flatMap((now) =>
+                Ref.update(health, (current) => ({
+                  ...current,
+                  lastConsumeOk: Option.some(now),
+                  leaseHeldSince: Option.orElseSome(
+                    current.leaseHeldSince,
+                    () => now
+                  ),
+                }))
+              )
+            ),
             Ref.set(
               fence,
               Option.some({
@@ -471,8 +619,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
               generation: lease.generation,
               leaseId: lease.leaseId,
             }),
-            Ref.set(
-              state,
+            setState(
               ReaderState.Live({
                 did: own.did,
                 expiresAt: lease.expiresAt,
@@ -481,7 +628,8 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
               })
             ),
           ]).pipe(Effect.asVoid),
-        onSkip: ({ seq }) => writeCursor(own.name, seq),
+        onSkip: ({ seq }) =>
+          writeCursor(own.name, seq).pipe(Effect.andThen(consumed)),
         unopenable: (event, error) =>
           recover(quarantineDir(own.name), client)(event, error).pipe(
             Effect.provideService(FileSystem.FileSystem, fs),
@@ -509,7 +657,15 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
         )
       );
     }).pipe(
-      Effect.ensuring(Ref.set(fence, Option.none())),
+      Effect.ensuring(
+        Effect.all([
+          Ref.set(fence, Option.none()),
+          Ref.update(health, (current) => ({
+            ...current,
+            leaseHeldSince: Option.none(),
+          })),
+        ])
+      ),
       Effect.scoped,
       Effect.provideService(HttpClient.HttpClient, http)
     );
@@ -941,7 +1097,8 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
 
   const loop = Effect.fn("RatKing.run")(function* loop(
     facts: SessionFacts,
-    deliver: Deliver
+    deliver: Deliver,
+    startedAt: number
   ) {
     const claimed = yield* supervise(
       Option.none(),
@@ -951,10 +1108,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
     if (settings.refuse.includes(claimed.name)) {
       const reason = `${claimed.name} is held by another reader (refuse list in the Rat King config); no reader started`;
 
-      yield* Ref.set(
-        state,
-        ReaderState.Refused({ name: claimed.name, reason })
-      );
+      yield* setState(ReaderState.Refused({ name: claimed.name, reason }));
 
       return yield* Deferred.fail(
         self,
@@ -962,10 +1116,14 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       ).pipe(Effect.asVoid);
     }
 
+    if (facts.reads !== false) {
+      yield* Ref.set(heartbeat, Option.some({ name: claimed.name, startedAt }));
+    }
+
     const own = yield* supervise(
       Option.some(claimed.name),
       Effect.gen(function* establish() {
-        yield* Ref.set(state, ReaderState.Minting({ name: claimed.name }));
+        yield* setState(ReaderState.Minting({ name: claimed.name }));
 
         const identity = yield* ensureIdentity(claimed.name);
 
@@ -982,8 +1140,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
     yield* Deferred.succeed(self, own);
 
     if (facts.reads === false) {
-      return yield* Ref.set(
-        state,
+      return yield* setState(
         ReaderState.SendOnly({
           name: own.name,
           reason:
@@ -1013,7 +1170,17 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
   });
 
   const run = (facts: SessionFacts, deliver: Deliver) =>
-    loop(facts, deliver).pipe(Effect.forkScoped, Effect.asVoid);
+    Effect.gen(function* start() {
+      const startedAt = yield* Clock.currentTimeMillis;
+
+      yield* Ref.set(session, Option.some(facts));
+      yield* loop(facts, deliver, startedAt).pipe(Effect.forkScoped);
+      yield* publish.pipe(
+        Effect.repeat(Schedule.spaced(HEARTBEAT_EVERY)),
+        Effect.forkScoped
+      );
+      yield* Effect.addFinalizer(() => retireHeartbeat);
+    });
 
   const awaitLive = Ref.get(state).pipe(
     Effect.flatMap((reader) =>

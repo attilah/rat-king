@@ -16,6 +16,11 @@ export const AlarmKey = Schema.Literals([
 
 export type AlarmKeyValue = typeof AlarmKey.Type;
 
+const IgnoredAliveProbe = Schema.Struct({
+  aliveCommand: Schema.NonEmptyArray(Schema.NonEmptyString),
+  name: AgentName,
+});
+
 export const AlarmSettings = Schema.Struct({
   broadcast: AgentName,
   cacheHealth: Schema.optionalKey(Schema.NonEmptyString),
@@ -39,12 +44,16 @@ export const AlarmSettings = Schema.Struct({
     node: Schema.NonEmptyString,
     script: Schema.NonEmptyString,
   }),
-  readers: Schema.Array(
-    Schema.Struct({
-      aliveCommand: Schema.NonEmptyArray(Schema.NonEmptyString),
-      name: AgentName,
-    })
+  readerHeartbeats: Schema.optionalKey(
+    Schema.NonEmptyArray(
+      Schema.Struct({
+        dir: Schema.NonEmptyString,
+        host: Schema.NonEmptyString,
+        ssh: Schema.optionalKey(Schema.NonEmptyString),
+      })
+    )
   ),
+  readers: Schema.optionalKey(Schema.Array(IgnoredAliveProbe)),
   renotifyMinutes: Schema.optionalKey(
     Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))
   ),
@@ -59,6 +68,7 @@ export const AlarmReading = Schema.Union([
   Schema.Struct({ status: Schema.Literal("unknown") }),
   Schema.Struct({
     evidence: Schema.String,
+    recipients: Schema.optionalKey(Schema.Array(AgentName)),
     severity: Severity,
     status: Schema.Literal("firing"),
   }),
