@@ -1,5 +1,5 @@
 {
-  "sha": "a1d659e12c898a289f2ea54d6b1045310ec93f30",
+  "sha": "7198ad0c123baba516cf11b42705fb6e233a3084",
   "path": "packages/core/src/runs/schema.ts",
   "contract": "deliverReplyContract.input = ReplyLineSchema",
   "source": "export const ReplyLineSchema = Schema.Struct({\n  acceptedAt: Schema.optionalKey(Schema.String),\n  body: Schema.String,\n  from: Schema.optionalKey(Schema.String),\n  messageId: Schema.optionalKey(Schema.String),\n  replyTo: Schema.String,\n});",

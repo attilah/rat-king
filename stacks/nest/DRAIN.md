@@ -20,7 +20,7 @@ Plain `drain` prints JSONL and **acks nothing**. Every subsequent drain prints u
 
 A process failure after consumer success but during acknowledgement can leave a partially acked batch. Consumers must dedupe by `messageId`, including when a side effect succeeded before a crash. Printing or appending a line to a log is not processing. Do not use `--exec 'cat >> file'` to treat a log append as a handled message.
 
-Mischief's `deliverReply` refuses duplicate delivery with `ReplyRefused` and changes nothing. A Mischief consumer should treat a successful delivery **or `ReplyRefused`** as handled and return 0 after the whole batch. Retry only transport or process failures. It must not convert a transport failure into success.
+A Mischief consumer acks on success and on `ReplyRefused`, and retries only on transport or process failure. At the pinned version, `deliverReply` holds replies to paused, capped or waiting runs rather than refusing them. `ReplyRefused` means the reply does not answer an open ask: it is stale or duplicate, and terminal. Return 0 after the whole batch is handled. Never convert a transport failure into success.
 
 ## Wire lines
 
@@ -48,7 +48,7 @@ For an unopenable signed-plaintext message, the untrusted plaintext body is reta
 
 **`acceptedAt` is present only when the server supplies it.** The initial admission event or a later receipt event may supply `recordedAt` or `time`. Missing server time is omitted, never replaced with sender time or the drain clock. This pilot exception is approved by the desk; server timestamp emission belongs to the later receipts packet.
 
-The seam fixture pins Mischief `a1d659e12c898a289f2ea54d6b1045310ec93f30`. Its `deliverReplyContract.input` uses `ReplyLineSchema`: `body` and `replyTo` are required; `from`, `messageId`, and `acceptedAt` are optional; extra fields are ignored. Signature trust is enforced by presence of `from`, not by a `verified` field in that pinned schema. The property test imports the vendored JSON schema and decodes serialized drain lines without reshaping. Set `MISCHIEF_CONTRACT_REPO` to a local Mischief checkout to check the fixture against that exact Git object.
+The seam fixture pins Mischief `7198ad0c123baba516cf11b42705fb6e233a3084`. Its `deliverReplyContract.input` uses `ReplyLineSchema`: `body` and `replyTo` are required; `from`, `messageId`, and `acceptedAt` are optional; extra fields are ignored. Signature trust is enforced by presence of `from`, not by a `verified` field in that pinned schema. The property test imports the vendored JSON schema and decodes serialized drain lines without reshaping. Set `MISCHIEF_CONTRACT_REPO` to a local Mischief checkout to check the fixture against that exact Git object.
 
 ## Exit codes
 
