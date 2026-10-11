@@ -160,7 +160,7 @@ const installDependencies = Effect.fn("Ship.installDependencies")(
           ...args,
         ],
         cwd
-      ).pipe(Effect.timeout("5 minutes"));
+      ).pipe(Effect.timeout("8 minutes"));
 
     yield* toLog(["install", "--frozen-lockfile", "--offline"]).pipe(
       Effect.catch(() => toLog(["install", "--frozen-lockfile"])),
@@ -168,7 +168,7 @@ const installDependencies = Effect.fn("Ship.installDependencies")(
         () =>
           new FleetError({
             reason:
-              "Candidate pnpm install failed or hung (offline, then online, 5 minutes each)",
+              "Candidate pnpm install failed or hung (offline, then online, 8 minutes each; see <release>.install.log)",
           })
       )
     );
