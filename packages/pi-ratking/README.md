@@ -96,7 +96,16 @@ A retired name refuses new mail on the server, so every host gets the same answe
 Two ways to retire:
 
 - `intercom({ action: "retire", successor?: "<name>" })` (or the configured tool name) retires this Pi's own name, signed by its own identity, then stops the reader and releases its lease like `ratking/retire`. Later sends from this Pi are refused until the next session start.
-- `mailbox retire --name <name> [--successor <name>]` retires any name with the fleet operator key; see the [mailbox CLI](../../apps/mailbox/cli/README.md#name-retirement). Muster's close and relaunch paths call this. `mailbox unretire --name <name>` reverses it, and `mailbox retired` lists retirements.
+- The mailbox CLI retires any name with the fleet operator key (`RAT_KING_OPERATOR_IDENTITY`), from any host whose `RAT_KING_ENDPOINT` reaches the fleet mailbox that serves the Issuer DO. Muster's close and relaunch paths call it, because a closed row's Pi is gone. See the [mailbox CLI](../../apps/mailbox/cli/README.md#name-retirement).
+
+```sh
+mailbox retire --name <project>/<row> --successor <project>/<row>-2
+mailbox retire --name <project>/<row>
+mailbox unretire --name <project>/<row>
+mailbox retired
+```
+
+The server accepts `retire` and `unretire` from the operator key, the name's own identity or the host that registered it. The CLI signs with the operator key; the in-Pi `retire` action signs as the name itself.
 
 The name's own identity acquiring its lease clears the retirement in the same transaction, so a Pi or Muster restore under the same name just works. A retired reader that keeps renewing does not clear it; only a new acquisition does.
 
