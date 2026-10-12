@@ -52,12 +52,15 @@ for broken in [dict(Path='/buckets/example', Entries=entries, ShouldDisplayLoadM
 reads = []
 def topology(url, method='GET'):
     reads.append((url, method))
+    if url.endswith('/vol/status'):
+        volumes = [dict(Id=i, Collection='', ReplicaPlacement={}, Ttl=dict(Count=0, Unit=0), ReadOnly=False, Size=100) for i in range(1, max(1, payload['writable']) + 1)]
+        return {'Version': '4.48', 'Volumes': {'Max': 64, 'Free': payload['free'], 'DataCenters': {'dc1': {'rack1': {'node1': volumes}}}}}
     return {'Topology': {'Free': payload['free'], 'Max': 64, 'Layouts': [
         dict(collection='', replication='000', ttl='', writables=list(range(1, payload['writable'] + 1))),
         dict(collection='example', replication='000', ttl='', writables=[99]),
         dict(collection='', replication='000', ttl='7d', writables=[100])]}}
 signal = namespace['diagnostic'](topology)
-assert reads == [('http://127.0.0.1:19333/dir/status', 'GET')]
+assert reads == [('http://127.0.0.1:19333/dir/status', 'GET'), ('http://127.0.0.1:19333/vol/status', 'GET')]
 assert signal['defaultCollectionWritableVolumes'] == payload['writable']
 assert signal['freeVolumeSlots'] == payload['free']
 assert signal['alarm'] == (payload['free'] < 8 or payload['writable'] == 0)
@@ -68,7 +71,8 @@ with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
     result = namespace['main']()
 assert result == int(signal['alarm'])
 assert json.loads(out.getvalue()) == signal
-assert ('storage has no writable volume' in err.getvalue()) == (payload['writable'] == 0)
+assert ('storage has no writable volume' in err.getvalue()) == (payload['writable'] == 0 and payload['free'] >= 8)
+assert ('storage free-volume slots below threshold' in err.getvalue()) == (payload['free'] < 8)
 print('RETENTION_BOUNDARY_AND_READ_ONLY_ALARM_PASSED')
 `;
 

@@ -68,7 +68,7 @@ const mailbox = Effect.gen(function* mailbox() {
 });
 
 test.provider(
-  "default plan preserves baseline with fresh-root retention",
+  "default plan preserves baseline with structural storage alarms",
   (scratch) =>
     Effect.gen(function* baseline() {
       const plan = yield* checkedStack(scratch).plan(mailbox);
@@ -89,7 +89,7 @@ const { test: renderTest } = Test.make({
 });
 
 renderTest.provider(
-  "default rendered bytes preserve baseline with fresh-root retention",
+  "default rendered bytes preserve baseline with structural storage alarms",
   (scratch) =>
     Effect.gen(function* baseline() {
       yield* checkedStack(scratch).deploy(mailbox);

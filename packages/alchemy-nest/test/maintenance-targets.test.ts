@@ -75,6 +75,8 @@ class Store:
         if urllib.parse.urlsplit(url).path == root + '/':
             assert url.startswith(expected['filer'] + root + '/?'), url
             raise urllib.error.HTTPError(url, 404, 'missing root', {}, None)
+        if url == expected['master'] + '/vol/status':
+            return Reply({'Version': '4.48', 'Volumes': {'Max': 64, 'Free': 16, 'DataCenters': {'dc1': {'rack1': {'node1': [{'Id': 1, 'Collection': '', 'ReplicaPlacement': {}, 'Ttl': {'Count': 0, 'Unit': 0}}]}}}}})
         assert url == expected['master'] + '/dir/status', url
         return Reply({'Topology': {'Free': 16, 'Max': 64, 'Layouts': [{'collection': '', 'replication': '000', 'ttl': '', 'writables': [1]}]}})
 urllib.request.build_opener = lambda *args: Store()
@@ -97,7 +99,7 @@ for action in ('retain', 'diagnose'):
     code, output = run(action, 'mischief', master, filer)
     assert code == 0, output
     assert json.loads(output.splitlines()[-1])['alarm'] is False
-    assert len(calls) == (2 if action == 'retain' else 1)
+    assert len(calls) == (3 if action == 'retain' else 2)
 for missing in ('--instance', '--master', '--filer', '--root'):
     code, _ = run('retain', 'mischief', master, filer, missing)
     assert code != 0 and not calls
@@ -107,7 +109,7 @@ for port in (18081, 18333, 18787, 18788, 18888, 19333, 28081, 28333, 28888, 2933
         code, output = run('retain', 'mischief', default if use_master else master, filer if use_master else default)
         assert code != 0 and not calls, output
 code, output = run('retain', 'rat-king', 'http://127.0.0.1:19333', 'http://127.0.0.1:18888')
-assert code == 0 and len(calls) == 2, output
+assert code == 0 and len(calls) == 3, output
 print('NAMED_TARGETS_DRIVE_REQUESTS_AND_REFUSE_DEFAULT_PORTS')
 `;
 

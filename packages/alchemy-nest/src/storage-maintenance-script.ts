@@ -69,23 +69,64 @@ def retention(call=request, now=None):
         call(FILER + path + '?recursive=true', 'DELETE')
     return len(set(targets))
 
+def default_volume_count(call):
+    status = call(MASTER + '/vol/status')
+    if not isinstance(status, dict) or not isinstance(status.get('Version'), str) or not isinstance(status.get('Volumes'), dict):
+        raise RuntimeError('invalid volume status')
+    maximum, free = status['Volumes'].get('Max'), status['Volumes'].get('Free')
+    if type(maximum) is not int or type(free) is not int or maximum <= 0 or free < 0 or free > maximum:
+        raise RuntimeError('invalid volume slot counters')
+    centers = status['Volumes'].get('DataCenters')
+    if not isinstance(centers, dict):
+        raise RuntimeError('invalid volume data centers')
+    volumes = set()
+    for racks in centers.values():
+        if not isinstance(racks, dict):
+            raise RuntimeError('invalid volume racks')
+        for nodes in racks.values():
+            if not isinstance(nodes, dict):
+                raise RuntimeError('invalid volume nodes')
+            for entries in nodes.values():
+                if not isinstance(entries, list):
+                    raise RuntimeError('invalid volume entries')
+                for volume in entries:
+                    if not isinstance(volume, dict) or type(volume.get('Id')) is not int or volume['Id'] <= 0 or not isinstance(volume.get('Collection'), str):
+                        raise RuntimeError('invalid volume identity')
+                    replica, ttl = volume.get('ReplicaPlacement'), volume.get('Ttl')
+                    if not isinstance(replica, dict) or set(replica) - {'node', 'rack', 'dc'} or any(type(value) is not int or value < 0 or value > 9 for value in replica.values()):
+                        raise RuntimeError('invalid volume replication')
+                    if 100 * replica.get('dc', 0) + 10 * replica.get('rack', 0) + replica.get('node', 0) > 255:
+                        raise RuntimeError('invalid volume replication encoding')
+                    if not isinstance(ttl, dict) or set(ttl) != {'Count', 'Unit'} or type(ttl['Count']) is not int or not 0 <= ttl['Count'] <= 255 or type(ttl['Unit']) is not int or not 0 <= ttl['Unit'] <= 6:
+                        raise RuntimeError('invalid volume ttl')
+                    if volume['Collection'] == '' and not any(replica.values()) and (ttl['Count'] == 0 or ttl['Unit'] == 0):
+                        volumes.add(volume['Id'])
+    return len(volumes)
+
 def diagnostic(call=request):
     topo = call(MASTER + '/dir/status')['Topology']
     free, maximum = topo['Free'], topo['Max']
     if type(free) is not int or type(maximum) is not int or maximum <= 0 or free < 0 or free > maximum:
         raise RuntimeError('invalid storage slot counters')
-    layouts = topo['Layouts'] or []
+    layouts = topo['Layouts']
+    if layouts is None:
+        layouts = []
+    if not isinstance(layouts, list):
+        raise RuntimeError('invalid storage layouts')
     writable = set()
     for layout in layouts:
+        if not isinstance(layout, dict) or any(not isinstance(layout.get(key), str) for key in ('collection', 'replication', 'ttl')) or (layout.get('writables') is not None and not isinstance(layout.get('writables'), list)):
+            raise RuntimeError('invalid storage layout')
         # Match the metadata log's default collection / replication / no TTL.
         if layout['collection'] == '' and layout['replication'] == '000' and layout['ttl'] == '':
             for volume in layout['writables'] or []:
                 if type(volume) is not int or volume <= 0:
                     raise RuntimeError('invalid writable volume id')
                 writable.add(volume)
+    default_volumes = default_volume_count(call)
     return {'freeVolumeSlots': free, 'maxVolumeSlots': maximum,
             'defaultCollectionWritableVolumes': len(writable),
-            'alarm': free < THRESHOLD or not writable,
+            'alarm': free < THRESHOLD or (default_volumes > 0 and not writable),
             'observedAt': datetime.datetime.now(datetime.timezone.utc).isoformat()}
 
 def main():
@@ -95,10 +136,12 @@ def main():
         print(json.dumps({'deletedLogDays': retention(), 'retentionDays': DAYS}), flush=True)
     signal = diagnostic()
     print(json.dumps(signal), flush=True)
-    if not signal['defaultCollectionWritableVolumes']:
-        print('storage has no writable volume in the default collection; node authority writes may fail', file=sys.stderr, flush=True)
-    elif signal['freeVolumeSlots'] < THRESHOLD:
+    if signal['freeVolumeSlots'] < THRESHOLD:
         print('storage free-volume slots below threshold 8', file=sys.stderr, flush=True)
+    elif signal['alarm']:
+        print('storage has no writable volume in the default collection; node authority writes may fail', file=sys.stderr, flush=True)
+    elif not signal['defaultCollectionWritableVolumes']:
+        print('no writable default-collection volume yet; will grow on first write', file=sys.stderr, flush=True)
     return 1 if signal['alarm'] else 0
 
 if __name__ == '__main__':
