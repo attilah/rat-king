@@ -242,6 +242,7 @@ export class RatKing extends Context.Service<
       body: string | LexiconRecordValue,
       options?: Pick<SendOptions, "encrypt" | "kind" | "summary"> & {
         readonly replyAll?: boolean;
+        readonly to?: string | undefined;
       }
     ) => Effect.Effect<Delivered, NotDelivered | AskFailed>;
     readonly handled: (
@@ -801,6 +802,19 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
 
     return { did, document, name };
   });
+
+  const recalled = (id: string, asker: string): Received => {
+    const from = canonicalName(settings.reserved, asker);
+
+    return {
+      answered: false,
+      ask: true,
+      did: didFor(settings.didTemplate, settings.reserved, from),
+      from,
+      id,
+      preview: "",
+    };
+  };
 
   const transmit = Effect.fn("RatKing.transmit")(function* transmit<B>(
     to: string,
@@ -1532,12 +1546,18 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
     }),
     pending: threads.pending,
     reply: Effect.fn("RatKing.reply")(function* reply(id, body, options) {
-      const record = yield* threads.lookup(id);
+      const stored = yield* threads.lookup(id);
+
+      const record = Option.isSome(stored)
+        ? stored
+        : Option.map(Option.fromNullishOr(options?.to), (asker) =>
+            recalled(id, asker)
+          );
 
       if (Option.isNone(record)) {
         return yield* new AskFailed({
           code: "NoSuchMessage",
-          reason: `No message ${id} reached this Pi; use send instead`,
+          reason: `No message ${id} reached this Pi since its reader started; pass to with the asker's name to answer it as a thread, or use send`,
         });
       }
 

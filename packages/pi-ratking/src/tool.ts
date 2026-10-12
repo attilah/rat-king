@@ -101,7 +101,7 @@ Messages are signed plaintext by default, readable by operators and observers su
 
 Address agents by Rat King name (for example switchboard, or project/row).
 
-send and ask accept cc: ["name", ...]. reply defaults to reply-all; replyAll: false answers only the sender. handled with replyTo confirms a relayed original to its desk without replying to the sender.
+send and ask accept cc: ["name", ...]. reply defaults to reply-all; replyAll: false answers only the sender. To answer a message that arrived before this Pi's reader last started, add to: the asker's name. handled with replyTo confirms a relayed original to its desk without replying to the sender.
 
 Give every send, ask and reply a summary: one line (at most 280 characters) that leads with the point or the ask. Phones and compact views show it first; the message holds the detail.
 
@@ -308,6 +308,7 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
         const delivered = yield* ratking.reply(target, message, {
           ...encryption,
           replyAll: params.replyAll ?? true,
+          to: params.to,
         });
 
         return ok(
