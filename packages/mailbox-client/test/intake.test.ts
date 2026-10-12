@@ -281,8 +281,10 @@ it.effect.prop(
           }),
         {
           harness: lease.harness,
-          onSkip: ({ reason, seq }) =>
+          onSkip: ({ messageId, reason, senderDid, seq }) =>
             Effect.sync(() => {
+              expect(messageId).not.toBe("");
+              expect(senderDid).toMatch(/^did:/u);
               steps.push(`skip ${seq} ${reason}`);
             }),
           unopenable: (event) =>

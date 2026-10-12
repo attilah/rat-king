@@ -678,8 +678,17 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
               })
             ),
           ]).pipe(Effect.asVoid),
-        onSkip: ({ seq }) =>
-          writeCursor(own.name, seq).pipe(Effect.andThen(consumed)),
+        onSkip: ({ messageId, reason, senderDid, seq }) =>
+          Effect.logWarning("Rat King skipped a delivery", {
+            messageId,
+            reason,
+            recipient: own.name,
+            senderDid,
+            seq,
+          }).pipe(
+            Effect.andThen(writeCursor(own.name, seq)),
+            Effect.andThen(consumed)
+          ),
         renders: RENDERS,
         unopenable: (event, error) =>
           recover(quarantineDir(own.name), client)(event, error).pipe(

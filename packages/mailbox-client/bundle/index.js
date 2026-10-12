@@ -2982,7 +2982,12 @@ var consume = (mailbox, did, handler, options) => Effect18.scoped(
               return;
             }
             const { onSkip, unopenable } = options;
-            const skip = (reason) => onSkip === void 0 ? Effect18.void : onSkip({ reason, seq: event.seq });
+            const skip = (reason) => onSkip === void 0 ? Effect18.void : onSkip({
+              messageId: event.receipt.message.messageId,
+              reason,
+              senderDid: event.receipt.message.senderDid,
+              seq: event.seq
+            });
             const opened = yield* mailbox.open(event.envelope).pipe(
               Effect18.map(Option4.some),
               Effect18.catch(

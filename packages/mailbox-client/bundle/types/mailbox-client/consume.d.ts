@@ -108,8 +108,10 @@ export interface MessageMeta {
     readonly seq: number;
 }
 export interface Skipped {
-    readonly seq: number;
+    readonly messageId: string;
     readonly reason: "expired" | "settled" | "unopenable";
+    readonly senderDid: string;
+    readonly seq: number;
 }
 export interface ConsumeOptions {
     readonly harness: Lease.MainValue["harness"];

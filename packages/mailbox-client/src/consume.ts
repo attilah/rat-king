@@ -49,8 +49,10 @@ const settledRefusal = (error: MailboxClientError) =>
   error.error === "InvalidTransition";
 
 export interface Skipped {
-  readonly seq: number;
+  readonly messageId: string;
   readonly reason: "expired" | "settled" | "unopenable";
+  readonly senderDid: string;
+  readonly seq: number;
 }
 
 export interface ConsumeOptions {
@@ -263,7 +265,12 @@ export const consume = <E, R>(
                 const skip = (reason: Skipped["reason"]) =>
                   onSkip === undefined
                     ? Effect.void
-                    : onSkip({ reason, seq: event.seq });
+                    : onSkip({
+                        messageId: event.receipt.message.messageId,
+                        reason,
+                        senderDid: event.receipt.message.senderDid,
+                        seq: event.seq,
+                      });
 
                 const opened = yield* mailbox.open(event.envelope).pipe(
                   Effect.map(Option.some),
