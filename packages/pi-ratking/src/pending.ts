@@ -122,13 +122,6 @@ export const inbox = (host: MailHost) => {
   let last = Option.none<number>();
 
   return {
-    resend: () => {
-      for (const mail of pending.values()) {
-        if (!quiet(mail) && !held(mail)) {
-          host.show(mail, "steer");
-        }
-      }
-    },
     restore: (entries: readonly unknown[]) => {
       pending.clear();
       digested.clear();

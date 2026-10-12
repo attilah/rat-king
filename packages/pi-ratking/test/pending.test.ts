@@ -66,27 +66,6 @@ describe("pending mail", () => {
     });
   });
 
-  it("re-shows only mail Pi never displayed, as a steer", () => {
-    const session = fakeSession();
-    const box = inbox(session.host);
-
-    box.take(mail("a"), "followUp");
-    box.take(mail("b"), "followUp");
-    box.shown("a");
-    session.steps.length = 0;
-
-    box.resend();
-
-    expect(session.steps).toEqual(["show b steer"]);
-
-    box.shown("b");
-    session.steps.length = 0;
-
-    box.resend();
-
-    expect(session.steps).toEqual([]);
-  });
-
   it("restores unshown mail from the session after a restart and shows it", () => {
     const before = fakeSession();
     const first = inbox(before.host);
@@ -108,16 +87,13 @@ describe("pending mail", () => {
     expect(after.steps).toEqual(["show b steer", "show c steer"]);
   });
 
-  it("leaves a cc'd copy for the next turn: never re-sent on idle, restored without a wake", () => {
+  it("leaves a cc'd copy for the next turn: restored without a wake", () => {
     const before = fakeSession();
     const first = inbox(before.host);
 
     first.take(mail("a"), "nextTurn");
-    before.steps.length = 0;
 
-    first.resend();
-
-    expect(before.steps).toEqual([]);
+    expect(before.steps).toEqual(["entry a", "show a nextTurn"]);
 
     const after = fakeSession();
 
@@ -209,16 +185,14 @@ describe("cc digest", () => {
     ]);
   });
 
-  it("digest copies are not re-sent on idle, and survive a restart until a digest shows them", () => {
+  it("digest copies are held, not shown, and survive a restart until a digest shows them", () => {
     const before = fakeSession();
     const first = inbox(before.host);
 
     first.take(held("a"), "digest");
     first.take(held("b"), "digest");
-    before.steps.length = 0;
-    first.resend();
 
-    expect(before.steps).toEqual([]);
+    expect(before.steps).toEqual(["entry a", "entry b"]);
 
     before.entries.push({
       customType: DIGEST_MESSAGE,

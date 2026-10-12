@@ -267,7 +267,6 @@ export interface SessionStart {
 export interface PiHost {
   readonly appendEntry?: (customType: string, data: PendingMail) => void;
   readonly events: EventBus;
-  readonly onIdle?: (handler: () => void) => void;
   readonly onMessageShown?: (handler: (id: string) => void) => void;
   readonly registerMessageRenderer: ExtensionAPI["registerMessageRenderer"];
   readonly registerTool: ExtensionAPI["registerTool"];
@@ -283,13 +282,6 @@ const piHost = (pi: ExtensionAPI): PiHost => ({
     pi.appendEntry(customType, data);
   },
   events: pi.events,
-  onIdle: (handler) => {
-    pi.on("agent_settled", (_event, ctx) => {
-      if (ctx.isIdle() && !ctx.hasPendingMessages()) {
-        handler();
-      }
-    });
-  },
   onMessageShown: (handler) => {
     pi.on("message_end", (event) => {
       for (const id of shownIds(event.message)) {
@@ -562,8 +554,6 @@ export const ratkingExtension = (options: ExtensionOptions) =>
     });
 
     pi.onMessageShown?.(mail.shown);
-
-    pi.onIdle?.(mail.resend);
 
     const digestTicks = Clock.currentTimeMillis.pipe(
       Effect.flatMap((now) =>
