@@ -7,7 +7,7 @@ import { deploy } from "alchemy/Deploy";
 import { layerNonInteractive } from "alchemy/Interaction";
 import * as Plan from "alchemy/Plan";
 import { evalStack } from "alchemy/Stack";
-import { Config, Effect, FileSystem, Layer, Schema } from "effect";
+import { Config, Console, Effect, FileSystem, Layer, Schema } from "effect";
 import {
   FetchHttpClient,
   HttpClient,
@@ -25,8 +25,10 @@ import {
   probeIdentity,
   probeInstance,
   probePortBase,
+  probeUnitLimits,
 } from "./instance-probe-stack.ts";
 import { startupLayer } from "./instance-startup-contract.ts";
+import { renderUnits } from "./instance-units.ts";
 import { validateInstance } from "./instance.ts";
 import { ObjectStore } from "./object-store.ts";
 import { verifyInstanceGone, withDestroyReceipt } from "./probe-receipts.ts";
@@ -55,6 +57,7 @@ export const runInstanceProbe = (
     | "destroy-plan"
     | "destroy"
     | "verify-gone"
+    | "render-units"
 ) =>
   Effect.gen(function* run() {
     const alias = yield* Config.String("RAT_KING_LIVE_NODE");
@@ -67,6 +70,20 @@ export const runInstanceProbe = (
       instance: probeInstance,
       portBase: probePortBase,
     });
+
+    if (action === "render-units") {
+      return yield* Console.log(
+        JSON.stringify(
+          renderUnits(
+            { ...host, tailnetIPv4: "127.0.0.1" },
+            { dataRoot, instance: probeInstance, portBase: probePortBase },
+            probeUnitLimits
+          ),
+          null,
+          2
+        )
+      );
+    }
 
     const connection = sshLayer(host, {
       dataRoot,

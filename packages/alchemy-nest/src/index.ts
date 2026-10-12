@@ -52,6 +52,14 @@ export type {
   PortBase,
 } from "./instance.ts";
 
+export { renderUnits } from "./instance-units.ts";
+
+export type {
+  NodeUnitLimits,
+  StoreUnitLimits,
+  UnitRenderLimits,
+} from "./instance-units.ts";
+
 export { startupLayer } from "./instance-startup-contract.ts";
 
 export { prepareDeployment } from "./deployment-build.ts";

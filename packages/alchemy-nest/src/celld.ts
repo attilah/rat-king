@@ -4,6 +4,7 @@ import { Effect, Redacted, Schema } from "effect";
 
 import { Deployment, DeploymentProvider } from "./deployment.ts";
 import { textDigest, refuse } from "./files.ts";
+import { instanceNodeUnit } from "./instance-units.ts";
 import { InstanceNameSchema } from "./instance.ts";
 import type { InstanceProps } from "./instance.ts";
 import type { Node as HostNode } from "./inventory-schema.ts";
@@ -11,7 +12,6 @@ import { NodeProvider, NodeResource } from "./node-provider.ts";
 import type { BucketOutput } from "./object-store.ts";
 import { celldBinary } from "./pins.ts";
 import { HostDirectory, ReleaseBinary, RemoteFile } from "./providers.ts";
-import { nodeUnit } from "./service-units.ts";
 import type { ServiceLimits } from "./service-units.ts";
 import { renderUnit } from "./systemd.ts";
 
@@ -62,24 +62,11 @@ export const Node = (id: string, props: CelldProps) =>
       path: Output.interpolate`${bucket.bin}/celld`,
     });
 
-    const declaration = nodeUnit({
-      binary: `${layout.bin}/celld`,
+    const declaration = instanceNodeUnit(host, layout, {
       cpuQuota: props.cpuQuota,
-      data: `${layout.dataRoot}/celld`,
-      environment: `${layout.configuration}/celld.env`,
-      host,
-      layout,
       memoryMax: props.memoryMax,
       oomPolicy: props.oomPolicy,
-      restartGate:
-        bucket.restartGate === undefined
-          ? undefined
-          : {
-              address: workerIPv4,
-              path: `${layout.bin}/restart-gate.mjs`,
-            },
-      restartOn: [],
-      storageDiagnostic: `${layout.bin}/storage-maintenance.py`,
+      restartGate: bucket.restartGate !== undefined,
       workerIPv4,
     });
 
