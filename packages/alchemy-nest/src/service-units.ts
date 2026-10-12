@@ -1,6 +1,7 @@
 import type { InstanceLayout, InstanceProps } from "./instance.ts";
 import type { Node } from "./inventory-schema.ts";
 import { nodeListener, storeListener } from "./listener-contract.ts";
+import { maintenanceArguments } from "./maintenance-targets.ts";
 import type { UnitProps } from "./systemd.ts";
 
 const quote = (value: string): string =>
@@ -202,7 +203,7 @@ export const nodeUnit = (
           : [
               [
                 "ExecStopPost",
-                `-/usr/bin/python3 ${quote(input.storageDiagnostic)} diagnose`,
+                `-/usr/bin/python3 ${quote(input.storageDiagnostic)} diagnose${maintenanceArguments(input.layout)}`,
               ] satisfies readonly [string, string],
             ]),
         ["EnvironmentFile", input.environment.replaceAll("%", "%%")],

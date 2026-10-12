@@ -52,6 +52,10 @@ export type {
   PortBase,
 } from "./instance.ts";
 
+export { renderMaintenanceScript } from "./maintenance-render.ts";
+
+export { MaintenanceRenderError } from "./maintenance-targets.ts";
+
 export { renderUnits } from "./instance-units.ts";
 
 export type {

@@ -9,6 +9,7 @@ import { instanceStoreUnit } from "./instance-units.ts";
 import { InstanceNameSchema, validateInstance } from "./instance.ts";
 import type { InstanceProps } from "./instance.ts";
 import type { Node } from "./inventory-schema.ts";
+import { renderMaintenanceScript } from "./maintenance-render.ts";
 import { operatorBundle } from "./operator-build.ts";
 import { weedBinary } from "./pins.ts";
 import {
@@ -20,7 +21,6 @@ import {
 } from "./providers.ts";
 import { sliceUnit } from "./service-units.ts";
 import type { ServiceLimits } from "./service-units.ts";
-import { storageMaintenanceScript } from "./storage-maintenance-script.ts";
 import {
   storageRetentionTimer,
   storageRetentionUnit,
@@ -155,7 +155,7 @@ export const Bucket = (id: string, props: StoreProps) =>
                       secretKey: Redacted.value(secretKey),
                     },
                   ],
-                  name: "rat-king",
+                  name: layout.instance,
                 },
               ],
             })
@@ -185,15 +185,7 @@ export const Bucket = (id: string, props: StoreProps) =>
     });
 
     const maintenance = yield* RemoteFile("storage-maintenance", {
-      content: storageMaintenanceScript
-        .replace(
-          "http://127.0.0.1:19333",
-          `http://127.0.0.1:${layout.ports.master}`
-        )
-        .replace(
-          "http://127.0.0.1:18888",
-          `http://127.0.0.1:${layout.ports.filer}`
-        ),
+      content: renderMaintenanceScript(host, props).text,
       mode: 0o600,
       path: Output.interpolate`${bin.path}/storage-maintenance.py`,
     });

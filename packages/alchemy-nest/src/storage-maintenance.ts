@@ -1,4 +1,5 @@
 import type { InstanceLayout } from "./instance.ts";
+import { maintenanceArguments } from "./maintenance-targets.ts";
 import type { UnitProps } from "./systemd.ts";
 
 const quote = (value: string): string =>
@@ -26,14 +27,19 @@ export const storageRetentionUnit = (
         ],
         ["Requires", layout?.storeUnit ?? "rat-king-seaweedfs.service"],
         ["After", layout?.storeUnit ?? "rat-king-seaweedfs.service"],
-        ["StartLimitIntervalSec", "0"],
+        ...(layout === undefined || layout.instance === "rat-king"
+          ? [["StartLimitIntervalSec", "0"] satisfies readonly [string, string]]
+          : []),
       ],
       name: "Unit",
     },
     {
       lines: [
         ["Type", "oneshot"],
-        ["ExecStart", `/usr/bin/python3 ${quote(script)} retain`],
+        [
+          "ExecStart",
+          `/usr/bin/python3 ${quote(script)} retain${maintenanceArguments(layout)}`,
+        ],
         ["Slice", layout?.slice ?? "rat-king.slice"],
         ["MemoryMax", "128M"],
         ["MemorySwapMax", "0"],
@@ -42,8 +48,15 @@ export const storageRetentionUnit = (
         ["Nice", "10"],
         ["UMask", "0077"],
         ["TimeoutStartSec", "10min"],
-        ["Restart", "on-failure"],
-        ["RestartSec", "60"],
+        [
+          "Restart",
+          layout === undefined || layout.instance === "rat-king"
+            ? "on-failure"
+            : "no",
+        ],
+        ...(layout === undefined || layout.instance === "rat-king"
+          ? [["RestartSec", "60"] satisfies readonly [string, string]]
+          : []),
       ],
       name: "Service",
     },
