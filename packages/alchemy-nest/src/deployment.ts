@@ -220,20 +220,28 @@ export const DeploymentProvider = () =>
           });
         }
 
-        const current = yield* Schema.decodeUnknownEffect(identity)(
-          yield* response.json
+        const current = Schema.decodeEffect(Schema.fromJsonString(identity))(
+          yield* response.text
         );
 
+        const decoded = yield* current.pipe(Effect.result);
+
+        if (Result.isFailure(decoded)) {
+          return false;
+        }
+
+        const observed = decoded.success;
+
         if (
-          current.version !== props.version ||
-          current.commit !== props.commit
+          observed.version !== props.version ||
+          observed.commit !== props.commit
         ) {
           return yield* new DeploymentError({
             reason: "Bundle identity does not match",
           });
         }
 
-        return yield* Effect.void;
+        return true;
       });
 
       const installed = Effect.fn("Celld.Deployment.installed")(
@@ -287,7 +295,12 @@ export const DeploymentProvider = () =>
 
           const observed = yield* version(news).pipe(Effect.result);
 
-          return { action: Result.isSuccess(observed) ? "noop" : "update" };
+          return {
+            action:
+              Result.isSuccess(observed) && observed.success
+                ? "noop"
+                : "update",
+          };
         }),
         list: () => Effect.succeed([]),
         read: Effect.fn("Celld.Deployment.read")(function* read({
@@ -321,6 +334,10 @@ export const DeploymentProvider = () =>
             return absent;
           }
 
+          if (!(yield* version(olds))) {
+            return absent;
+          }
+
           if (output !== undefined) {
             return output;
           }
@@ -348,8 +365,6 @@ export const DeploymentProvider = () =>
             });
           }
 
-          yield* version(olds);
-
           return attrs;
         }),
         reconcile: Effect.fn("Celld.Deployment.reconcile")(function* reconcile({
@@ -361,10 +376,9 @@ export const DeploymentProvider = () =>
 
           if (
             output?.sha256 === fingerprint(news) &&
-            (yield* installed(news))
+            (yield* installed(news)) &&
+            (yield* version(news))
           ) {
-            yield* version(news);
-
             return output;
           }
 
@@ -430,6 +444,17 @@ export const DeploymentProvider = () =>
             new URL("/reload", news.internalUrl).href,
           ]);
           yield* version(news).pipe(
+            Effect.flatMap(
+              Effect.fn(function* requireInstalled(found) {
+                if (!found) {
+                  return yield* new DeploymentError({
+                    reason: "Installed worker has no version identity",
+                  });
+                }
+
+                return yield* Effect.void;
+              })
+            ),
             Effect.retry(Schedule.spaced("1 second")),
             Effect.timeout("60 seconds")
           );

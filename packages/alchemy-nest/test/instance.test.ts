@@ -67,18 +67,20 @@ const mailbox = Effect.gen(function* mailbox() {
   return yield* Celld.Node("celld", { bucket, host });
 });
 
-test.provider("default plan preserves main output", (scratch) =>
-  Effect.gen(function* baseline() {
-    const plan = yield* checkedStack(scratch).plan(mailbox);
-    expect(
-      JSON.parse(
-        JSON.stringify(plan.resources).replaceAll(
-          /"instanceId":"[a-f0-9]+"/gu,
-          '"instanceId":"scratch"'
+test.provider(
+  "default plan preserves baseline with fresh-root retention",
+  (scratch) =>
+    Effect.gen(function* baseline() {
+      const plan = yield* checkedStack(scratch).plan(mailbox);
+      expect(
+        JSON.parse(
+          JSON.stringify(plan.resources).replaceAll(
+            /"instanceId":"[a-f0-9]+"/gu,
+            '"instanceId":"scratch"'
+          )
         )
-      )
-    ).toMatchSnapshot();
-  })
+      ).toMatchSnapshot();
+    })
 );
 
 const { test: renderTest } = Test.make({
@@ -86,11 +88,13 @@ const { test: renderTest } = Test.make({
   stage: "instance-render-tests",
 });
 
-renderTest.provider("default rendered bytes equal main 920884e", (scratch) =>
-  Effect.gen(function* baseline() {
-    yield* checkedStack(scratch).deploy(mailbox);
-    expect(renderedSurface(yield* Rendered)).toMatchSnapshot();
-  })
+renderTest.provider(
+  "default rendered bytes preserve baseline with fresh-root retention",
+  (scratch) =>
+    Effect.gen(function* baseline() {
+      yield* checkedStack(scratch).deploy(mailbox);
+      expect(renderedSurface(yield* Rendered)).toMatchSnapshot();
+    })
 );
 
 test.provider(
