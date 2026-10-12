@@ -31,6 +31,8 @@ import { issuerLayer } from "./issuer.ts";
 import { messageView } from "./message-view.ts";
 import { LexiconRecord, renderInbound } from "./payload.ts";
 import type { Inbound } from "./payload.ts";
+import { inbox, MAIL_MESSAGE, shownId } from "./pending.ts";
+import type { PendingMail } from "./pending.ts";
 import { NotDelivered, RatKing, ratKingLayer } from "./ratking.ts";
 import type { Deliver, SendOptions } from "./ratking.ts";
 import { recordNotice } from "./record-visibility.ts";
@@ -216,6 +218,7 @@ type Services = Layer.Success<typeof appLayer>;
 type Runtime = ManagedRuntime.ManagedRuntime<Services, NotConfigured>;
 
 export interface SessionStart {
+  readonly entries?: () => readonly unknown[];
   readonly interactive?: boolean;
   readonly session: string;
   readonly sessionName?: () => string | undefined;
@@ -224,7 +227,10 @@ export interface SessionStart {
 }
 
 export interface PiHost {
+  readonly appendEntry?: (customType: string, data: PendingMail) => void;
   readonly events: EventBus;
+  readonly onIdle?: (handler: () => void) => void;
+  readonly onMessageShown?: (handler: (id: string) => void) => void;
   readonly registerMessageRenderer: ExtensionAPI["registerMessageRenderer"];
   readonly registerTool: ExtensionAPI["registerTool"];
   readonly sendMessage: ExtensionAPI["sendMessage"];
@@ -235,13 +241,29 @@ export interface PiHost {
 }
 
 const piHost = (pi: ExtensionAPI): PiHost => ({
+  appendEntry: (customType, data) => {
+    pi.appendEntry(customType, data);
+  },
   events: pi.events,
+  onIdle: (handler) => {
+    pi.on("agent_settled", (_event, ctx) => {
+      if (ctx.isIdle() && !ctx.hasPendingMessages()) {
+        handler();
+      }
+    });
+  },
+  onMessageShown: (handler) => {
+    pi.on("message_end", (event) => {
+      Option.map(shownId(event.message), handler);
+    });
+  },
   onSessionEnd: (handler) => {
     pi.on("session_shutdown", handler);
   },
   onSessionStart: (handler) => {
     pi.on("session_start", async (_event, ctx) => {
       await handler({
+        entries: () => ctx.sessionManager.getBranch(),
         interactive: ctx.hasUI,
         session: ctx.sessionManager.getSessionId(),
         sessionName: () => pi.getSessionName(),
@@ -471,6 +493,27 @@ export const ratkingExtension = (options: ExtensionOptions) =>
 
     let runtime = Option.none<Runtime>();
 
+    const mail = inbox({
+      appendEntry: (customType, data) => {
+        pi.appendEntry?.(customType, data);
+      },
+      show: (pending, deliverAs) => {
+        pi.sendMessage(
+          {
+            content: pending.content,
+            customType: MAIL_MESSAGE,
+            details: pending.details,
+            display: true,
+          },
+          { deliverAs, triggerTurn: true }
+        );
+      },
+    });
+
+    pi.onMessageShown?.(mail.shown);
+
+    pi.onIdle?.(mail.resend);
+
     const deliver: Deliver = (inbound, settled) =>
       Effect.sync(() => {
         if ("record" in inbound) {
@@ -498,14 +541,13 @@ export const ratkingExtension = (options: ExtensionOptions) =>
               summary: Option.none(),
             };
 
-            pi.sendMessage(
+            mail.take(
               {
                 content: renderInbound(tool, message),
-                customType: "ratking_message",
                 details: inboundDetails(message, settled),
-                display: true,
+                id: message.id,
               },
-              { deliverAs: "steer", triggerTurn: true }
+              "steer"
             );
           } else {
             const notice = recordNotice({ ...inbound, body }, settled);
@@ -556,14 +598,13 @@ export const ratkingExtension = (options: ExtensionOptions) =>
         }
 
         if (injects(inbound, settled)) {
-          pi.sendMessage(
+          mail.take(
             {
               content: renderInbound(tool, inbound),
-              customType: "ratking_message",
               details: inboundDetails(inbound, settled),
-              display: true,
+              id: inbound.id,
             },
-            { deliverAs: deliveryMode(inbound), triggerTurn: true }
+            deliveryMode(inbound)
           );
         }
       });
@@ -783,6 +824,8 @@ export const ratkingExtension = (options: ExtensionOptions) =>
       retired = false;
 
       await stop();
+
+      mail.restore(start.entries?.() ?? []);
 
       const collected = await Effect.runPromise(
         options.facts(start.session, start.sessionName, start.interactive)
