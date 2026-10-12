@@ -32,6 +32,8 @@ class Store:
             if scenario in ('delete404', 'page404') and not cursor:
                 return Reply({'Path': '/topics/.system/log', 'Entries': [{'FullPath': '/topics/.system/log/2020-01-01', 'Mode': 1 << 31}], 'ShouldDisplayLoadMore': scenario == 'page404', 'LastFileName': '2020-01-01'})
             raise urllib.error.HTTPError(url, 404, 'missing root', {}, None)
+        if parsed.path == '/vol/status':
+            return Reply({'Version': '4.48', 'Volumes': {'Max': 64, 'Free': free, 'DataCenters': {'dc1': {'rack1': {'node1': [{'Id': 1, 'Collection': '', 'ReplicaPlacement': {}, 'Ttl': {'Count': 0, 'Unit': 0}}]}}}}})
         if parsed.path == '/dir/status':
             if scenario == 'masterTransport': raise urllib.error.URLError('connection refused')
             if scenario in ('master404', 'master503'):
@@ -51,7 +53,7 @@ if scenario in ('fresh', 'existing'):
     assert code == 0, stdout.getvalue()
     assert records[0]['deletedLogDays'] == ([] if scenario == 'fresh' else 0)
     assert records[-1]['alarm'] is False
-    assert [urllib.parse.urlsplit(url).path for method, url in calls] == ['/topics/.system/log/', '/dir/status']
+    assert [urllib.parse.urlsplit(url).path for method, url in calls] == ['/topics/.system/log/', '/dir/status', '/vol/status']
 else:
     assert code != 0, stdout.getvalue()
     assert records[-1]['alarm'] is True
