@@ -73,6 +73,7 @@ import type {
   LexiconRecordValue,
   PayloadValue,
 } from "./payload.ts";
+import { digestFor } from "./pending.ts";
 import { PRESENCE_TTL_MS, PresenceTimeout, presenceLine } from "./presence.ts";
 import type { PresenceValue } from "./presence.ts";
 import { quarantined, recover } from "./quarantine.ts";
@@ -570,14 +571,22 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
             }
 
             if (payload.value.to !== undefined) {
-              Object.assign(inbound, {
-                copy: addressedElsewhere(
-                  settings.reserved,
-                  payload.value.to,
-                  own.name
-                ),
-                to: payload.value.to,
-              });
+              const copy = addressedElsewhere(
+                settings.reserved,
+                payload.value.to,
+                own.name
+              );
+
+              Object.assign(inbound, { copy, to: payload.value.to });
+
+              const digest = digestFor(
+                settings.ccDigestMinutes ?? {},
+                own.name
+              );
+
+              if (copy && Option.isSome(digest)) {
+                Object.assign(inbound, { digestMinutes: digest.value });
+              }
             }
 
             if (payload.value.thread !== undefined) {

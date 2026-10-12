@@ -25,7 +25,7 @@ The extension reads `RATKING_CONFIG`, or `~/.config/rat-king/pi.json`. Without a
 }
 ```
 
-`state` defaults to `~/.local/state/rat-king/pi`. It holds the name claims, read cursors, locks and `directory.json`, the name → DID and public document directory. `documents` lists files of public DID documents, such as the operator-configured fleet documents. `askTimeoutMs` defaults to ten minutes. A name in `refuse` starts no reader and mints nothing: `status` reports it as refused and every send fails with `NOT DELIVERED: Refused`. Use it for names another reader still holds.
+`state` defaults to `~/.local/state/rat-king/pi`. It holds the name claims, read cursors, locks and `directory.json`, the name → DID and public document directory. `documents` lists files of public DID documents, such as the operator-configured fleet documents. `askTimeoutMs` defaults to ten minutes. A copy, meaning mail whose `to:` names someone else, never wakes the reader: it rides into the next turn as a short entry. `ccDigestMinutes` (for example `{ "drovr": 30 }`, keyed by full name or project, full name first) instead holds a reader's copies and wakes it once per interval with one digest, newest first, and only when any are held. Asks and relayed mail always wake. A name in `refuse` starts no reader and mints nothing: `status` reports it as refused and every send fails with `NOT DELIVERED: Refused`. Use it for names another reader still holds.
 
 ## Names
 

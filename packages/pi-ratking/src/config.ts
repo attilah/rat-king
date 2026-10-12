@@ -56,6 +56,12 @@ export const PiConfig = Schema.Struct({
   askTimeoutMs: Schema.optionalKey(
     Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))
   ),
+  ccDigestMinutes: Schema.optionalKey(
+    Schema.Record(
+      Schema.String,
+      Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))
+    )
+  ),
   didTemplate: Schema.String.check(
     Schema.isPattern(/^did:web:[^#{}\s]*\{agent\}[^#{}\s]*$/u)
   ),
@@ -79,6 +85,7 @@ export type PiConfigValue = typeof PiConfig.Type;
 
 export interface SettingsValue {
   readonly askTimeoutMs: number;
+  readonly ccDigestMinutes?: Readonly<Record<string, number>>;
   readonly didTemplate: string;
   readonly directory: string;
   readonly documents: readonly string[];
@@ -168,6 +175,10 @@ export const loadSettings = Effect.fn("RatKing.loadSettings")(
       serviceDid: config.serviceDid,
       state,
     });
+
+    if (config.ccDigestMinutes !== undefined) {
+      Object.assign(settings, { ccDigestMinutes: config.ccDigestMinutes });
+    }
 
     return settings;
   }

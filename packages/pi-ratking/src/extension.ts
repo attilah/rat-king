@@ -7,6 +7,7 @@ import type {
 import { NodeServices } from "@effect/platform-node";
 import {
   Cause,
+  Clock,
   Config,
   Duration,
   Effect,
@@ -17,6 +18,7 @@ import {
   Match,
   Option,
   Path,
+  Schedule,
   Schema,
 } from "effect";
 import { FetchHttpClient } from "effect/http";
@@ -31,8 +33,8 @@ import { issuerLayer } from "./issuer.ts";
 import { messageView } from "./message-view.ts";
 import { LexiconRecord, renderInbound } from "./payload.ts";
 import type { Inbound } from "./payload.ts";
-import { inbox, MAIL_MESSAGE, shownId } from "./pending.ts";
-import type { DeliverAs, PendingMail } from "./pending.ts";
+import { DIGEST_MESSAGE, inbox, MAIL_MESSAGE, shownIds } from "./pending.ts";
+import type { Hold, PendingMail } from "./pending.ts";
 import { NotDelivered, RatKing, ratKingLayer } from "./ratking.ts";
 import type { Deliver, SendOptions } from "./ratking.ts";
 import { recordNotice } from "./record-visibility.ts";
@@ -77,12 +79,43 @@ const RELEASE_WAIT_MS = 2000;
 
 export const deliveryMode = (inbound: {
   readonly copy?: boolean;
+  readonly digestMinutes?: number;
   readonly kind: string;
   readonly relay?: unknown;
-}): DeliverAs =>
-  inbound.copy === true && inbound.kind !== "ask" && inbound.relay === undefined
-    ? "nextTurn"
-    : "steer";
+}): Hold => {
+  if (
+    inbound.copy !== true ||
+    inbound.kind === "ask" ||
+    inbound.relay !== undefined
+  ) {
+    return "steer";
+  }
+
+  return inbound.digestMinutes === undefined ? "nextTurn" : "digest";
+};
+
+const DIGEST_LINE_MAX = 160;
+
+const DIGEST_TICK = Duration.minutes(1);
+
+export const digestLine = (inbound: Inbound) => {
+  const gist = Option.getOrElse(inbound.summary, () =>
+    inbound.body.length > DIGEST_LINE_MAX
+      ? `${inbound.body.slice(0, DIGEST_LINE_MAX)}…`
+      : inbound.body
+  );
+
+  return `- ${inbound.from} · id ${inbound.id} · ${gist.replaceAll("\n", " ")}`;
+};
+
+export const renderDigest = (tool: string, mails: readonly PendingMail[]) =>
+  [
+    `**Rat King cc digest** · ${mails.length} cc'd since the last digest, newest first`,
+    "",
+    ...mails.map((mail) => mail.line ?? `- id ${mail.id}`),
+    "",
+    `These are copies; the sender used to: for whoever must act. To answer one: ${tool}({ action: "reply", replyTo: "<id>", summary: "...", message: "..." })`,
+  ].join("\n");
 
 export const injects = (
   inbound: { readonly kind: string; readonly body?: string },
@@ -259,7 +292,9 @@ const piHost = (pi: ExtensionAPI): PiHost => ({
   },
   onMessageShown: (handler) => {
     pi.on("message_end", (event) => {
-      Option.map(shownId(event.message), handler);
+      for (const id of shownIds(event.message)) {
+        handler(id);
+      }
     });
   },
   onSessionEnd: (handler) => {
@@ -502,6 +537,17 @@ export const ratkingExtension = (options: ExtensionOptions) =>
       appendEntry: (customType, data) => {
         pi.appendEntry?.(customType, data);
       },
+      digest: (mails) => {
+        pi.sendMessage(
+          {
+            content: renderDigest(tool, mails),
+            customType: DIGEST_MESSAGE,
+            details: { ids: mails.map((held) => held.id) },
+            display: true,
+          },
+          { deliverAs: "followUp", triggerTurn: true }
+        );
+      },
       show: (pending, deliverAs) => {
         pi.sendMessage(
           {
@@ -518,6 +564,17 @@ export const ratkingExtension = (options: ExtensionOptions) =>
     pi.onMessageShown?.(mail.shown);
 
     pi.onIdle?.(mail.resend);
+
+    const digestTicks = Clock.currentTimeMillis.pipe(
+      Effect.flatMap((now) =>
+        Effect.sync(() => {
+          mail.tick(now);
+        })
+      ),
+      Effect.repeat(Schedule.spaced(DIGEST_TICK)),
+      Effect.forkScoped,
+      Effect.asVoid
+    );
 
     const deliver: Deliver = (inbound, settled) =>
       Effect.sync(() => {
@@ -607,7 +664,9 @@ export const ratkingExtension = (options: ExtensionOptions) =>
             {
               content: renderInbound(tool, inbound),
               details: inboundDetails(inbound, settled),
+              digestMinutes: inbound.digestMinutes,
               id: inbound.id,
+              line: digestLine(inbound),
             },
             deliveryMode(inbound)
           );
@@ -845,7 +904,11 @@ export const ratkingExtension = (options: ExtensionOptions) =>
 
       const live: Runtime = ManagedRuntime.make(
         Layer.effectDiscard(
-          RatKing.use((ratking) => ratking.run(facts, deliver))
+          digestTicks.pipe(
+            Effect.andThen(
+              RatKing.use((ratking) => ratking.run(facts, deliver))
+            )
+          )
         ).pipe(Layer.provideMerge(options.layer))
       );
 

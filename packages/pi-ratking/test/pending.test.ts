@@ -1,7 +1,14 @@
 import { Option } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { inbox, MAIL_MESSAGE, PENDING_ENTRY, shownId } from "../src/pending.ts";
+import {
+  DIGEST_MESSAGE,
+  digestFor,
+  inbox,
+  MAIL_MESSAGE,
+  PENDING_ENTRY,
+  shownIds,
+} from "../src/pending.ts";
 import type { DeliverAs, PendingMail } from "../src/pending.ts";
 
 const mail = (id: string): PendingMail => ({
@@ -18,6 +25,9 @@ const fakeSession = () => {
     appendEntry: (customType: string, data: PendingMail) => {
       steps.push(`entry ${data.id}`);
       entries.push({ customType, data, type: "custom" });
+    },
+    digest: (mails: readonly PendingMail[]) => {
+      steps.push(`digest ${mails.map((held) => held.id).join(",")}`);
     },
     show: (pending: PendingMail, deliverAs: DeliverAs) => {
       steps.push(`show ${pending.id} ${deliverAs}`);
@@ -130,17 +140,110 @@ describe("pending mail", () => {
     expect(after.steps).toEqual([]);
   });
 
-  it("reads the mail id only from a displayed Rat King message", () => {
+  it("reads mail ids only from a displayed Rat King message or digest", () => {
     expect(
-      shownId({
+      shownIds({
         customType: MAIL_MESSAGE,
         details: { id: "a" },
         role: "custom",
       })
-    ).toEqual(Option.some("a"));
+    ).toEqual(["a"]);
     expect(
-      shownId({ customType: "other", details: { id: "a" }, role: "custom" })
-    ).toEqual(Option.none());
-    expect(shownId({ role: "user" })).toEqual(Option.none());
+      shownIds({
+        customType: DIGEST_MESSAGE,
+        details: { ids: ["b", "c"] },
+        role: "custom",
+      })
+    ).toEqual(["b", "c"]);
+    expect(
+      shownIds({ customType: "other", details: { id: "a" }, role: "custom" })
+    ).toEqual([]);
+    expect(shownIds({ role: "user" })).toEqual([]);
+  });
+});
+
+describe("cc digest", () => {
+  const MINUTE = 60_000;
+
+  const held = (id: string): PendingMail => ({
+    ...mail(id),
+    digestMinutes: 30,
+  });
+
+  it("holds digest copies without showing them, then sends one digest per interval, newest first", () => {
+    const session = fakeSession();
+    const box = inbox(session.host);
+
+    box.tick(0);
+    box.take(held("a"), "digest");
+    box.take(held("b"), "digest");
+
+    expect(session.steps).toEqual(["entry a", "entry b"]);
+
+    box.tick(29 * MINUTE);
+
+    expect(session.steps).toEqual(["entry a", "entry b"]);
+
+    box.tick(30 * MINUTE);
+
+    expect(session.steps).toEqual(["entry a", "entry b", "digest b,a"]);
+  });
+
+  it("never digests a copy twice, and an empty interval sends nothing", () => {
+    const session = fakeSession();
+    const box = inbox(session.host);
+
+    box.tick(0);
+    box.take(held("a"), "digest");
+    box.tick(30 * MINUTE);
+    box.tick(60 * MINUTE);
+    box.shown("a");
+    box.tick(90 * MINUTE);
+    box.take(held("b"), "digest");
+    box.tick(100 * MINUTE);
+    box.tick(120 * MINUTE);
+
+    expect(session.steps.filter((step) => step.startsWith("digest"))).toEqual([
+      "digest a",
+      "digest b",
+    ]);
+  });
+
+  it("digest copies are not re-sent on idle, and survive a restart until a digest shows them", () => {
+    const before = fakeSession();
+    const first = inbox(before.host);
+
+    first.take(held("a"), "digest");
+    first.take(held("b"), "digest");
+    before.steps.length = 0;
+    first.resend();
+
+    expect(before.steps).toEqual([]);
+
+    before.entries.push({
+      customType: DIGEST_MESSAGE,
+      details: { ids: ["a"] },
+      type: "custom_message",
+    });
+
+    const after = fakeSession();
+    const second = inbox(after.host);
+
+    second.restore(before.entries);
+
+    expect(after.steps).toEqual([]);
+
+    second.tick(0);
+    second.tick(30 * MINUTE);
+
+    expect(after.steps).toEqual(["digest b"]);
+  });
+
+  it("finds the cadence by full name first, then by project", () => {
+    const table = { drovr: 30, "drovr/front": 5 };
+
+    expect(digestFor(table, "drovr/front")).toEqual(Option.some(5));
+    expect(digestFor(table, "drovr/drovr-desk-2")).toEqual(Option.some(30));
+    expect(digestFor(table, "rats-nest/desk")).toEqual(Option.none());
   });
 });

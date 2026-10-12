@@ -13,6 +13,18 @@ describe("deliveryMode", () => {
     expect(deliveryMode({ copy: true, kind: "data" })).toBe("nextTurn");
   });
 
+  it("holds a cc'd copy for the digest when the reader has a cadence", () => {
+    expect(
+      deliveryMode({ copy: true, digestMinutes: 30, kind: "message" })
+    ).toBe("digest");
+    expect(
+      deliveryMode({ copy: false, digestMinutes: 30, kind: "message" })
+    ).toBe("steer");
+    expect(deliveryMode({ copy: true, digestMinutes: 30, kind: "ask" })).toBe(
+      "steer"
+    );
+  });
+
   it("still wakes a cc'd reader for an ask or relayed mail", () => {
     expect(deliveryMode({ copy: true, kind: "ask" })).toBe("steer");
     expect(

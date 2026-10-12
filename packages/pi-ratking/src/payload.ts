@@ -63,6 +63,7 @@ export interface Inbound {
   readonly cc: boolean;
   readonly ccNames?: readonly string[];
   readonly copy?: boolean;
+  readonly digestMinutes?: number;
   readonly to?: string;
   readonly thread?: string;
 }
