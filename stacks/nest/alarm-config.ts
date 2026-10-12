@@ -12,6 +12,7 @@ export const AlarmKey = Schema.Literals([
   "quarantine.growth",
   "digest.fail",
   "cache.rewrites",
+  "instance.down",
 ]);
 
 export type AlarmKeyValue = typeof AlarmKey.Type;
@@ -25,6 +26,15 @@ export const AlarmSettings = Schema.Struct({
   broadcast: AgentName,
   cacheHealth: Schema.optionalKey(Schema.NonEmptyString),
   enabled: Schema.Boolean,
+  instances: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        name: Schema.NonEmptyString,
+        owner: AgentName,
+        versionUrl: Schema.NonEmptyString,
+      })
+    )
+  ),
   launchd: Schema.Struct({
     errorLog: Schema.NonEmptyString,
     label: Schema.NonEmptyString,
@@ -99,4 +109,5 @@ export const alarmKeys: readonly AlarmKeyValue[] = [
   "quarantine.growth",
   "digest.fail",
   "cache.rewrites",
+  "instance.down",
 ];

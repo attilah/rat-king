@@ -67,6 +67,15 @@ export const sightReaders = (
     ];
   });
 
+export const InstanceHealth = Schema.Union([
+  Schema.Struct({ name: Schema.NonEmptyString, status: Schema.Literal("ok") }),
+  Schema.Struct({
+    name: Schema.NonEmptyString,
+    reason: Schema.NonEmptyString,
+    status: Schema.Literal("down"),
+  }),
+]);
+
 export const AlarmFacts = Schema.Struct({
   cacheBreaches: Schema.NullOr(Schema.Array(CacheBreach)),
   deploy: Schema.NullOr(DeployMarker),
@@ -75,6 +84,7 @@ export const AlarmFacts = Schema.Struct({
   doctor: Schema.Boolean,
   entered: Schema.NullOr(Schema.Finite),
   health: Schema.NullOr(Schema.Int),
+  instances: Schema.optionalKey(Schema.Array(InstanceHealth)),
   measurementFailed: Schema.Boolean,
   quarantinedHour: Schema.NullOr(Count),
   readers: Schema.NullOr(
@@ -224,6 +234,21 @@ const readerReading = (facts: typeof AlarmFacts.Type): AlarmReadingValue => {
   return facts.readers.complete ? ok : unknown;
 };
 
+const instanceReading = (facts: typeof AlarmFacts.Type): AlarmReadingValue => {
+  const down = (facts.instances ?? []).filter(
+    (instance) => instance.status === "down"
+  );
+
+  return down.length === 0
+    ? ok
+    : firing(
+        "warn",
+        down
+          .map((instance) => `${instance.name}: ${instance.reason}`)
+          .join("; ")
+      );
+};
+
 const downReading = (
   facts: typeof AlarmFacts.Type,
   sources: typeof SourceState.Type,
@@ -346,6 +371,7 @@ export const observeAlarms = (
     "celld.restarted": restartReading(facts, sources, now),
     "digest.fail": digestReading(facts),
     "filer.slots": slotReading(facts),
+    "instance.down": instanceReading(facts),
     "issuer.broken": facts.doctor
       ? ok
       : firing(

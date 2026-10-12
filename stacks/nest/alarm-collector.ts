@@ -12,6 +12,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { shellQuote } from "../../packages/alchemy-nest/src/ssh.ts";
 import { HeartbeatJson } from "../../packages/pi-ratking/src/reader-health.ts";
+import { collectInstanceHealth } from "./alarm-instances.ts";
 import type { DeployMarker } from "./alarm-sources.ts";
 import { AlarmFacts, CacheBreach, sightReaders } from "./alarm-sources.ts";
 import { collectComms } from "./comms.ts";
@@ -213,6 +214,7 @@ export const collectAlarmFacts = Effect.fn("Alarm.collect")(
           ),
         doctor: probe(configDoctor(config)),
         health: probe(health),
+        instances: collectInstanceHealth(config.alarm.instances),
         quarantine: Effect.all(
           [
             collectComms(config.comms.local, now - 3_600_000, true),
@@ -267,6 +269,7 @@ export const collectAlarmFacts = Effect.fn("Alarm.collect")(
           ? null
           : DateTime.toEpochMillis(healthy.services.celld.activeEnterTimestamp),
       health: healthy?.health.status ?? null,
+      instances: observations.instances,
       measurementFailed:
         Option.isNone(observations.deploy) ||
         Option.isNone(observations.doctor) ||
