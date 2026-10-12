@@ -1,7 +1,5 @@
 import { Option, Schema } from "effect";
 
-export const PENDING_ENTRY = "ratking_pending";
-
 export const MAIL_MESSAGE = "ratking_message";
 
 export const DIGEST_MESSAGE = "ratking_cc_digest";
@@ -21,23 +19,8 @@ export interface PendingMail {
   readonly line?: string;
 }
 
-const PendingEntry = Schema.Struct({
-  customType: Schema.Literal(PENDING_ENTRY),
-  data: Schema.Struct({
-    content: Schema.String,
-    deliverAs: Schema.optionalKey(
-      Schema.Literals(["digest", "followUp", "nextTurn", "steer"])
-    ),
-    details: Schema.Unknown,
-    digestMinutes: Schema.optionalKey(Schema.Number),
-    id: Schema.String,
-    line: Schema.optionalKey(Schema.String),
-  }),
-  type: Schema.Literal("custom"),
-});
-
 const ShownMail = Schema.Struct({
-  customType: Schema.Literal(MAIL_MESSAGE),
+  customType: Schema.Literals([MAIL_MESSAGE, "ratking_record_notice"]),
   details: Schema.Struct({ id: Schema.String }),
 });
 
@@ -72,42 +55,10 @@ export const shownIds = (message: SessionMessage): readonly string[] =>
     ? shownIn({ customType: message.customType, details: message.details })
     : [];
 
-const isShownEntry = Schema.is(
-  Schema.Struct({
-    customType: Schema.String,
-    details: Schema.optionalKey(Schema.Unknown),
-    type: Schema.Literal("custom_message"),
-  })
-);
-
-export const unshown = (entries: readonly unknown[]): PendingMail[] => {
-  const shown = new Set<string>();
-  const pending = new Map<string, PendingMail>();
-
-  for (const entry of entries) {
-    const taken = Schema.decodeUnknownOption(PendingEntry)(entry);
-
-    if (Option.isSome(taken)) {
-      pending.set(taken.value.data.id, taken.value.data);
-    }
-
-    if (isShownEntry(entry)) {
-      for (const id of shownIn(entry)) {
-        shown.add(id);
-      }
-    }
-  }
-
-  return [...pending.values()].filter((mail) => !shown.has(mail.id));
-};
-
 export interface MailHost {
-  readonly appendEntry?: (customType: string, data: PendingMail) => void;
   readonly digest: (mails: readonly PendingMail[]) => void;
   readonly show: (pending: PendingMail, deliverAs: DeliverAs) => void;
 }
-
-const quiet = (mail: PendingMail) => mail.deliverAs === "nextTurn";
 
 const held = (mail: PendingMail) => mail.deliverAs === "digest";
 
@@ -122,28 +73,23 @@ export const inbox = (host: MailHost) => {
   let last = Option.none<number>();
 
   return {
-    restore: (entries: readonly unknown[]) => {
+    clear: () => {
       pending.clear();
       digested.clear();
       last = Option.none();
-
-      for (const mail of unshown(entries)) {
-        pending.set(mail.id, mail);
-
-        if (!held(mail)) {
-          host.show(mail, quiet(mail) ? "nextTurn" : "steer");
-        }
-      }
     },
     shown: (id: string) => {
       pending.delete(id);
       digested.delete(id);
     },
     take: (taken: PendingMail, hold: Hold) => {
+      if (pending.has(taken.id)) {
+        return;
+      }
+
       const mail = { ...taken, deliverAs: hold };
 
       pending.set(mail.id, mail);
-      host.appendEntry?.(PENDING_ENTRY, mail);
 
       if (hold !== "digest") {
         host.show(mail, hold);

@@ -48,6 +48,7 @@ import {
   SEND_RESULT_EVENT,
 } from "../src/extension.ts";
 import { LexiconRecord, PayloadJson } from "../src/payload.ts";
+import { shownIds } from "../src/pending.ts";
 import { RelayHandled } from "../src/relay.ts";
 import { SecretStore } from "../src/secrets.ts";
 import { harness } from "./harness.ts";
@@ -497,7 +498,9 @@ const socketPort = Layer.succeed(WebSocketPort, {
   },
 });
 
-const host = () => {
+const host = (onSend?: () => void) => {
+  let shown: ((id: string) => void) | undefined;
+
   const lifecycle: RecordLifecycle = {
     end: idle,
     start: idle,
@@ -508,6 +511,9 @@ const host = () => {
 
   const pi: PiHost = {
     events: createEventBus(),
+    onMessageShown: (handler) => {
+      shown = handler;
+    },
     onSessionEnd: (handler) => {
       lifecycle.end = handler;
     },
@@ -519,10 +525,26 @@ const host = () => {
     sendMessage: (message, delivery) => {
       messages.push(message);
       deliveries.push(delivery);
+      onSend?.();
     },
   };
 
-  return { deliveries, lifecycle, messages, pi };
+  const display = () => {
+    for (const sent of messages) {
+      const message = Schema.decodeUnknownSync(
+        Schema.Struct({
+          customType: Schema.String,
+          details: Schema.optionalKey(Schema.Unknown),
+        })
+      )(sent);
+
+      for (const id of shownIds({ ...message, role: "custom" })) {
+        shown?.(id);
+      }
+    }
+  };
+
+  return { deliveries, display, lifecycle, messages, pi };
 };
 
 const facts = (session: string) =>
@@ -536,7 +558,7 @@ const facts = (session: string) =>
   });
 
 it.live.prop(
-  "inbound records stay on ratking/record, messages keep their path, and both checkpoint before ack",
+  "inbound records stay on ratking/record, messages keep their path, and both checkpoint before display ack",
   [
     Arbitrary.schema(
       Schema.Literals([
@@ -799,7 +821,12 @@ it.live.prop(
         )
       );
 
-      const { lifecycle, messages, deliveries, pi } = host();
+      const taken = yield* Deferred.make<boolean>();
+
+      const { lifecycle, messages, deliveries, pi, display } = host(() => {
+        Deferred.doneUnsafe(taken, Effect.succeed(true));
+      });
+
       const records: unknown[] = [];
       const received: unknown[] = [];
       pi.events.on(RECORD_EVENT, (data) => {
@@ -822,6 +849,8 @@ it.live.prop(
       yield* Effect.promise(async () => {
         await lifecycle.start({ session: "inbound", warn: () => {} });
       });
+      yield* Deferred.await(taken).pipe(Effect.timeout("5 seconds"));
+      display();
       yield* Deferred.await(acked).pipe(Effect.timeout("5 seconds"));
 
       if (mode === "relay") {

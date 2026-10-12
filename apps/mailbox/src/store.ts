@@ -48,6 +48,7 @@ export type RetirementValue = typeof Retirement.Type;
 export type Event = List.OutputValue["events"][number];
 
 export interface Transaction {
+  readonly delivered: () => readonly Message[];
   readonly recipient: () => string;
   readonly get: (sender: string, tid: string) => Message | undefined;
   readonly put: (message: Message) => void;

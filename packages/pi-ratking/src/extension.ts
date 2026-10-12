@@ -256,7 +256,6 @@ type Services = Layer.Success<typeof appLayer>;
 type Runtime = ManagedRuntime.ManagedRuntime<Services, NotConfigured>;
 
 export interface SessionStart {
-  readonly entries?: () => readonly unknown[];
   readonly interactive?: boolean;
   readonly session: string;
   readonly sessionName?: () => string | undefined;
@@ -265,7 +264,6 @@ export interface SessionStart {
 }
 
 export interface PiHost {
-  readonly appendEntry?: (customType: string, data: PendingMail) => void;
   readonly events: EventBus;
   readonly onMessageShown?: (handler: (id: string) => void) => void;
   readonly registerMessageRenderer: ExtensionAPI["registerMessageRenderer"];
@@ -278,9 +276,6 @@ export interface PiHost {
 }
 
 const piHost = (pi: ExtensionAPI): PiHost => ({
-  appendEntry: (customType, data) => {
-    pi.appendEntry(customType, data);
-  },
   events: pi.events,
   onMessageShown: (handler) => {
     pi.on("message_end", (event) => {
@@ -295,7 +290,6 @@ const piHost = (pi: ExtensionAPI): PiHost => ({
   onSessionStart: (handler) => {
     pi.on("session_start", async (_event, ctx) => {
       await handler({
-        entries: () => ctx.sessionManager.getBranch(),
         interactive: ctx.hasUI,
         session: ctx.sessionManager.getSessionId(),
         sessionName: () => pi.getSessionName(),
@@ -524,11 +518,9 @@ export const ratkingExtension = (options: ExtensionOptions) =>
     );
 
     let runtime = Option.none<Runtime>();
+    const acknowledgments = new Map<string, Effect.Effect<void>>();
 
     const mail = inbox({
-      appendEntry: (customType, data) => {
-        pi.appendEntry?.(customType, data);
-      },
       digest: (mails) => {
         pi.sendMessage(
           {
@@ -553,7 +545,16 @@ export const ratkingExtension = (options: ExtensionOptions) =>
       },
     });
 
-    pi.onMessageShown?.(mail.shown);
+    pi.onMessageShown?.((id) => {
+      mail.shown(id);
+
+      const ack = acknowledgments.get(id);
+
+      if (Option.isSome(runtime) && ack !== undefined) {
+        acknowledgments.delete(id);
+        void runtime.value.runPromiseExit(ack);
+      }
+    });
 
     const digestTicks = Clock.currentTimeMillis.pipe(
       Effect.flatMap((now) =>
@@ -566,8 +567,12 @@ export const ratkingExtension = (options: ExtensionOptions) =>
       Effect.asVoid
     );
 
-    const deliver: Deliver = (inbound, settled) =>
+    const deliver: Deliver = (inbound, settled, ack) =>
       Effect.sync(() => {
+        if (ack !== undefined) {
+          acknowledgments.set(inbound.id, ack);
+        }
+
         if ("record" in inbound) {
           pi.events.emit(RECORD_EVENT, {
             did: inbound.did,
@@ -609,6 +614,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
                 {
                   content: notice,
                   customType: "ratking_record_notice",
+                  details: { id: inbound.id },
                   display: true,
                 },
                 { deliverAs: "followUp", triggerTurn: false }
@@ -619,7 +625,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
           return;
         }
 
-        if (inbound.sentBy !== undefined) {
+        if (inbound.sentBy !== undefined || settled) {
           pi.sendMessage(
             {
               content: renderInbound(tool, inbound),
@@ -643,6 +649,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
             {
               content: notice,
               customType: "ratking_record_notice",
+              details: { id: inbound.id },
               display: true,
             },
             { deliverAs: "followUp", triggerTurn: false }
@@ -879,7 +886,8 @@ export const ratkingExtension = (options: ExtensionOptions) =>
 
       await stop();
 
-      mail.restore(start.entries?.() ?? []);
+      mail.clear();
+      acknowledgments.clear();
 
       const collected = await Effect.runPromise(
         options.facts(start.session, start.sessionName, start.interactive)
