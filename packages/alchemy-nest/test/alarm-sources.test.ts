@@ -142,7 +142,23 @@ it.effect.prop(
       expect(uncertain.readings["ship.failed"].status).toBe("unknown");
       expect(uncertain.readings["readers.stuck"].status).toBe("unknown");
       expect(uncertain.readings["quarantine.growth"].status).toBe("unknown");
-      expect(uncertain.readings["digest.fail"].status).toBe("firing");
+      expect(uncertain.readings["digest.fail"].status).toBe("unknown");
+
+      const stillUncertain = observeAlarms(
+        uncertain.sources,
+        {
+          ...facts,
+          health: 200,
+          measurementFailed: true,
+          quarantinedHour: null,
+          readers: { complete: false, seen: [running] },
+          receiptsKnown: false,
+          slots: null,
+        },
+        later + 120_000
+      );
+
+      expect(stillUncertain.readings["digest.fail"].status).toBe("firing");
     })
 );
 

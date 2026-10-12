@@ -34,7 +34,7 @@ const HeartbeatLine = Schema.Union([
   }),
 ]);
 
-export const READER_PROBE_LIMIT = "10 seconds";
+export const READER_PROBE_LIMIT = "30 seconds";
 
 export const readHeartbeats = Effect.fn("Alarm.readHeartbeats")(
   function* readHeartbeats(source: {
@@ -126,7 +126,7 @@ const observeReaders = (
   sources: NonNullable<StageConfigValue["alarm"]>["readerHeartbeats"]
 ) =>
   sources === undefined
-    ? Effect.succeed({ facts: null, failed: false })
+    ? Effect.succeed({ facts: null, failed: [] })
     : Effect.forEach(
         sources,
         (source) => readHeartbeats(source).pipe(Effect.option),
@@ -140,7 +140,11 @@ const observeReaders = (
               complete,
               seen: hosts.flatMap((host) => Option.getOrElse(host, () => [])),
             },
-            failed: !complete,
+            failed: sources.flatMap((source, index) =>
+              Option.isNone(hosts[index] ?? Option.none())
+                ? [`readers@${source.host}`]
+                : []
+            ),
           };
         })
       );
@@ -289,7 +293,7 @@ export const collectAlarmFacts = Effect.fn("Alarm.collect")(
         quarantine: observations.quarantine,
         receipts: observations.receipts,
       }),
-      ...(observations.readers.failed ? ["readers"] : []),
+      ...observations.readers.failed,
     ];
 
     return yield* Schema.decodeUnknownEffect(AlarmFacts)({

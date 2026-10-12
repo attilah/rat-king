@@ -22,8 +22,11 @@ const healthy: typeof AlarmFacts.Type = {
   slots: { free: 100, max: 100 },
 };
 
-const digestFor = (facts: typeof AlarmFacts.Type) =>
-  observeAlarms(emptySources, facts, 60_000).readings["digest.fail"];
+const digestFor = (facts: typeof AlarmFacts.Type) => {
+  const first = observeAlarms(emptySources, facts, 60_000);
+
+  return observeAlarms(first.sources, facts, 120_000).readings["digest.fail"];
+};
 
 describe("digest.fail evidence", () => {
   it("names each unavailable measurement", () => {
@@ -57,6 +60,22 @@ describe("digest.fail evidence", () => {
     ).toMatchObject({
       evidence: "Fleet digest failed; Measurements unavailable: deploy",
     });
+  });
+
+  it("one missed measurement cycle is unknown, not a firing", () => {
+    const missed = {
+      ...healthy,
+      failed: ["readers@alpha"],
+      measurementFailed: true,
+    };
+
+    const first = observeAlarms(emptySources, missed, 60_000);
+    const recovered = observeAlarms(first.sources, healthy, 120_000);
+    const again = observeAlarms(recovered.sources, missed, 180_000);
+
+    expect(first.readings["digest.fail"]).toEqual({ status: "unknown" });
+    expect(recovered.readings["digest.fail"]).toEqual({ status: "ok" });
+    expect(again.readings["digest.fail"]).toEqual({ status: "unknown" });
   });
 
   it("stays ok when everything answered", () => {

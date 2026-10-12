@@ -114,6 +114,7 @@ export const SourceState = Schema.Struct({
   downChecks: Count,
   entered: Schema.NullOr(Schema.Finite),
   instanceDownChecks: Schema.optionalKey(Schema.Record(Schema.String, Count)),
+  measurementMisses: Schema.optionalKey(Count),
   unexplained: Schema.Array(Schema.Finite),
 });
 
@@ -177,7 +178,7 @@ const trackSources = (
     unexplained.push(facts.entered);
   }
 
-  const tracked = {
+  const base = {
     downChecks:
       !facts.deployKnown || deployWindow(facts, now) || facts.health === 200
         ? 0
@@ -185,6 +186,13 @@ const trackSources = (
     entered: facts.entered ?? prior.entered,
     unexplained,
   };
+
+  const tracked: typeof SourceState.Type = facts.measurementFailed
+    ? {
+        ...base,
+        measurementMisses: Math.min((prior.measurementMisses ?? 0) + 1, 2),
+      }
+    : base;
 
   return facts.instances === undefined || facts.instances.length === 0
     ? tracked
@@ -407,9 +415,19 @@ const digestEvidence = (facts: typeof AlarmFacts.Type) => {
     : "Fleet digest failed";
 };
 
-const digestReading = (facts: typeof AlarmFacts.Type): AlarmReadingValue => {
-  if (facts.measurementFailed || facts.digest === "fail") {
+const digestReading = (
+  facts: typeof AlarmFacts.Type,
+  sources: typeof SourceState.Type
+): AlarmReadingValue => {
+  if (
+    facts.digest === "fail" ||
+    (facts.measurementFailed && (sources.measurementMisses ?? 0) >= 2)
+  ) {
     return firing("warn", digestEvidence(facts));
+  }
+
+  if (facts.measurementFailed) {
+    return unknown;
   }
 
   return facts.digest === null ? unknown : ok;
@@ -426,7 +444,7 @@ export const observeAlarms = (
     "cache.rewrites": cacheReading(facts, now),
     "celld.down": downReading(facts, sources, now),
     "celld.restarted": restartReading(facts, sources, now),
-    "digest.fail": digestReading(facts),
+    "digest.fail": digestReading(facts, sources),
     "filer.slots": slotReading(facts),
     "instance.down": instanceReading(facts, sources),
     "issuer.broken": facts.doctor
