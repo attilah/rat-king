@@ -94,6 +94,7 @@ export const AlarmFacts = Schema.Struct({
   deployKnown: Schema.Boolean,
   digest: Schema.NullOr(Schema.Literals(["ok", "warn", "fail"])),
   doctor: Schema.Boolean,
+  doctorReasons: Schema.optionalKey(Schema.Array(Schema.String)),
   entered: Schema.NullOr(Schema.Finite),
   failed: Schema.optionalKey(Schema.Array(Schema.String)),
   health: Schema.NullOr(Schema.Int),
@@ -115,6 +116,7 @@ export const AlarmFacts = Schema.Struct({
 });
 
 export const SourceState = Schema.Struct({
+  doctorMisses: Schema.optionalKey(Count),
   downChecks: Count,
   entered: Schema.NullOr(Schema.Finite),
   instanceDownChecks: Schema.optionalKey(Schema.Record(Schema.String, Count)),
@@ -191,12 +193,19 @@ const trackSources = (
     unexplained,
   };
 
-  const tracked: typeof SourceState.Type = facts.measurementFailed
+  const measured: typeof SourceState.Type = facts.measurementFailed
     ? {
         ...base,
         measurementMisses: Math.min((prior.measurementMisses ?? 0) + 1, 2),
       }
     : base;
+
+  const tracked: typeof SourceState.Type = facts.doctor
+    ? measured
+    : {
+        ...measured,
+        doctorMisses: Math.min((prior.doctorMisses ?? 0) + 1, 2),
+      };
 
   return facts.instances === undefined || facts.instances.length === 0
     ? tracked
@@ -419,6 +428,28 @@ const digestEvidence = (facts: typeof AlarmFacts.Type) => {
     : "Fleet digest failed";
 };
 
+const doctorReading = (
+  facts: typeof AlarmFacts.Type,
+  sources: typeof SourceState.Type
+): AlarmReadingValue => {
+  if (facts.doctor) {
+    return ok;
+  }
+
+  if ((sources.doctorMisses ?? 0) < 2) {
+    return unknown;
+  }
+
+  const named = (facts.doctorReasons ?? []).join("; ");
+
+  return firing(
+    "critical",
+    named === ""
+      ? "Configuration doctor failed twice in a row; it gave no reason"
+      : `Configuration doctor failed twice in a row: ${named}`
+  );
+};
+
 const digestReading = (
   facts: typeof AlarmFacts.Type,
   sources: typeof SourceState.Type
@@ -452,12 +483,7 @@ export const observeAlarms = (
     "digest.fail": digestReading(facts, sources),
     "filer.slots": slotReading(facts),
     "instance.down": instanceReading(facts, sources),
-    "issuer.broken": facts.doctor
-      ? ok
-      : firing(
-          "critical",
-          "Configuration doctor failed; input values withheld"
-        ),
+    "issuer.broken": doctorReading(facts, sources),
     "quarantine.growth": quarantineReading(facts),
     "readers.stuck": readerReading(facts),
     "ship.failed": shipReading(facts),
