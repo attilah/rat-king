@@ -17,7 +17,11 @@ export const probeIdentity = {
   version: "rollback-proof",
 };
 
-export const instanceProbeProgram = (host: Node, dataRoot: string) =>
+export const instanceProbeProgram = (
+  host: Node,
+  dataRoot: string,
+  purgeOnDelete = true
+) =>
   Effect.gen(function* probeStack() {
     const slice = yield* ObjectStore.Slice({
       cpuQuota: "100%",
@@ -36,7 +40,7 @@ export const instanceProbeProgram = (host: Node, dataRoot: string) =>
       name: "mischiefrb-cells",
       oomPolicy: "continue",
       portBase: probePortBase,
-      purgeOnDelete: true,
+      purgeOnDelete,
       slice: slice.sha256,
       volumeMax: 32,
     });
@@ -72,7 +76,7 @@ export const instanceProbeProgram = (host: Node, dataRoot: string) =>
       oomPolicy: "continue",
       portBase: probePortBase,
       prepared: staged,
-      purgeOnDelete: true,
+      purgeOnDelete,
       workerIPv4: "127.0.0.1",
     });
 

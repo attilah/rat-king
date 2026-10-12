@@ -19,7 +19,11 @@ def check(label, clean):
     print(('PASS ' if clean else 'FAIL ') + label)
     failed |= not clean
 def command(*args):
-    return subprocess.run(args, check=True, text=True, capture_output=True).stdout
+    result = subprocess.run(args, check=False, text=True, capture_output=True)
+    if result.returncode == 1 and args[:3] == ('systemctl', '--user', 'list-unit-files') and not result.stdout.strip():
+        return result.stdout
+    result.check_returncode()
+    return result.stdout
 try:
     files = command('systemctl', '--user', 'list-unit-files', 'mischiefrb-*', '--no-legend', '--no-pager')
     loaded = command('systemctl', '--user', 'list-units', '--all', 'mischiefrb-*', 'mischiefrb.slice', '--no-legend', '--no-pager')
