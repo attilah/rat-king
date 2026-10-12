@@ -28,6 +28,7 @@ const Notice = Schema.Struct({
 
 export const AlarmJournal = Schema.Struct({
   alarms: Schema.Record(Schema.String, AlarmState),
+  instanceRecipients: Schema.optionalKey(Schema.Array(Schema.String)),
   notices: Schema.Array(Notice),
   pages: Schema.Array(Schema.Struct({ at: Schema.Finite, key: AlarmKey })),
   pending: Schema.Array(Delivery),
@@ -140,6 +141,37 @@ const withAlarmState = (
   alarms: { ...journal.alarms, [key]: state },
 });
 
+const instanceRecoveryRecipients = (
+  journal: AlarmJournalValue,
+  key: AlarmKeyValue,
+  kind: "fire" | "clear"
+) =>
+  key === "instance.down" && kind === "clear"
+    ? (journal.instanceRecipients ?? [])
+    : [];
+
+const rememberInstanceRecipients = (
+  journal: AlarmJournalValue,
+  notice: typeof Notice.Type
+): AlarmJournalValue => {
+  if (notice.key !== "instance.down") {
+    return journal;
+  }
+
+  return {
+    ...journal,
+    instanceRecipients:
+      notice.kind === "fire"
+        ? [
+            ...new Set([
+              ...(journal.instanceRecipients ?? []),
+              ...notice.recipients,
+            ]),
+          ]
+        : [],
+  };
+};
+
 export const alarmCycle = Effect.fn("Alarm.cycle")(function* alarmCycle<R>(
   prior: AlarmJournalValue,
   facts: typeof AlarmFacts.Type,
@@ -210,6 +242,7 @@ export const alarmCycle = Effect.fn("Alarm.cycle")(function* alarmCycle<R>(
               .map((instance) => instance.name)
           ),
           ...(reading.status === "firing" ? (reading.recipients ?? []) : []),
+          ...instanceRecoveryRecipients(current, key, next.notice),
         ]),
       ],
       text,
@@ -224,10 +257,13 @@ export const alarmCycle = Effect.fn("Alarm.cycle")(function* alarmCycle<R>(
         )
     );
 
-    current = {
-      ...withAlarmState(current, key, next.state),
-      notices: [...notices, notice],
-    };
+    current = rememberInstanceRecipients(
+      {
+        ...withAlarmState(current, key, next.state),
+        notices: [...notices, notice],
+      },
+      notice
+    );
     yield* ports.save(current);
   }
 

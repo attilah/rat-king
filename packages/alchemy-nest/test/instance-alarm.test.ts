@@ -11,7 +11,11 @@ import {
   observeAlarms,
 } from "../../../stacks/nest/alarm-sources.ts";
 import type { AlarmFacts } from "../../../stacks/nest/alarm-sources.ts";
-import { alarmCycle, emptyJournal } from "../../../stacks/nest/alarm.ts";
+import {
+  AlarmJournal,
+  alarmCycle,
+  emptyJournal,
+} from "../../../stacks/nest/alarm.ts";
 import type { AlarmPorts } from "../../../stacks/nest/alarm.ts";
 
 const settings = Schema.decodeUnknownSync(AlarmSettings)({
@@ -45,6 +49,11 @@ const settings = Schema.decodeUnknownSync(AlarmSettings)({
   owners: { celld: "mailbox-owner", instance: "unrelated-owner" },
   page: { node: "node", script: "/fixture.invalid/page.mjs" },
 });
+
+const restart = (journal: typeof AlarmJournal.Type) =>
+  Schema.encodeEffect(Schema.fromJsonString(AlarmJournal))(journal).pipe(
+    Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(AlarmJournal)))
+  );
 
 const healthy: typeof AlarmFacts.Type = {
   cacheBreaches: [],
@@ -245,6 +254,213 @@ it.effect.prop(
           "observer-invalid",
         ]);
       }
+    })
+);
+
+it.effect.prop(
+  "persisted instance fire recipients receive aggregate recovery, while mailbox clear routing stays unchanged",
+  { renotify: Schema.Boolean },
+  ({ renotify }) =>
+    Effect.gen(function* recovery() {
+      const notices: {
+        key: string;
+        recipients: readonly string[];
+        text: string;
+      }[] = [];
+
+      const checkpoints: (typeof AlarmJournal.Type)[] = [];
+
+      const ports: AlarmPorts<never> = {
+        page: () => Effect.void,
+        prepare: (key, recipients, text) =>
+          Effect.sync(() => {
+            notices.push({ key, recipients, text });
+
+            return [];
+          }),
+        save: (journal) =>
+          Effect.sync(() => {
+            checkpoints.push(journal);
+          }),
+        send: () => Effect.die("empty test preparation sends nothing"),
+        unavailable: Effect.die("test ports are available"),
+      };
+
+      const legacy = yield* restart(emptyJournal);
+      expect(legacy.instanceRecipients).toBeUndefined();
+
+      let journal = yield* alarmCycle(
+        legacy,
+        {
+          ...healthy,
+          instances: [
+            { name: "instance-a", reason: "transport error", status: "down" },
+          ],
+        },
+        1000,
+        settings,
+        ports
+      );
+
+      expect(notices.at(-1)?.recipients.toSorted()).toEqual([
+        "observer-invalid",
+        "owner-a",
+      ]);
+      journal = yield* restart(journal);
+      expect(journal.instanceRecipients?.toSorted()).toEqual([
+        "observer-invalid",
+        "owner-a",
+      ]);
+
+      if (renotify) {
+        journal = yield* alarmCycle(
+          journal,
+          {
+            ...healthy,
+            instances: [
+              { name: "instance-b", reason: "HTTP 503", status: "down" },
+            ],
+          },
+          7_201_000,
+          settings,
+          ports
+        );
+        expect(notices.at(-1)?.recipients.toSorted()).toEqual([
+          "observer-invalid",
+          "owner-b",
+        ]);
+        journal = yield* restart(journal);
+        expect(journal.instanceRecipients?.toSorted()).toEqual([
+          "observer-invalid",
+          "owner-a",
+          "owner-b",
+        ]);
+      }
+
+      notices.length = 0;
+      const changedSettings = { ...settings, instances: [] };
+      journal = yield* alarmCycle(
+        journal,
+        healthy,
+        7_202_000,
+        changedSettings,
+        ports
+      );
+
+      const expected = [
+        "observer-invalid",
+        "owner-a",
+        ...(renotify ? ["owner-b"] : []),
+      ];
+
+      expect(notices).toHaveLength(1);
+      expect(notices.map((notice) => notice.key)).toEqual(["instance.down"]);
+      expect(notices[0]?.text).toContain("instance.down cleared");
+      expect(notices[0]?.recipients.toSorted()).toEqual(expected);
+      expect(journal.instanceRecipients).toEqual([]);
+
+      const queuedClear = checkpoints.find((checkpoint) =>
+        checkpoint.notices.some(
+          (notice) => notice.key === "instance.down" && notice.kind === "clear"
+        )
+      );
+
+      expect(
+        queuedClear?.notices
+          .find((notice) => notice.kind === "clear")
+          ?.recipients.toSorted()
+      ).toEqual(expected);
+      expect(queuedClear?.instanceRecipients).toEqual([]);
+      notices.length = 0;
+      journal = yield* restart(journal);
+      journal = yield* alarmCycle(
+        journal,
+        {
+          ...healthy,
+          instances: [
+            { name: "instance-b", reason: "HTTP 503", status: "down" },
+          ],
+        },
+        7_203_000,
+        settings,
+        ports
+      );
+      expect(notices.at(-1)?.recipients.toSorted()).toEqual([
+        "observer-invalid",
+        "owner-b",
+      ]);
+      expect(journal.instanceRecipients?.toSorted()).toEqual([
+        "observer-invalid",
+        "owner-b",
+      ]);
+
+      const mailboxFirst = yield* alarmCycle(
+        journal,
+        { ...healthy, health: 503 },
+        7_204_000,
+        settings,
+        ports
+      );
+
+      const mailboxDown = yield* alarmCycle(
+        mailboxFirst,
+        { ...healthy, health: 503 },
+        7_205_000,
+        settings,
+        ports
+      );
+
+      notices.length = 0;
+      yield* alarmCycle(
+        yield* restart(mailboxDown),
+        healthy,
+        7_206_000,
+        settings,
+        ports
+      );
+      expect(notices).toHaveLength(1);
+      expect(notices.map((notice) => notice.key)).toEqual(["celld.down"]);
+      expect(notices[0]?.text).toContain("celld.down cleared");
+      expect(notices[0]?.recipients.toSorted()).toEqual([
+        "mailbox-owner",
+        "observer-invalid",
+      ]);
+
+      const baseline = yield* alarmCycle(
+        emptyJournal,
+        { ...healthy, entered: 1000 },
+        1000,
+        settings,
+        ports
+      );
+
+      const restarted = yield* alarmCycle(
+        baseline,
+        { ...healthy, entered: 2000 },
+        2000,
+        settings,
+        ports
+      );
+
+      expect(restarted.instanceRecipients).toBeUndefined();
+      expect(notices.at(-1)?.key).toBe("celld.restarted");
+      notices.length = 0;
+
+      const stable = yield* alarmCycle(
+        yield* restart(restarted),
+        { ...healthy, entered: 2000 },
+        3_602_000,
+        settings,
+        ports
+      );
+
+      expect(stable.instanceRecipients).toBeUndefined();
+      expect(notices).toHaveLength(1);
+      expect(notices[0]?.text).toContain("celld.restarted cleared");
+      expect(notices[0]?.recipients.toSorted()).toEqual([
+        "mailbox-owner",
+        "observer-invalid",
+      ]);
     })
 );
 
