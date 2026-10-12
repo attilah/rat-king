@@ -152,6 +152,13 @@ const probe = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     Effect.catchCause(() => Effect.succeed(Option.none<A>()))
   );
 
+const unavailable = (
+  measured: Readonly<Record<string, Option.Option<unknown>>>
+) =>
+  Object.entries(measured)
+    .filter(([, value]) => Option.isNone(value))
+    .map(([name]) => name);
+
 const backupWindowOf = (digest: HealthDigest | null) => {
   const run = digest?.backup.lastRun ?? null;
 
@@ -273,6 +280,18 @@ export const collectAlarmFacts = Effect.fn("Alarm.collect")(
 
     const healthy = Option.getOrNull(observations.health);
 
+    const failed = [
+      ...unavailable({
+        deploy: observations.deploy,
+        digest: observations.digest,
+        doctor: observations.doctor,
+        health: observations.health,
+        quarantine: observations.quarantine,
+        receipts: observations.receipts,
+      }),
+      ...(observations.readers.failed ? ["readers"] : []),
+    ];
+
     return yield* Schema.decodeUnknownEffect(AlarmFacts)({
       backup: backupWindowOf(healthy),
       cacheBreaches: Option.getOrNull(observations.cache),
@@ -285,16 +304,10 @@ export const collectAlarmFacts = Effect.fn("Alarm.collect")(
         healthy.services.celld.activeEnterTimestamp === null
           ? null
           : DateTime.toEpochMillis(healthy.services.celld.activeEnterTimestamp),
+      failed,
       health: healthy?.health.status ?? null,
       instances: observations.instances,
-      measurementFailed:
-        Option.isNone(observations.deploy) ||
-        Option.isNone(observations.doctor) ||
-        Option.isNone(observations.health) ||
-        Option.isNone(observations.quarantine) ||
-        Option.isNone(observations.digest) ||
-        Option.isNone(observations.receipts) ||
-        observations.readers.failed,
+      measurementFailed: failed.length > 0,
       quarantinedHour: Option.getOrNull(observations.quarantine),
       readers: observations.readers.facts,
       receipts: Option.getOrElse(observations.receipts, () => []),

@@ -94,6 +94,7 @@ export const AlarmFacts = Schema.Struct({
   digest: Schema.NullOr(Schema.Literals(["ok", "warn", "fail"])),
   doctor: Schema.Boolean,
   entered: Schema.NullOr(Schema.Finite),
+  failed: Schema.optionalKey(Schema.Array(Schema.String)),
   health: Schema.NullOr(Schema.Int),
   instances: Schema.optionalKey(Schema.Array(InstanceHealth)),
   measurementFailed: Schema.Boolean,
@@ -389,12 +390,26 @@ const cacheReading = (
   );
 };
 
+const digestEvidence = (facts: typeof AlarmFacts.Type) => {
+  const failed = facts.failed ?? [];
+
+  const named =
+    failed.length > 0
+      ? `Measurements unavailable: ${failed.join(", ")}`
+      : "An alarm measurement was unavailable";
+
+  if (facts.digest !== "fail") {
+    return named;
+  }
+
+  return facts.measurementFailed
+    ? `Fleet digest failed; ${named}`
+    : "Fleet digest failed";
+};
+
 const digestReading = (facts: typeof AlarmFacts.Type): AlarmReadingValue => {
   if (facts.measurementFailed || facts.digest === "fail") {
-    return firing(
-      "warn",
-      "Digest failed or an alarm measurement was unavailable"
-    );
+    return firing("warn", digestEvidence(facts));
   }
 
   return facts.digest === null ? unknown : ok;
