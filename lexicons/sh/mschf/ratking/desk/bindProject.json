@@ -1,0 +1,38 @@
+{
+  "lexicon": 1,
+  "id": "sh.mschf.ratking.desk.bindProject",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Bind the desk to its project once, so ingest refuses items for another project. Repeating the same project is idempotent; another project is refused. Only the desk may bind.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["desk", "project"],
+          "properties": {
+            "desk": { "type": "string", "format": "did" },
+            "project": { "type": "string", "maxLength": 128, "x-minCodeUnits": 1 }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["project"],
+          "properties": {
+            "project": { "type": "string", "maxLength": 128 }
+          }
+        }
+      },
+      "errors": [
+        { "name": "InvalidRequest" },
+        { "name": "AuthRequired" },
+        { "name": "Forbidden" },
+        { "name": "ProjectConflict", "description": "The desk is bound to another project." },
+        { "name": "MailboxUnavailable" }
+      ]
+    }
+  }
+}

@@ -1,0 +1,90 @@
+{
+  "lexicon": 1,
+  "id": "sh.mschf.ratking.desk.defs",
+  "defs": {
+    "ownerItem": {
+      "type": "object",
+      "description": "One owner-queue post. uri is its identity; cid is the first 32 hex digits of the SHA-256 of the canonical JSON of every other field. The text cap is checked exactly at ingest.",
+      "x-strict": true,
+      "required": ["uri", "cid", "author", "createdAt", "text", "kind"],
+      "properties": {
+        "uri": { "type": "string", "maxLength": 512, "x-minCodeUnits": 1 },
+        "cid": { "type": "string", "x-pattern": "^[0-9a-f]{32}$" },
+        "author": { "type": "string", "format": "did" },
+        "createdAt": { "type": "string", "format": "datetime" },
+        "text": { "type": "string", "maxLength": 8192 },
+        "kind": {
+          "type": "string",
+          "enum": ["fyi", "progress", "done", "question", "blocked", "action"]
+        },
+        "project": { "type": "string", "maxLength": 128 },
+        "lane": { "type": "string", "maxLength": 128 },
+        "refs": {
+          "type": "array",
+          "maxLength": 32,
+          "items": { "type": "string", "maxLength": 1024 }
+        },
+        "reply": { "type": "ref", "ref": "#replyRef" },
+        "facets": {
+          "type": "array",
+          "maxLength": 8,
+          "items": { "type": "ref", "ref": "#facet" }
+        }
+      }
+    },
+    "strongRef": {
+      "type": "object",
+      "required": ["uri", "cid"],
+      "properties": {
+        "uri": { "type": "string", "maxLength": 512 },
+        "cid": { "type": "string", "maxLength": 64 }
+      }
+    },
+    "replyRef": {
+      "type": "object",
+      "required": ["root", "parent"],
+      "properties": {
+        "root": { "type": "ref", "ref": "#strongRef" },
+        "parent": { "type": "ref", "ref": "#strongRef" }
+      }
+    },
+    "facet": {
+      "type": "object",
+      "description": "A byte range of text; ingest refuses a range outside the UTF-8 text.",
+      "required": ["index", "features"],
+      "properties": {
+        "index": { "type": "ref", "ref": "#byteSlice" },
+        "features": {
+          "type": "array",
+          "minLength": 1,
+          "maxLength": 4,
+          "items": { "type": "union", "refs": ["#mention"] }
+        }
+      }
+    },
+    "byteSlice": {
+      "type": "object",
+      "required": ["byteStart", "byteEnd"],
+      "properties": {
+        "byteStart": { "type": "integer", "minimum": 0 },
+        "byteEnd": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "mention": {
+      "type": "object",
+      "required": ["did"],
+      "properties": {
+        "did": { "type": "string", "format": "did" }
+      }
+    },
+    "queued": {
+      "type": "object",
+      "description": "An item with the monotonic sequence number its desk assigned at insert.",
+      "required": ["seq", "item"],
+      "properties": {
+        "seq": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "item": { "type": "ref", "ref": "#ownerItem" }
+      }
+    }
+  }
+}

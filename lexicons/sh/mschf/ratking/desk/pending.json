@@ -1,0 +1,50 @@
+{
+  "lexicon": 1,
+  "id": "sh.mschf.ratking.desk.pending",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "The wake view over the oldest 200 undelivered items. mentions are the undelivered items that mention the desk, in seq order. digest is the same window in digest order: mentions, then only the latest progress per author, then the rest grouped by author. covered lists every uri in the window, including superseded progress, for the ack after a digest. The attached client decides when to wake. Only the desk may read.",
+      "parameters": {
+        "type": "params",
+        "required": ["desk"],
+        "properties": {
+          "desk": { "type": "string", "format": "did" }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["mentions", "digest", "covered", "more"],
+          "properties": {
+            "mentions": {
+              "type": "array",
+              "maxLength": 200,
+              "items": { "type": "ref", "ref": "sh.mschf.ratking.desk.defs#queued" }
+            },
+            "digest": {
+              "type": "array",
+              "maxLength": 200,
+              "items": { "type": "ref", "ref": "sh.mschf.ratking.desk.defs#queued" }
+            },
+            "covered": {
+              "type": "array",
+              "maxLength": 200,
+              "items": { "type": "string", "maxLength": 512 }
+            },
+            "oldestQuietAt": { "type": "string", "format": "datetime" },
+            "oldestQuietAgeMs": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+            "more": { "type": "boolean" }
+          }
+        }
+      },
+      "errors": [
+        { "name": "InvalidRequest" },
+        { "name": "AuthRequired" },
+        { "name": "Forbidden" },
+        { "name": "MailboxUnavailable" }
+      ]
+    }
+  }
+}

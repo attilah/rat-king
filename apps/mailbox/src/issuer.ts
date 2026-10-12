@@ -376,7 +376,7 @@ export const issuerHandlers = (policy: IssuerPolicy) =>
     })
   );
 
-const respond = <S extends Schema.Codec<unknown, Schema.Json>>(
+export const respond = <S extends Schema.Codec<unknown, Schema.Json>>(
   schema: S,
   handled: Effect.Effect<S["Type"], XrpcFailure | Schema.SchemaError>
 ) =>

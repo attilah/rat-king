@@ -1,5 +1,6 @@
 import type { HostedBindings } from "@rat-king/agent-runtime/hosted";
 
+import type { Desk } from "./desk-object.ts";
 import type { Issuer } from "./issuer-object.ts";
 import type { Mailbox, AuthTokens } from "./worker.ts";
 
@@ -7,6 +8,7 @@ export interface Bindings {
   readonly MAILBOX: DurableObjectNamespace<Mailbox>;
   readonly AUTH_TOKENS: DurableObjectNamespace<AuthTokens>;
   readonly ISSUER?: DurableObjectNamespace<Issuer>;
+  readonly DESK?: DurableObjectNamespace<Desk>;
   readonly ISSUER_DID_TEMPLATE?: string;
   readonly ISSUER_RESERVED?: string;
   readonly SERVICE_DID: string;
@@ -34,6 +36,8 @@ export interface Build {
 
 const issuerMigration = { new_sqlite_classes: ["Issuer"], tag: "v2" };
 
+const deskMigration = { new_sqlite_classes: ["Desk"], tag: "v3" };
+
 export const bindings = {
   compatibility_date: "2026-10-04",
   compatibility_flags: ["nodejs_compat"],
@@ -42,11 +46,13 @@ export const bindings = {
       { class_name: "Mailbox", name: "MAILBOX" },
       { class_name: "AuthTokens", name: "AUTH_TOKENS" },
       { class_name: "Issuer", name: "ISSUER" },
+      { class_name: "Desk", name: "DESK" },
     ],
   },
   migrations: [
     { new_sqlite_classes: ["Mailbox", "AuthTokens"], tag: "v1" },
     issuerMigration,
+    deskMigration,
   ],
   name: "rat-king-mailbox",
 };
@@ -62,6 +68,7 @@ export const hostedBindings = {
   migrations: [
     { new_sqlite_classes: ["Mailbox", "AuthTokens", "Agent"], tag: "v1" },
     issuerMigration,
+    deskMigration,
   ],
 };
 

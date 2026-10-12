@@ -1,0 +1,43 @@
+{
+  "lexicon": 1,
+  "id": "sh.mschf.ratking.desk.ack",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Mark exactly the named items delivered. Unknown or already delivered uris change nothing. The cursor never moves back. Only the desk may ack.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["desk", "uris"],
+          "properties": {
+            "desk": { "type": "string", "format": "did" },
+            "uris": {
+              "type": "array",
+              "minLength": 1,
+              "maxLength": 200,
+              "items": { "type": "string", "maxLength": 512 }
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["acked", "deliveredThrough"],
+          "properties": {
+            "acked": { "type": "integer", "minimum": 0, "maximum": 200 },
+            "deliveredThrough": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+          }
+        }
+      },
+      "errors": [
+        { "name": "InvalidRequest" },
+        { "name": "AuthRequired" },
+        { "name": "Forbidden" },
+        { "name": "MailboxUnavailable" }
+      ]
+    }
+  }
+}

@@ -179,13 +179,14 @@ it.effect.prop(
         migrations: [
           { new_sqlite_classes: ["Mailbox", "AuthTokens", "Agent"], tag: "v1" },
           { new_sqlite_classes: ["Issuer"], tag: "v2" },
+          { new_sqlite_classes: ["Desk"], tag: "v3" },
         ],
       };
 
       const extras = Object.fromEntries(
         Object.entries(input.extraVars).filter(
           ([key]) =>
-            !["MAILBOX", "AUTH_TOKENS", "ISSUER", "AGENT"].includes(key)
+            !["MAILBOX", "AUTH_TOKENS", "ISSUER", "DESK", "AGENT"].includes(key)
         )
       );
 

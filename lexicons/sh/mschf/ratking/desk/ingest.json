@@ -1,0 +1,41 @@
+{
+  "lexicon": 1,
+  "id": "sh.mschf.ratking.desk.ingest",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Store one owner-queue item in a desk's queue. The caller must be the desk or the item's author. Ingest is idempotent by uri: the same uri and cid returns the stored seq with stored false; the same uri with another cid is refused and logged. An item naming a project other than the desk's bound project is refused.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["desk", "item"],
+          "properties": {
+            "desk": { "type": "string", "format": "did" },
+            "item": { "type": "ref", "ref": "sh.mschf.ratking.desk.defs#ownerItem" }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["seq", "stored"],
+          "properties": {
+            "seq": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+            "stored": { "type": "boolean" }
+          }
+        }
+      },
+      "errors": [
+        { "name": "InvalidRequest" },
+        { "name": "AuthRequired" },
+        { "name": "Forbidden" },
+        { "name": "CidInvalid", "description": "cid is not the content hash of the item." },
+        { "name": "CidConflict", "description": "The desk already holds this uri with another cid." },
+        { "name": "ProjectMismatch", "description": "The item names a project other than the desk's." },
+        { "name": "MailboxUnavailable" }
+      ]
+    }
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "lexicon": 1,
+  "id": "sh.mschf.ratking.desk.inbox",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Read the desk's own queue in seq order without changing it. Without since, only undelivered items; with since, every item created at or after it. Only the desk may read.",
+      "parameters": {
+        "type": "params",
+        "required": ["desk"],
+        "properties": {
+          "desk": { "type": "string", "format": "did" },
+          "since": { "type": "string", "format": "datetime" },
+          "limit": { "type": "integer", "minimum": 1, "maximum": 200, "default": 50 }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["items", "deliveredThrough"],
+          "properties": {
+            "items": {
+              "type": "array",
+              "maxLength": 200,
+              "items": { "type": "ref", "ref": "sh.mschf.ratking.desk.defs#queued" }
+            },
+            "deliveredThrough": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+          }
+        }
+      },
+      "errors": [
+        { "name": "InvalidRequest" },
+        { "name": "AuthRequired" },
+        { "name": "Forbidden" },
+        { "name": "MailboxUnavailable" }
+      ]
+    }
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "lexicon": 1,
+  "id": "sh.mschf.ratking.desk.fork",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Seed the empty desk named by desk from fromDid's queue: items with seq at most atSeq keep their seqs, the cursor is cut at atSeq, and the project binding and reply map come along. The two desks then progress independently. Only fromDid may fork its queue.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["desk", "fromDid", "atSeq"],
+          "properties": {
+            "desk": { "type": "string", "format": "did" },
+            "fromDid": { "type": "string", "format": "did" },
+            "atSeq": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["desk", "fromDid", "atSeq", "copied", "deliveredThrough"],
+          "properties": {
+            "desk": { "type": "string", "format": "did" },
+            "fromDid": { "type": "string", "format": "did" },
+            "atSeq": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+            "copied": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+            "deliveredThrough": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+          }
+        }
+      },
+      "errors": [
+        { "name": "InvalidRequest" },
+        { "name": "AuthRequired" },
+        { "name": "Forbidden" },
+        { "name": "DeskNotEmpty", "description": "The target desk already holds state." },
+        { "name": "MailboxUnavailable" }
+      ]
+    }
+  }
+}

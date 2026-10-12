@@ -1,0 +1,40 @@
+{
+  "lexicon": 1,
+  "id": "sh.mschf.ratking.desk.rememberReply",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Record the Rat King message id an item arrived in, so a reply can thread on it. The first record for a uri wins; repeats return it. Only the desk may write.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["desk", "uri", "messageId"],
+          "properties": {
+            "desk": { "type": "string", "format": "did" },
+            "uri": { "type": "string", "maxLength": 512 },
+            "messageId": { "type": "string", "maxLength": 64 }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": { "type": "ref", "ref": "#reply" }
+      },
+      "errors": [
+        { "name": "InvalidRequest" },
+        { "name": "AuthRequired" },
+        { "name": "Forbidden" },
+        { "name": "MailboxUnavailable" }
+      ]
+    },
+    "reply": {
+      "type": "object",
+      "required": ["uri", "messageId"],
+      "properties": {
+        "uri": { "type": "string", "maxLength": 512 },
+        "messageId": { "type": "string", "maxLength": 64 }
+      }
+    }
+  }
+}

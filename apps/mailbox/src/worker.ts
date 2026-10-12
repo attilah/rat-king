@@ -1,5 +1,8 @@
 import * as PutDocument from "@rat-king/lexicon/admin.putDidDocument";
 import * as Defs from "@rat-king/lexicon/defs";
+import * as DeskInbox from "@rat-king/lexicon/desk.inbox";
+import * as DeskPending from "@rat-king/lexicon/desk.pending";
+import * as DeskReplyFor from "@rat-king/lexicon/desk.replyFor";
 import * as ListNames from "@rat-king/lexicon/identity.listNames";
 import * as ListRetired from "@rat-king/lexicon/identity.listRetired";
 /* oxlint-disable promise/prefer-await-to-callbacks, typescript/promise-function-async -- Effect adapters require lazy Promise thunks, not callback-style control flow. */
@@ -25,6 +28,7 @@ import { Clock, Effect, Layer, Schema } from "effect";
 
 import { authenticate, authenticateClaims } from "./auth.ts";
 import type { Bindings } from "./bindings.ts";
+import { deskMethods } from "./desk.ts";
 import { documentsLayer, didAllowlist, peerDocument } from "./documents.ts";
 import { logFailure } from "./failure-log.ts";
 import type { FailureScope } from "./failure-log.ts";
@@ -906,6 +910,7 @@ const methods = new Set<string>(
     Subscribe.Method,
     SubscribeTraffic.Method,
     ...issuerMethods,
+    ...deskMethods,
   ].map((method) => method.nsid)
 );
 
@@ -975,6 +980,122 @@ const issuerRequest = Effect.fn("Issuer.request")(function* issuerRequest(
   });
 });
 
+const deskQuery = (
+  nsid: string,
+  entries: readonly (readonly [string, string])[]
+) => {
+  switch (nsid) {
+    case DeskInbox.Method.nsid: {
+      return DeskInbox.decodeParams(entries).pipe(
+        Effect.flatMap((params) =>
+          Schema.encodeEffect(DeskInbox.Params)(params).pipe(
+            Effect.map((encoded) => ({ desk: params.desk, params: encoded }))
+          )
+        )
+      );
+    }
+
+    case DeskPending.Method.nsid: {
+      return DeskPending.decodeParams(entries).pipe(
+        Effect.flatMap((params) =>
+          Schema.encodeEffect(DeskPending.Params)(params).pipe(
+            Effect.map((encoded) => ({ desk: params.desk, params: encoded }))
+          )
+        )
+      );
+    }
+
+    default: {
+      return DeskReplyFor.decodeParams(entries).pipe(
+        Effect.flatMap((params) =>
+          Schema.encodeEffect(DeskReplyFor.Params)(params).pipe(
+            Effect.map((encoded) => ({ desk: params.desk, params: encoded }))
+          )
+        )
+      );
+    }
+  }
+};
+
+const deskRequest = Effect.fn("Desk.request")(function* deskRequest(
+  request: Request,
+  env: Bindings,
+  nsid: string,
+  caller: string,
+  scope: FailureScope
+) {
+  const desks = env.DESK;
+
+  if (desks === undefined) {
+    return yield* Effect.fail(failure("MailboxUnavailable", 503));
+  }
+
+  const query = deskMethods.some(
+    (method) => method.nsid === nsid && method.method === "GET"
+  );
+
+  let desk: string;
+  let transport: XrpcRequest;
+
+  if (query) {
+    if (request.method !== "GET") {
+      return yield* Effect.fail(failure("InvalidRequest"));
+    }
+
+    const decoded = yield* deskQuery(nsid, [
+      ...new URL(request.url).searchParams.entries(),
+    ]).pipe(Effect.mapError(() => failure("InvalidRequest")));
+
+    ({ desk } = decoded);
+    transport = {
+      input: undefined,
+      method: "GET",
+      nsid,
+      params: decoded.params,
+    };
+  } else {
+    if (
+      request.method !== "POST" ||
+      request.headers.get("content-type")?.split(";")[0] !== "application/json"
+    ) {
+      return yield* Effect.fail(failure("InvalidRequest"));
+    }
+
+    const input = yield* Effect.tryPromise({
+      catch: () => failure("InvalidRequest"),
+      try: () => request.json(),
+    });
+
+    ({ desk } = yield* Schema.decodeUnknownEffect(
+      Schema.Struct({ desk: Schema.String })
+    )(input).pipe(Effect.mapError(() => failure("InvalidRequest"))));
+    transport = {
+      input: yield* Schema.decodeUnknownEffect(Schema.toEncoded(Runtime.Data))(
+        input
+      ).pipe(Effect.mapError(() => failure("InvalidRequest"))),
+      method: "POST",
+      nsid,
+      params: undefined,
+    };
+  }
+
+  if (desk === trafficDid || !desk.startsWith("did:web:")) {
+    return yield* Effect.fail(failure("Forbidden", 403));
+  }
+
+  scope.recipient = desk;
+
+  const response = yield* Effect.tryPromise({
+    catch: () => failure("MailboxUnavailable", 503),
+    try: () => desks.getByName(desk).route(transport, caller),
+  });
+
+  return new Response(response.body, {
+    headers: { "content-type": "application/json" },
+    status: response.status,
+  });
+});
+
 const presenceRequest = Effect.fn("Mailbox.presence")(function* presenceRequest(
   request: Request,
   env: Bindings,
@@ -1025,6 +1146,10 @@ const serviceRequest = (
 ) => {
   if (issuerMethods.some((method) => method.nsid === nsid)) {
     return issuerRequest(request, env, nsid, issuer);
+  }
+
+  if (deskMethods.some((method) => method.nsid === nsid)) {
+    return deskRequest(request, env, nsid, issuer, scope);
   }
 
   if (nsid === Presence.Method.nsid) {
@@ -1104,6 +1229,7 @@ const handleRequest = (
         Peer.Method,
         Presence.Method,
         ...issuerMethods,
+        ...deskMethods,
       ].some((method) => method.nsid === nsid)
     ) {
       return Response.json({ error: "InvalidRequest" }, { status: 404 });
@@ -1302,3 +1428,5 @@ export default {
 export { AuthTokens } from "./auth-tokens.ts";
 
 export { Issuer } from "./issuer-object.ts";
+
+export { Desk } from "./desk-object.ts";

@@ -1,0 +1,35 @@
+{
+  "lexicon": 1,
+  "id": "sh.mschf.ratking.desk.replyFor",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "The Rat King message id recorded for an item, if any. Only the desk may read.",
+      "parameters": {
+        "type": "params",
+        "required": ["desk", "uri"],
+        "properties": {
+          "desk": { "type": "string", "format": "did" },
+          "uri": { "type": "string", "maxLength": 512 }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["uri"],
+          "properties": {
+            "uri": { "type": "string", "maxLength": 512 },
+            "messageId": { "type": "string", "maxLength": 64 }
+          }
+        }
+      },
+      "errors": [
+        { "name": "InvalidRequest" },
+        { "name": "AuthRequired" },
+        { "name": "Forbidden" },
+        { "name": "MailboxUnavailable" }
+      ]
+    }
+  }
+}
