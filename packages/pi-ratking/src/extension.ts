@@ -73,6 +73,10 @@ export const RETIRE_RESULT_EVENT = "ratking/retire:result";
 
 const RELEASE_WAIT_MS = 2000;
 
+export const deliveryMode = (inbound: {
+  readonly cc: boolean;
+}): "followUp" | "steer" => (inbound.cc ? "followUp" : "steer");
+
 export const injects = (
   inbound: { readonly kind: string; readonly body?: string },
   settled: boolean
@@ -501,7 +505,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
                 details: inboundDetails(message, settled),
                 display: true,
               },
-              { deliverAs: "followUp", triggerTurn: true }
+              { deliverAs: "steer", triggerTurn: true }
             );
           } else {
             const notice = recordNotice({ ...inbound, body }, settled);
@@ -559,7 +563,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
               details: inboundDetails(inbound, settled),
               display: true,
             },
-            { deliverAs: "followUp", triggerTurn: true }
+            { deliverAs: deliveryMode(inbound), triggerTurn: true }
           );
         }
       });

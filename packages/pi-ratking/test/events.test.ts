@@ -912,9 +912,7 @@ it.live.prop(
           summary: "Original summary",
         });
         expect(messages).toHaveLength(1);
-        expect(deliveries).toEqual([
-          { deliverAs: "followUp", triggerTurn: true },
-        ]);
+        expect(deliveries).toEqual([{ deliverAs: "steer", triggerTurn: true }]);
       }
 
       yield* Effect.promise(async () => {
@@ -954,7 +952,7 @@ it.live.prop(
             "sh.mschf.agentgraph.outcome\n\n```json"
           );
           expect(deliveries).toEqual([
-            { deliverAs: "followUp", triggerTurn: true },
+            { deliverAs: "steer", triggerTurn: true },
           ]);
         } else {
           expect(messages[0]).toMatchObject({
@@ -977,9 +975,7 @@ it.live.prop(
           "sh.mschf.agentgraph.outcome\n\n```json"
         );
         expect(message.content).toContain("Outcome from acme");
-        expect(deliveries).toEqual([
-          { deliverAs: "followUp", triggerTurn: true },
-        ]);
+        expect(deliveries).toEqual([{ deliverAs: "steer", triggerTurn: true }]);
       } else if (mode !== "relay") {
         expect(records).toEqual([]);
         expect(received).toHaveLength(1);
