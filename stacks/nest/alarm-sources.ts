@@ -68,9 +68,14 @@ export const sightReaders = (
   });
 
 export const InstanceHealth = Schema.Union([
-  Schema.Struct({ name: Schema.NonEmptyString, status: Schema.Literal("ok") }),
   Schema.Struct({
     name: Schema.NonEmptyString,
+    page: Schema.optionalKey(Schema.Boolean),
+    status: Schema.Literal("ok"),
+  }),
+  Schema.Struct({
+    name: Schema.NonEmptyString,
+    page: Schema.optionalKey(Schema.Boolean),
     reason: Schema.NonEmptyString,
     status: Schema.Literal("down"),
   }),
@@ -101,6 +106,7 @@ export const AlarmFacts = Schema.Struct({
 export const SourceState = Schema.Struct({
   downChecks: Count,
   entered: Schema.NullOr(Schema.Finite),
+  instanceDownChecks: Schema.optionalKey(Schema.Record(Schema.String, Count)),
   unexplained: Schema.Array(Schema.Finite),
 });
 
@@ -160,7 +166,7 @@ const trackSources = (
     unexplained.push(facts.entered);
   }
 
-  return {
+  const tracked = {
     downChecks:
       !facts.deployKnown || deployWindow(facts, now) || facts.health === 200
         ? 0
@@ -168,6 +174,23 @@ const trackSources = (
     entered: facts.entered ?? prior.entered,
     unexplained,
   };
+
+  return facts.instances === undefined || facts.instances.length === 0
+    ? tracked
+    : {
+        ...tracked,
+        instanceDownChecks: Object.fromEntries(
+          facts.instances.map((instance) => [
+            instance.name,
+            instance.status === "down"
+              ? Math.min(
+                  (prior.instanceDownChecks?.[instance.name] ?? 0) + 1,
+                  2
+                )
+              : 0,
+          ])
+        ),
+      };
 };
 
 const shipReading = (facts: typeof AlarmFacts.Type): AlarmReadingValue => {
@@ -234,15 +257,24 @@ const readerReading = (facts: typeof AlarmFacts.Type): AlarmReadingValue => {
   return facts.readers.complete ? ok : unknown;
 };
 
-const instanceReading = (facts: typeof AlarmFacts.Type): AlarmReadingValue => {
+const instanceReading = (
+  facts: typeof AlarmFacts.Type,
+  sources: typeof SourceState.Type
+): AlarmReadingValue => {
   const down = (facts.instances ?? []).filter(
     (instance) => instance.status === "down"
+  );
+
+  const pages = down.some(
+    (instance) =>
+      instance.page === true &&
+      (sources.instanceDownChecks?.[instance.name] ?? 0) >= 2
   );
 
   return down.length === 0
     ? ok
     : firing(
-        "warn",
+        pages ? "critical" : "warn",
         down
           .map((instance) => `${instance.name}: ${instance.reason}`)
           .join("; ")
@@ -371,7 +403,7 @@ export const observeAlarms = (
     "celld.restarted": restartReading(facts, sources, now),
     "digest.fail": digestReading(facts),
     "filer.slots": slotReading(facts),
-    "instance.down": instanceReading(facts),
+    "instance.down": instanceReading(facts, sources),
     "issuer.broken": facts.doctor
       ? ok
       : firing(

@@ -28,7 +28,9 @@ const probeInstance = Effect.fn("Alarm.probeInstance")(
       )
     );
 
-    return { name: instance.name, status: "ok" as const };
+    return instance.page === true
+      ? { name: instance.name, page: true, status: "ok" as const }
+      : { name: instance.name, status: "ok" as const };
   },
   (
     effect,
@@ -44,11 +46,19 @@ const probeInstance = Effect.fn("Alarm.probeInstance")(
           Effect.fail(new FleetError({ reason: "probe timed out" })),
       }),
       Effect.match({
-        onFailure: (error) => ({
-          name: instance.name,
-          reason: error.reason,
-          status: "down" as const,
-        }),
+        onFailure: (error) =>
+          instance.page === true
+            ? {
+                name: instance.name,
+                page: true,
+                reason: error.reason,
+                status: "down" as const,
+              }
+            : {
+                name: instance.name,
+                reason: error.reason,
+                status: "down" as const,
+              },
         onSuccess: (reading) => reading,
       })
     )

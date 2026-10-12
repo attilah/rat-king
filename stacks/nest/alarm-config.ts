@@ -31,6 +31,7 @@ export const AlarmSettings = Schema.Struct({
       Schema.Struct({
         name: Schema.NonEmptyString,
         owner: AgentName,
+        page: Schema.optionalKey(Schema.Boolean),
         versionUrl: Schema.NonEmptyString,
       })
     )
