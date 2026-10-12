@@ -105,6 +105,8 @@ export declare const consumerMachine: import("xstate").StateMachine<{}, {
     readonly version: undefined;
 };
 export interface MessageMeta {
+    readonly ack: Effect.Effect<void, MailboxClientError>;
+    readonly redelivered: boolean;
     readonly seq: number;
 }
 export interface Skipped {
@@ -114,6 +116,7 @@ export interface Skipped {
     readonly seq: number;
 }
 export interface ConsumeOptions {
+    readonly ackOnReturn?: boolean;
     readonly harness: Lease.MainValue["harness"];
     readonly renders?: readonly string[];
     readonly resume?: LeaseFence;

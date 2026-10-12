@@ -194,6 +194,7 @@ it.live.prop(
       const acked = yield* Deferred.make<boolean>();
       let acquired = false;
       let restarted = false;
+      let acknowledgments = 0;
       let copyMode: (typeof Step.Type)["copy"] = "accept";
 
       const sends: Defs.EncryptedEnvelopeValue[] = [];
@@ -215,21 +216,29 @@ it.live.prop(
           return yield* Match.value(nsid).pipe(
             Match.when("sh.mschf.ratking.mailbox.list", () =>
               Effect.gen(function* list() {
+                const seq = restarted ? 2 : 1;
+
+                const after = Number(
+                  new URL(request.url).searchParams.get("afterSeq") ?? 0
+                );
+
                 const output = yield* Schema.decodeUnknownEffect(
                   Schema.toType(List.Output)
                 )({
                   events:
-                    acquired && !restarted
+                    acquired && after < seq
                       ? [
                           {
                             $type: "sh.mschf.ratking.defs#messageEvent",
                             envelope: sealed,
-                            receipt,
-                            seq: 1,
+                            receipt: restarted
+                              ? { ...receipt, state: "delivered" }
+                              : receipt,
+                            seq,
                           },
                         ]
                       : [],
-                  throughSeq: acquired && !restarted ? 1 : 0,
+                  throughSeq: acquired ? seq : 0,
                 });
 
                 return HttpClientResponse.fromWeb(
@@ -267,7 +276,11 @@ it.live.prop(
               )
             ),
             Match.when("sh.mschf.ratking.mailbox.ack", () =>
-              Deferred.succeed(acked, true).pipe(
+              Effect.sync(() => {
+                expect(forwards.map((forward) => forward.id)).toEqual([X]);
+                acknowledgments += 1;
+              }).pipe(
+                Effect.andThen(Deferred.succeed(acked, true)),
                 Effect.as(
                   json(request, { receipt: { ...receipt, state: "acked" } })
                 )
@@ -416,8 +429,8 @@ it.live.prop(
           })
         );
 
-        yield* Deferred.await(acked).pipe(Effect.timeout("5 seconds"));
         yield* until(() => forwards.length === 1);
+        yield* Deferred.await(acked).pipe(Effect.timeout("5 seconds"));
         expect(forwards.map((forward) => forward.id)).toEqual([X]);
         expect(injected).toEqual([]);
 
@@ -596,6 +609,8 @@ it.live.prop(
         );
 
         yield* until(() => acquired);
+        yield* until(() => acknowledgments === 2);
+        expect(forwards).toHaveLength(1);
 
         const before = sends.length;
 

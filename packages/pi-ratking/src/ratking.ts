@@ -87,6 +87,7 @@ import {
   deliverRelay,
   RelayHandled,
   RelayJournal,
+  transferCustody,
 } from "./relay.ts";
 import type { RelayOutboundValue } from "./relay.ts";
 import { SecretStore } from "./secrets.ts";
@@ -199,7 +200,8 @@ interface RelayRoute {
   readonly message: (
     inbound: Inbound,
     settled: boolean,
-    encrypted: boolean
+    encrypted: boolean,
+    redelivered: boolean
   ) => Effect.Effect<void, NotDelivered>;
   readonly record: (
     inbound: InboundRecord
@@ -208,7 +210,8 @@ interface RelayRoute {
 
 export type Deliver = (
   inbound: Inbound | InboundRecord,
-  settled: boolean
+  settled: boolean,
+  ack?: Effect.Effect<void>
 ) => Effect.Effect<void>;
 
 export interface Status {
@@ -314,6 +317,19 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
 
   const front = yield* Ref.make(Option.none<FrontLoops>());
   const seen = new Set<string>();
+  const acknowledgments = new Map<string, MessageMeta["ack"]>();
+
+  const displayAck = (id: string) =>
+    acknowledgments.get(id)?.pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          acknowledgments.delete(id);
+        })
+      ),
+      Effect.catchTag("MailboxClientError", (failure) =>
+        Effect.logWarning("Rat King display acknowledgment failed", failure)
+      )
+    );
 
   const presences = new Map<
     string,
@@ -524,7 +540,13 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
     (own: Self, route: RelayRoute) =>
     (message: OpenedMessage, meta: MessageMeta) =>
       Effect.gen(function* takeIn() {
+        const checkpoint = yield* Deferred.make<boolean>();
+
         if (!seen.has(message.tid)) {
+          acknowledgments.set(
+            message.tid,
+            Deferred.await(checkpoint).pipe(Effect.andThen(meta.ack))
+          );
           const payload = yield* decodePayload(message.body);
           const known = yield* directory.nameOf(message.senderDid);
 
@@ -613,7 +635,12 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
 
             yield* threads.remember(inbound);
 
-            yield* route.message(inbound, settled, message.encrypted ?? true);
+            yield* route.message(
+              inbound,
+              settled,
+              message.encrypted ?? true,
+              meta.redelivered
+            );
           }
 
           seen.add(message.tid);
@@ -621,6 +648,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
 
         yield* writeCursor(own.name, meta.seq);
         yield* consumed;
+        yield* Deferred.succeed(checkpoint, true);
       });
 
   const consumeOnce = (own: Self, facts: SessionFacts, route: RelayRoute) =>
@@ -645,56 +673,75 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       }
 
       const options: ConsumeOptions = {
+        ackOnReturn: false,
         afterSeq,
         harness: {
           $type: "sh.mschf.ratking.runtime.lease#pi",
           sessionId: facts.session,
         },
         onLease: (lease) =>
-          Effect.all([
-            Ref.set(attempts, 0),
-            Clock.currentTimeMillis.pipe(
-              Effect.flatMap((now) =>
-                Ref.update(health, (current) => ({
-                  ...current,
-                  lastConsumeOk: Option.some(now),
-                  leaseHeldSince: Option.orElseSome(
-                    current.leaseHeldSince,
-                    () => now
-                  ),
-                }))
-              )
-            ),
-            Ref.set(
-              fence,
-              Option.some({
-                did: own.did,
-                generation: lease.generation,
-                leaseId: lease.leaseId,
+          Ref.get(lastLease).pipe(
+            Effect.tap((previous) =>
+              Effect.sync(() => {
+                if (
+                  !Option.exists(
+                    previous,
+                    (held) => held.generation === lease.generation
+                  )
+                ) {
+                  seen.clear();
+                  acknowledgments.clear();
+                }
               })
             ),
-            Ref.set(
-              lastLease,
-              Option.some({
-                did: own.did,
-                generation: lease.generation,
-                leaseId: lease.leaseId,
-              })
+            Effect.andThen(
+              Effect.all([
+                Ref.set(attempts, 0),
+                Clock.currentTimeMillis.pipe(
+                  Effect.flatMap((now) =>
+                    Ref.update(health, (current) => ({
+                      ...current,
+                      lastConsumeOk: Option.some(now),
+                      leaseHeldSince: Option.orElseSome(
+                        current.leaseHeldSince,
+                        () => now
+                      ),
+                    }))
+                  )
+                ),
+                Ref.set(
+                  fence,
+                  Option.some({
+                    did: own.did,
+                    generation: lease.generation,
+                    leaseId: lease.leaseId,
+                  })
+                ),
+                Ref.set(
+                  lastLease,
+                  Option.some({
+                    did: own.did,
+                    generation: lease.generation,
+                    leaseId: lease.leaseId,
+                  })
+                ),
+                writeLease(own.name, {
+                  did: own.did,
+                  generation: lease.generation,
+                  leaseId: lease.leaseId,
+                }),
+                setState(
+                  ReaderState.Live({
+                    did: own.did,
+                    expiresAt: lease.expiresAt,
+                    generation: lease.generation,
+                    name: own.name,
+                  })
+                ),
+              ])
             ),
-            writeLease(own.name, {
-              did: own.did,
-              generation: lease.generation,
-              leaseId: lease.leaseId,
-            }),
-            setState(
-              ReaderState.Live({
-                did: own.did,
-                expiresAt: lease.expiresAt,
-                generation: lease.generation,
-                name: own.name,
-              })
-            ),
-          ]).pipe(Effect.asVoid),
+            Effect.asVoid
+          ),
         onSkip: ({ messageId, reason, senderDid, seq }) =>
           Effect.logWarning("Rat King skipped a delivery", {
             messageId,
@@ -1159,7 +1206,8 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
           record: (inbound: InboundRecord) =>
             Effect.gen(function* staffRecord() {
               const accepted = yield* deliverRelay(config, own.name, inbound, {
-                deliver,
+                deliver: (received, settled) =>
+                  deliver(received, settled, displayAck(inbound.id)),
                 remember: threads.remember,
               });
 
@@ -1236,22 +1284,34 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       );
 
       return {
-        message: (inbound, settled, encrypted) =>
+        message: (inbound, settled, encrypted, redelivered) =>
           Effect.gen(function* routeMessage() {
             const record = yield* relay.receive(
               inbound,
               settled,
               encrypted,
-              yield* Clock.currentTimeMillis
+              yield* Clock.currentTimeMillis,
+              redelivered
             );
 
             if (Option.isSome(record)) {
-              yield* transmit(
+              const send = transmit(
                 config.to,
                 record.value,
                 { encrypt: encrypted },
                 () => Effect.void
-              ).pipe(
+              );
+
+              const forward =
+                config.mode === "copy"
+                  ? send
+                  : transferCustody(
+                      send,
+                      relay.forwarded(inbound.id),
+                      displayAck(inbound.id) ?? Effect.void
+                    );
+
+              yield* forward.pipe(
                 Effect.catch((error) =>
                   Effect.logWarning(
                     "Rat King relay forward failed",
@@ -1262,6 +1322,10 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
                   Effect.logWarning("Rat King relay fallback journal failed")
                 ),
                 Effect.ignore,
+                Effect.forkIn(scope)
+              );
+            } else if (yield* relay.transferred(inbound.id)) {
+              yield* (displayAck(inbound.id) ?? Effect.void).pipe(
                 Effect.forkIn(scope)
               );
             }
@@ -1338,7 +1402,9 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
 
     const route = yield* supervise(
       Option.some(own.name),
-      routing(own, deliver)
+      routing(own, (inbound, settled, ack) =>
+        deliver(inbound, settled, ack ?? displayAck(inbound.id))
+      )
     );
 
     return yield* supervise(
@@ -1737,6 +1803,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
 
       return delivered;
     }),
+
     status: Effect.gen(function* status() {
       const current = yield* Ref.get(established);
 

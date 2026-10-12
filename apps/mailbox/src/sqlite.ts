@@ -58,6 +58,9 @@ export const sqliteStore = (
     "CREATE TABLE IF NOT EXISTS messages (sender TEXT NOT NULL, tid TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY(sender, tid))"
   );
   sql.exec(
+    "CREATE INDEX IF NOT EXISTS messages_custody ON messages(json_extract(value,'$.current.state'),json_extract(value,'$.admission.seq'))"
+  );
+  sql.exec(
     "CREATE TABLE IF NOT EXISTS events (seq INTEGER PRIMARY KEY CHECK(seq > 0 AND seq <= 9007199254740991), value TEXT NOT NULL)"
   );
   sql.exec(
@@ -91,6 +94,16 @@ export const sqliteStore = (
           sql,
           "SELECT value FROM metadata WHERE key='cursorSecret'"
         ) ?? ""
+      ),
+    delivered: () =>
+      Array.from(
+        sql.exec(
+          "SELECT value FROM messages WHERE json_extract(value,'$.current.state')='delivered' ORDER BY json_extract(value,'$.admission.seq') ASC"
+        ),
+        (row) =>
+          Schema.decodeUnknownSync(Persisted)(
+            JSON.parse(Schema.decodeUnknownSync(Row)(row).value)
+          )
       ),
     document: () => {
       const value = firstValue(

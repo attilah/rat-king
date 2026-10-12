@@ -39,6 +39,8 @@ export const consumerMachine = createMachine({
 });
 
 export interface MessageMeta {
+  readonly ack: Effect.Effect<void, MailboxClientError>;
+  readonly redelivered: boolean;
   readonly seq: number;
 }
 
@@ -56,6 +58,7 @@ export interface Skipped {
 }
 
 export interface ConsumeOptions {
+  readonly ackOnReturn?: boolean;
   readonly harness: Lease.MainValue["harness"];
   readonly renders?: readonly string[];
   readonly resume?: LeaseFence;
@@ -250,6 +253,8 @@ export const consume = <E, R>(
         return yield* Effect.void;
       }).pipe(Effect.repeat(Schedule.spaced("0 millis")), Effect.catch(lost));
 
+      const handed = new Set<string>();
+
       const intake = mailbox.watch(options.afterSeq ?? 0, fence()).pipe(
         Stream.runForEach((batch) =>
           Effect.forEach(
@@ -257,6 +262,15 @@ export const consume = <E, R>(
             (event) =>
               Effect.gen(function* accept() {
                 if (!Schema.is(Defs.MessageEvent)(event)) {
+                  return;
+                }
+
+                const key = JSON.stringify([
+                  event.receipt.message.senderDid,
+                  event.receipt.message.messageId,
+                ]);
+
+                if (options.ackOnReturn === false && handed.has(key)) {
                   return;
                 }
 
@@ -316,10 +330,21 @@ export const consume = <E, R>(
                   return;
                 }
 
-                yield* handler(message, { seq: event.seq });
-                yield* mailbox
-                  .ack(input)
-                  .pipe(Effect.catchIf(settledRefusal, () => Effect.void));
+                const ack = mailbox.ack(input).pipe(
+                  Effect.catchIf(settledRefusal, () => Effect.void),
+                  Effect.asVoid
+                );
+
+                yield* handler(message, {
+                  ack,
+                  redelivered: event.receipt.state === "delivered",
+                  seq: event.seq,
+                });
+                handed.add(key);
+
+                if (options.ackOnReturn !== false) {
+                  yield* ack;
+                }
               }),
             { discard: true }
           )

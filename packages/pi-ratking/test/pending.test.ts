@@ -6,7 +6,6 @@ import {
   digestFor,
   inbox,
   MAIL_MESSAGE,
-  PENDING_ENTRY,
   shownIds,
 } from "../src/pending.ts";
 import type { DeliverAs, PendingMail } from "../src/pending.ts";
@@ -46,27 +45,18 @@ const fakeSession = () => {
 };
 
 describe("pending mail", () => {
-  it("records taken mail in the session before showing it", () => {
+  it("queues mail without session persistence", () => {
     const session = fakeSession();
     const box = inbox(session.host);
 
     box.take(mail("a"), "steer");
     box.take(mail("b"), "followUp");
 
-    expect(session.steps).toEqual([
-      "entry a",
-      "show a steer",
-      "entry b",
-      "show b followUp",
-    ]);
-    expect(session.entries[0]).toEqual({
-      customType: PENDING_ENTRY,
-      data: { ...mail("a"), deliverAs: "steer" },
-      type: "custom",
-    });
+    expect(session.steps).toEqual(["show a steer", "show b followUp"]);
+    expect(session.entries).toEqual([]);
   });
 
-  it("restores unshown mail from the session after a restart and shows it", () => {
+  it("shows mailbox redeliveries after restart", () => {
     const before = fakeSession();
     const first = inbox(before.host);
 
@@ -82,27 +72,28 @@ describe("pending mail", () => {
     const after = fakeSession();
     const second = inbox(after.host);
 
-    second.restore(before.entries);
+    second.take(mail("b"), "steer");
+    second.take(mail("c"), "steer");
 
     expect(after.steps).toEqual(["show b steer", "show c steer"]);
   });
 
-  it("leaves a cc'd copy for the next turn: restored without a wake", () => {
+  it("leaves a redelivered cc copy for the next turn without a wake", () => {
     const before = fakeSession();
     const first = inbox(before.host);
 
     first.take(mail("a"), "nextTurn");
 
-    expect(before.steps).toEqual(["entry a", "show a nextTurn"]);
+    expect(before.steps).toEqual(["show a nextTurn"]);
 
     const after = fakeSession();
 
-    inbox(after.host).restore(before.entries);
+    inbox(after.host).take(mail("a"), "nextTurn");
 
     expect(after.steps).toEqual(["show a nextTurn"]);
   });
 
-  it("restoring a session where everything was shown shows nothing", () => {
+  it("clearing a session shows nothing", () => {
     const before = fakeSession();
     const first = inbox(before.host);
 
@@ -111,7 +102,7 @@ describe("pending mail", () => {
 
     const after = fakeSession();
 
-    inbox(after.host).restore(before.entries);
+    inbox(after.host).clear();
 
     expect(after.steps).toEqual([]);
   });
@@ -154,15 +145,15 @@ describe("cc digest", () => {
     box.take(held("a"), "digest");
     box.take(held("b"), "digest");
 
-    expect(session.steps).toEqual(["entry a", "entry b"]);
+    expect(session.steps).toEqual([]);
 
     box.tick(29 * MINUTE);
 
-    expect(session.steps).toEqual(["entry a", "entry b"]);
+    expect(session.steps).toEqual([]);
 
     box.tick(30 * MINUTE);
 
-    expect(session.steps).toEqual(["entry a", "entry b", "digest b,a"]);
+    expect(session.steps).toEqual(["digest b,a"]);
   });
 
   it("never digests a copy twice, and an empty interval sends nothing", () => {
@@ -192,7 +183,7 @@ describe("cc digest", () => {
     first.take(held("a"), "digest");
     first.take(held("b"), "digest");
 
-    expect(before.steps).toEqual(["entry a", "entry b"]);
+    expect(before.steps).toEqual([]);
 
     before.entries.push({
       customType: DIGEST_MESSAGE,
@@ -203,7 +194,7 @@ describe("cc digest", () => {
     const after = fakeSession();
     const second = inbox(after.host);
 
-    second.restore(before.entries);
+    second.take(held("b"), "digest");
 
     expect(after.steps).toEqual([]);
 

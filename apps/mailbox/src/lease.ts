@@ -7,6 +7,7 @@ import type { XrpcFailure } from "@rat-king/lexicon/xrpc-failure";
 import { Clock, Context, DateTime, Effect, Layer, Schema } from "effect";
 
 import { failure } from "./failure.ts";
+import { redeliver } from "./redelivery.ts";
 import { MailboxStore } from "./store.ts";
 import type { LeaseValue, Transaction } from "./store.ts";
 import { tid } from "./tid.ts";
@@ -30,6 +31,17 @@ export const validLease = (tx: Transaction, fence: Fence, now: number) => {
 
   return lease;
 };
+
+const sameHarness = Schema.toEquivalence(
+  RuntimeLease.Main.schema.fields.harness
+);
+
+const resumes = (current: LeaseValue, input: Acquire.InputValue, now: number) =>
+  current.expiresAt > now &&
+  input.leaseId === current.leaseId &&
+  input.generation === current.generation &&
+  "harness" in current &&
+  sameHarness(input.harness, current.harness);
 
 const fullLease = (lease: LeaseValue): RuntimeLease.MainValue => {
   if (!("did" in lease)) {
@@ -122,6 +134,18 @@ const makeLeases = (store: typeof MailboxStore.Service): LeaseInterface =>
           throw failure("LeaseHeld", 409);
         }
 
+        if (current && resumes(current, input, now)) {
+          const resumed = { ...current, expiresAt };
+
+          if (input.renders !== undefined) {
+            Object.assign(resumed, { renders: input.renders });
+          }
+
+          tx.setLease(resumed);
+
+          return fullLease(resumed);
+        }
+
         const generation = (current?.generation ?? 0) + 1;
 
         if (!Number.isSafeInteger(generation)) {
@@ -143,6 +167,7 @@ const makeLeases = (store: typeof MailboxStore.Service): LeaseInterface =>
 
         tx.setLease(lease);
         tx.setRetirement(undefined);
+        redeliver(tx, now);
 
         return fullLease(lease);
       });

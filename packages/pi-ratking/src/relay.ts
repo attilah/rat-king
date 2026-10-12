@@ -195,6 +195,12 @@ export const deliverRelay = (
     return true;
   });
 
+export const transferCustody = <A, E, R>(
+  send: Effect.Effect<A, E, R>,
+  recorded: Effect.Effect<void, E, R>,
+  ack: Effect.Effect<void>
+) => send.pipe(Effect.andThen(recorded), Effect.andThen(ack));
+
 export const relayLifecycle = createMachine({
   context: {},
   id: "relay",
@@ -210,6 +216,7 @@ export const relayLifecycle = createMachine({
 
 export const RelayEntry = Schema.Struct({
   due: Schema.Finite,
+  forwarded: Schema.optionalKey(Schema.Boolean),
   record: RelayRecord,
   settled: Schema.Boolean,
   state: Schema.Literals(["pending", "handled", "injected"]),
@@ -302,6 +309,16 @@ export const openRelay = <E>(config: RelaySettingValue, ports: RelayPorts<E>) =>
             }
           })
         ),
+      forwarded: (id: string) =>
+        mutex.withPermit(
+          Effect.gen(function* forwarded() {
+            const entry = entries.get(id);
+
+            if (entry !== undefined) {
+              yield* saveEntry({ ...entry, forwarded: true });
+            }
+          })
+        ),
       handled: (id: string) =>
         mutex.withPermit(
           Effect.gen(function* handled() {
@@ -319,7 +336,8 @@ export const openRelay = <E>(config: RelaySettingValue, ports: RelayPorts<E>) =>
         inbound: Inbound,
         settled: boolean,
         encrypted: boolean,
-        now: number
+        now: number,
+        redelivered = false
       ) =>
         mutex.withPermit(
           Effect.gen(function* receive() {
@@ -343,7 +361,23 @@ export const openRelay = <E>(config: RelaySettingValue, ports: RelayPorts<E>) =>
               return Option.some<LexiconRecordValue>(record);
             }
 
-            if (entries.has(inbound.id)) {
+            const existing = entries.get(inbound.id);
+
+            if (existing !== undefined) {
+              if (
+                redelivered &&
+                existing.state === "injected" &&
+                existing.forwarded !== true
+              ) {
+                yield* ports.inject(
+                  {
+                    ...inbound,
+                    body: `[staff did not handle]\n${inbound.body}`,
+                  },
+                  false
+                );
+              }
+
               return Option.none<LexiconRecordValue>();
             }
 
@@ -367,6 +401,8 @@ export const openRelay = <E>(config: RelaySettingValue, ports: RelayPorts<E>) =>
             }
           })
         ),
+      transferred: (id: string) =>
+        Effect.sync(() => entries.get(id)?.forwarded === true),
     };
 
     yield* relay.recover(yield* ports.now);

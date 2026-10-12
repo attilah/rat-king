@@ -2973,12 +2973,20 @@ var consume = (mailbox, did, handler, options) => Effect18.scoped(
       }
       return yield* Effect18.void;
     }).pipe(Effect18.repeat(Schedule2.spaced("0 millis")), Effect18.catch(lost));
+    const handed = /* @__PURE__ */ new Set();
     const intake = mailbox.watch(options.afterSeq ?? 0, fence()).pipe(
       Stream2.runForEach(
         (batch) => Effect18.forEach(
           batch.events,
           (event) => Effect18.gen(function* accept() {
             if (!Schema33.is(MessageEvent)(event)) {
+              return;
+            }
+            const key = JSON.stringify([
+              event.receipt.message.senderDid,
+              event.receipt.message.messageId
+            ]);
+            if (options.ackOnReturn === false && handed.has(key)) {
               return;
             }
             const { onSkip, unopenable } = options;
@@ -3027,8 +3035,19 @@ var consume = (mailbox, did, handler, options) => Effect18.scoped(
               yield* skip(delivered.value);
               return;
             }
-            yield* handler(message, { seq: event.seq });
-            yield* mailbox.ack(input).pipe(Effect18.catchIf(settledRefusal, () => Effect18.void));
+            const ack = mailbox.ack(input).pipe(
+              Effect18.catchIf(settledRefusal, () => Effect18.void),
+              Effect18.asVoid
+            );
+            yield* handler(message, {
+              ack,
+              redelivered: event.receipt.state === "delivered",
+              seq: event.seq
+            });
+            handed.add(key);
+            if (options.ackOnReturn !== false) {
+              yield* ack;
+            }
           }),
           { discard: true }
         )
