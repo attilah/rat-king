@@ -37,7 +37,12 @@ def retention(call=request, now=None):
     # Bound work and refuse incomplete or non-advancing listings before deleting.
     for _ in range(100):
         query = urllib.parse.urlencode({'limit': 1000, 'lastFileName': cursor})
-        page = call(FILER + ROOT + '/?' + query)
+        try:
+            page = call(FILER + ROOT + '/?' + query)
+        except urllib.error.HTTPError as error:
+            if error.code == 404 and not cursor:
+                return []
+            raise
         if page.get('Path') != ROOT or not isinstance(page.get('Entries'), (list, type(None))):
             raise RuntimeError('unexpected metadata log listing')
         for entry in page['Entries'] or []:

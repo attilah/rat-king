@@ -12,10 +12,11 @@ import {
   Effect,
   Exit,
   Layer,
+  Match,
   Predicate,
   Schema,
 } from "effect";
-import { HttpClient, HttpClientResponse } from "effect/http";
+import { HttpClient, HttpClientError, HttpClientResponse } from "effect/http";
 import { expect } from "vitest";
 
 import { Celld } from "../src/celld.ts";
@@ -51,6 +52,8 @@ import { storeSocketScript } from "../src/unit-cleanup.ts";
 import { checkedRead, checkedStack } from "./checked-stack.ts";
 import { BucketFixture } from "./instance-bucket-model.ts";
 import { goneFixture } from "./instance-teardown-model.ts";
+import type { WorkerMode } from "./instance-worker-model.ts";
+import { isWorkerInstall, WorkerFixture } from "./instance-worker-model.ts";
 
 const host = {
   dataRoot: "/srv/example/mailbox",
@@ -226,11 +229,18 @@ const runtime = Layer.effectContext(
     let bucketExists = false;
     const objects = new Set<string>();
     const requests: string[] = [];
+    let worker: typeof WorkerMode.Type = "bootstrap";
+    let installs = 0;
 
     const shell = {
       ...fake.shell,
       deleteCustody: custody,
       exec: (argv: readonly string[]) => {
+        if (isWorkerInstall(argv)) {
+          worker = "installed";
+          installs += 1;
+        }
+
         if (argv[0] === "systemd-run") {
           return Effect.succeed({ code: 0, stdout: "bootstrap deployed" });
         }
@@ -332,13 +342,44 @@ const runtime = Layer.effectContext(
         requests: Effect.sync(() => [...requests]),
       }),
       Context.add(HostShell, shell),
+      Context.add(WorkerFixture, {
+        installs: Effect.sync(() => installs),
+        set: (mode) =>
+          Effect.sync(() => {
+            worker = mode;
+          }),
+      }),
       Context.add(
         HttpClient.HttpClient,
-        HttpClient.make((request) =>
-          Effect.succeed(
-            HttpClientResponse.fromWeb(request, Response.json(probeIdentity))
-          )
-        )
+        HttpClient.make((request) => {
+          if (worker === "transport") {
+            return Effect.fail(
+              new HttpClientError.HttpClientError({
+                reason: new HttpClientError.TransportError({ request }),
+              })
+            );
+          }
+
+          const body = Match.value(worker).pipe(
+            Match.when("bootstrap", () => "rat-king bootstrap"),
+            Match.when("wrong", () =>
+              JSON.stringify({ commit: "other", version: "other" })
+            ),
+            Match.when("invalid-schema", () =>
+              JSON.stringify({ unexpected: true })
+            ),
+            Match.orElse(() => JSON.stringify(probeIdentity))
+          );
+
+          return Effect.succeed(
+            HttpClientResponse.fromWeb(
+              request,
+              new Response(body, {
+                status: worker === "unavailable" ? 503 : 200,
+              })
+            )
+          );
+        })
       )
     );
   })
@@ -1179,6 +1220,221 @@ test.provider(
               );
 
               expect(gone.code, gone.stdout).toBe(0);
+            }
+
+            return true;
+          }),
+        { runs: 3 }
+      );
+
+      expect(result._tag, Arbitrary.formatCheckFailure(result)).toBe("Passed");
+    })
+);
+
+test.provider(
+  "destroy from a bootstrap-serving creating worker clears both 24-resource and 22-resource retained plans",
+  (scratch) =>
+    Effect.gen(function* bootstrapDestroy() {
+      const fake = yield* Fake;
+      const worker = yield* WorkerFixture;
+      const stack = checkedStack(scratch);
+
+      const state = yield* State.pipe(
+        Effect.flatten,
+        Effect.provide(scratch.state)
+      );
+
+      const result = yield* Arbitrary.checkEffect(
+        Arbitrary.schema(Schema.String.check(Schema.isUUID(4))),
+        (uuid) =>
+          Effect.gen(function* rollback() {
+            for (const reduced of [false, true]) {
+              yield* worker.set("installed");
+
+              const output = yield* stack.deploy(
+                instanceProbeProgram(host, probeLayout.dataRoot)
+              );
+
+              if (reduced) {
+                for (const name of [
+                  probeLayout.retentionUnit,
+                  probeLayout.retentionTimer,
+                ]) {
+                  yield* fake.shell.exec(["systemctl", "--user", "stop", name]);
+                  yield* fake.shell.exec([
+                    "systemctl",
+                    "--user",
+                    "disable",
+                    name,
+                  ]);
+                  yield* fake.shell.remove(
+                    `${host.home}/.config/systemd/user/${name}`
+                  );
+                }
+
+                yield* fake.shell.exec([
+                  "systemctl",
+                  "--user",
+                  "daemon-reload",
+                ]);
+
+                for (const fqn of [
+                  "store/storage-retention",
+                  "store/storage-retention-timer",
+                ]) {
+                  yield* state.delete({
+                    fqn,
+                    stack: scratch.name,
+                    stage: scratch.stage,
+                  });
+                }
+              }
+
+              yield* state.set({
+                fqn: "worker",
+                stack: scratch.name,
+                stage: scratch.stage,
+                value: {
+                  bindings: [],
+                  downstream: [],
+                  fqn: "worker",
+                  instanceId: uuid.toLowerCase(),
+                  logicalId: "worker",
+                  namespace: undefined,
+                  props: output,
+                  providerVersion: 0,
+                  resourceType: "Celld.Deployment",
+                  status: "creating",
+                },
+              });
+              yield* worker.set("bootstrap");
+
+              const plan = yield* Plan.destroy({
+                name: scratch.name,
+                stage: scratch.stage,
+              }).pipe(Effect.provide(scratch.state));
+
+              expect(Object.keys(plan.deletions)).toHaveLength(
+                reduced ? 22 : 24
+              );
+              yield* stack.destroy();
+
+              for (const path of [
+                ...instanceDeleteCustody(host.home, probeLayout).files,
+                ...instanceDeleteCustody(host.home, probeLayout).directories,
+              ]) {
+                expect(yield* fake.shell.stat(path)).toBeUndefined();
+              }
+
+              expect(yield* fake.shell.stat(host.dataRoot)).toBeDefined();
+            }
+
+            return true;
+          }),
+        { runs: 3 }
+      );
+
+      expect(result._tag, Arbitrary.formatCheckFailure(result)).toBe("Passed");
+    })
+);
+
+test.provider(
+  "bootstrap and non-version workers read absent, install fresh, and destroy creating rows without stranding dependencies",
+  (scratch) =>
+    Effect.gen(function* bootstrapRecovery() {
+      const fake = yield* Fake;
+      const worker = yield* WorkerFixture;
+      const provider = yield* Celld.Deployment.Provider;
+      const stack = checkedStack(scratch);
+
+      const state = yield* State.pipe(
+        Effect.flatten,
+        Effect.provide(scratch.state)
+      );
+
+      const result = yield* Arbitrary.checkEffect(
+        Arbitrary.schema(Schema.String.check(Schema.isUUID(4))),
+        (uuid) =>
+          Effect.gen(function* cycle() {
+            for (const mode of [
+              "bootstrap",
+              "invalid-schema",
+            ] satisfies readonly (typeof WorkerMode.Type)[]) {
+              yield* worker.set(mode);
+
+              const installs = yield* worker.installs;
+
+              const plan = yield* stack.plan(
+                instanceProbeProgram(host, probeLayout.dataRoot)
+              );
+
+              expect(plan.resources.worker?.action).toBe("create");
+
+              const output = yield* stack.deploy(
+                instanceProbeProgram(host, probeLayout.dataRoot)
+              );
+
+              expect(yield* worker.installs).toBe(installs + 1);
+
+              for (const bad of [
+                "wrong",
+                "unavailable",
+                "transport",
+              ] satisfies readonly (typeof WorkerMode.Type)[]) {
+                yield* worker.set(bad);
+
+                const observed = yield* checkedRead(provider, {
+                  fqn: "worker",
+                  id: "worker",
+                  instanceId: uuid.toLowerCase(),
+                  olds: output,
+                  output,
+                }).pipe(Effect.exit);
+
+                expect(Exit.isFailure(observed)).toBe(true);
+              }
+
+              yield* worker.set(mode);
+
+              for (const recorded of [undefined, output]) {
+                expect(
+                  yield* checkedRead(provider, {
+                    fqn: "worker",
+                    id: "worker",
+                    instanceId: uuid.toLowerCase(),
+                    olds: output,
+                    output: recorded,
+                  })
+                ).toBeUndefined();
+              }
+
+              yield* state.set({
+                fqn: "worker",
+                stack: scratch.name,
+                stage: scratch.stage,
+                value: {
+                  bindings: [],
+                  downstream: [],
+                  fqn: "worker",
+                  instanceId: uuid.toLowerCase(),
+                  logicalId: "worker",
+                  namespace: undefined,
+                  props: output,
+                  providerVersion: 0,
+                  resourceType: "Celld.Deployment",
+                  status: "creating",
+                },
+              });
+              yield* stack.destroy();
+
+              for (const path of [
+                ...instanceDeleteCustody(host.home, probeLayout).files,
+                ...instanceDeleteCustody(host.home, probeLayout).directories,
+              ]) {
+                expect(yield* fake.shell.stat(path)).toBeUndefined();
+              }
+
+              expect(yield* fake.shell.stat(host.dataRoot)).toBeDefined();
             }
 
             return true;
