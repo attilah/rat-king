@@ -3,6 +3,7 @@ import { it } from "@effect/vitest";
 import { Arbitrary, Effect, Schema } from "effect";
 import { expect } from "vitest";
 
+import { renderMaintenanceScript } from "../src/index.ts";
 import { localExec } from "../src/local-exec.ts";
 import { storageMaintenanceScript } from "../src/storage-maintenance-script.ts";
 
@@ -41,7 +42,10 @@ class Store:
             return Reply({'Topology': {'Free': free, 'Max': 64, 'Layouts': [{'collection': '', 'replication': '000', 'ttl': '', 'writables': [1]}]}})
         raise AssertionError('unexpected request')
 urllib.request.build_opener = lambda *args: Store()
+named = sys.argv[4] == 'named'
 sys.argv = ['maintenance', 'retain']
+if named:
+    sys.argv += ['--instance', 'mischief', '--master', 'http://127.0.0.1:28014', '--filer', 'http://127.0.0.1:28012', '--root', '/topics/.system/log']
 stdout, stderr = io.StringIO(), io.StringIO()
 with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
     try:
@@ -51,7 +55,8 @@ with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
 records = [json.loads(line) for line in stdout.getvalue().splitlines()]
 if scenario in ('fresh', 'existing'):
     assert code == 0, stdout.getvalue()
-    assert records[0]['deletedLogDays'] == ([] if scenario == 'fresh' else 0)
+    assert type(records[0]['deletedLogDays']) is int, records[0]
+    assert records[0]['deletedLogDays'] == 0
     assert records[-1]['alarm'] is False
     assert [urllib.parse.urlsplit(url).path for method, url in calls] == ['/topics/.system/log/', '/dir/status', '/vol/status']
 else:
@@ -63,7 +68,7 @@ print('FRESH_ROOT_AND_OUTAGE_BOUNDARIES_PASSED')
 `;
 
 it.effect.prop(
-  "fresh ROOT 404 is empty while filer/master outages, other-path 404 and interrupted listings still alarm",
+  "fresh and existing ROOT emit integer deletion counts while outages and interrupted listings still alarm",
   {
     free: Arbitrary.schema(
       Schema.Int.check(Schema.isBetween({ maximum: 64, minimum: 8 }))
@@ -73,30 +78,50 @@ it.effect.prop(
     Effect.gen(function* retain() {
       const executor = yield* localExec;
 
-      for (const scenario of [
-        "fresh",
-        "existing",
-        "filerTransport",
-        "filer503",
-        "masterTransport",
-        "master404",
-        "master503",
-        "delete404",
-        "page404",
-      ]) {
-        const result = yield* executor.exec([
-          "python3",
-          "-c",
-          fixture,
-          scenario,
-          storageMaintenanceScript,
-          String(free),
-        ]);
+      const named = renderMaintenanceScript(
+        {
+          dataRoot: "/srv/example/mailbox",
+          home: "/home/example",
+          ssh: "example",
+          tailnetIPv4: "203.0.113.10",
+        },
+        {
+          dataRoot: "/srv/example/mischief",
+          instance: "mischief",
+          portBase: 28_010,
+        }
+      );
 
-        expect(result.code, result.stdout).toBe(0);
-        expect(result.stdout.trim()).toBe(
-          "FRESH_ROOT_AND_OUTAGE_BOUNDARIES_PASSED"
-        );
+      for (const { mode, script } of [
+        { mode: "default", script: storageMaintenanceScript },
+        { mode: "named", script: named.text },
+      ]) {
+        for (const scenario of [
+          "fresh",
+          "existing",
+          "filerTransport",
+          "filer503",
+          "masterTransport",
+          "master404",
+          "master503",
+          "delete404",
+          "page404",
+        ]) {
+          const result = yield* executor.exec([
+            "python3",
+            "-c",
+            fixture,
+            scenario,
+            script,
+            String(free),
+            mode,
+          ]);
+
+          expect(result.code, result.stdout).toBe(0);
+          expect(result.stdout.trim()).toBe(
+            "FRESH_ROOT_AND_OUTAGE_BOUNDARIES_PASSED"
+          );
+        }
       }
     }).pipe(Effect.provide(NodeServices.layer)),
   { arbitrary: { runs: 8 } }
