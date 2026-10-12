@@ -5,7 +5,15 @@ import * as Acquire from "@rat-king/lexicon/runtime.acquireLease";
 import type * as Lease from "@rat-king/lexicon/runtime.lease";
 import * as Renew from "@rat-king/lexicon/runtime.renewLease";
 import type { XrpcFailure } from "@rat-king/lexicon/xrpc-failure";
-import { Arbitrary, Clock, DateTime, Effect, Layer, Schema } from "effect";
+import {
+  Arbitrary,
+  Clock,
+  DateTime,
+  Effect,
+  Layer,
+  Match,
+  Schema,
+} from "effect";
 import { TestClock } from "effect/testing";
 import * as fc from "fast-check";
 import { expect } from "vitest";
@@ -32,6 +40,7 @@ const Step = Schema.Literals([
   "receive",
   "show",
   "crash",
+  "crashAfterDisplay",
   "handover",
   "renew",
   "resume",
@@ -39,12 +48,17 @@ const Step = Schema.Literals([
 
 const Mode = Schema.Literals(["steer", "nextTurn", "digest"]);
 
-type Plant = "none" | "earlyAck" | "renewReplay" | "digestAck";
+type Plant =
+  | "none"
+  | "earlyAck"
+  | "renewReplay"
+  | "digestAck"
+  | "suppressDisplayedReplay";
 
 interface Model {
   alive: boolean;
   generation: number;
-  messages: Map<string, boolean>;
+  messages: Map<string, { displayed: number; acknowledged: boolean }>;
   queued: Set<string>;
 }
 
@@ -76,19 +90,35 @@ class Command implements fc.AsyncCommand<Model, Real> {
       case "receive": {
         const id = real.received();
 
-        model.messages.set(id, false);
+        model.messages.set(id, { acknowledged: false, displayed: 0 });
         model.queued.add(id);
         break;
       }
 
-      case "show": {
+      case "show":
+      case "crashAfterDisplay": {
         for (const id of real.shown()) {
+          const message = model.messages.get(id);
+
+          expect(message).toBeDefined();
           expect(
-            model.messages.get(id),
-            "a shown message must never be shown again"
+            message?.acknowledged,
+            "a successfully acknowledged message must never be shown again"
           ).toBe(false);
-          model.messages.set(id, true);
+          expect(
+            model.queued.has(id),
+            "each queued copy is displayed only once in its generation"
+          ).toBe(true);
+          model.messages.set(id, {
+            acknowledged: this.step === "show",
+            displayed: (message?.displayed ?? 0) + 1,
+          });
           model.queued.delete(id);
+        }
+
+        if (this.step === "crashAfterDisplay") {
+          model.alive = false;
+          model.queued.clear();
         }
 
         break;
@@ -104,7 +134,9 @@ class Command implements fc.AsyncCommand<Model, Real> {
         model.alive = true;
         model.generation += 1;
         model.queued = new Set(
-          [...model.messages].flatMap(([id, shown]) => (shown ? [] : [id]))
+          [...model.messages].flatMap(([id, message]) =>
+            message.acknowledged ? [] : [id]
+          )
         );
         break;
       }
@@ -147,6 +179,7 @@ const proof = (commands: readonly Command[], plant: Plant) =>
     let serial = 0;
     let lastId = "";
     let displayed: string[] = [];
+    const observedDisplays = new Set<string>();
     const modes = new Map<string, typeof Mode.Type>();
     const queued = new Set<string>();
 
@@ -216,7 +249,11 @@ const proof = (commands: readonly Command[], plant: Plant) =>
 
       const ids = events
         .filter(Schema.is(Defs.MessageEvent))
-        .map((event) => event.envelope.aad.messageId);
+        .map((event) => event.envelope.aad.messageId)
+        .filter(
+          (id) =>
+            plant !== "suppressDisplayedReplay" || !observedDisplays.has(id)
+        );
 
       const expected = await run(
         store.transaction((tx) =>
@@ -298,7 +335,8 @@ const proof = (commands: readonly Command[], plant: Plant) =>
             break;
           }
 
-          case "show": {
+          case "show":
+          case "crashAfterDisplay": {
             box.tick(0);
             box.tick(60_000);
 
@@ -316,10 +354,14 @@ const proof = (commands: readonly Command[], plant: Plant) =>
 
             await Promise.all(
               displayed.map(async (id) => {
+                observedDisplays.add(id);
                 box.shown(id);
                 queued.delete(id);
 
-                if (plant === "digestAck" && modes.get(id) === "digest") {
+                if (
+                  step === "crashAfterDisplay" ||
+                  (plant === "digestAck" && modes.get(id) === "digest")
+                ) {
                   return;
                 }
 
@@ -335,6 +377,11 @@ const proof = (commands: readonly Command[], plant: Plant) =>
                 );
               })
             );
+
+            if (step === "crashAfterDisplay") {
+              queued.clear();
+              box.clear();
+            }
 
             break;
           }
@@ -427,10 +474,12 @@ const proof = (commands: readonly Command[], plant: Plant) =>
 
         expect(
           new Set(open),
-          "mailbox retains every unshown message, and only unshown messages"
+          "mailbox retains every unacknowledged message, and only unacknowledged messages"
         ).toEqual(
           new Set(
-            [...model.messages].flatMap(([id, shown]) => (shown ? [] : [id]))
+            [...model.messages].flatMap(([id, message]) =>
+              message.acknowledged ? [] : [id]
+            )
           )
         );
       },
@@ -449,17 +498,29 @@ const proof = (commands: readonly Command[], plant: Plant) =>
       };
 
       await fc.asyncModelRun(() => ({ model, real }), commands);
+
+      if (plant === "none") {
+        const [first] = model.messages.values();
+
+        expect(
+          first?.displayed,
+          "two display-before-ack crashes allow one replay each, then successful ack stops repeats"
+        ).toBe(3);
+      }
+
       await new Command("handover", "steer").run(model, real);
       await new Command("show", "steer").run(model, real);
       expect(
-        [...model.messages.values()],
-        "every received message is eventually shown by a holder"
-      ).not.toContain(false);
+        [...model.messages.values()].every(
+          (message) => message.displayed > 0 && message.acknowledged
+        ),
+        "every received message is eventually displayed and acknowledged"
+      ).toBe(true);
     });
   }).pipe(Effect.scoped);
 
 it.effect.prop(
-  "non-expiring name custody survives crashes, attaches and renewals without duplicates",
+  "non-expiring custody survives display-before-ack crashes; successfully acknowledged never repeats",
   [
     Arbitrary.schema(
       Schema.Array(Schema.Struct({ mode: Mode, step: Step })).check(
@@ -473,7 +534,13 @@ it.effect.prop(
         new Command("receive", "digest"),
         new Command("renew", "steer"),
         new Command("resume", "steer"),
-        new Command("crash", "steer"),
+        new Command("crashAfterDisplay", "steer"),
+        new Command("handover", "steer"),
+        new Command("renew", "steer"),
+        new Command("resume", "steer"),
+        new Command("crashAfterDisplay", "steer"),
+        new Command("handover", "steer"),
+        new Command("show", "steer"),
         new Command("handover", "steer"),
         ...steps.map(({ mode, step }) => new Command(step, mode)),
       ],
@@ -601,6 +668,7 @@ const plants: readonly Exclude<Plant, "none">[] = [
   "earlyAck",
   "renewReplay",
   "digestAck",
+  "suppressDisplayedReplay",
 ];
 
 for (const plant of plants) {
@@ -609,7 +677,10 @@ for (const plant of plants) {
       [
         new Command("receive", "digest"),
         new Command("renew", "steer"),
-        new Command("show", "steer"),
+        new Command(
+          plant === "suppressDisplayedReplay" ? "crashAfterDisplay" : "show",
+          "steer"
+        ),
         new Command("crash", "steer"),
         new Command("handover", "steer"),
       ],
@@ -621,9 +692,17 @@ for (const plant of plants) {
           expect(exit._tag).toBe("Failure");
           expect(String(exit)).toContain("AssertionError");
           expect(String(exit)).toContain(
-            plant === "renewReplay"
-              ? "nothing is redelivered to the same generation"
-              : "mailbox retains every unshown message"
+            Match.value(plant).pipe(
+              Match.when(
+                "suppressDisplayedReplay",
+                () => "redelivery is once per new generation, in sequence order"
+              ),
+              Match.when(
+                "renewReplay",
+                () => "nothing is redelivered to the same generation"
+              ),
+              Match.orElse(() => "mailbox retains every unacknowledged message")
+            )
           );
         })
       )
