@@ -7,6 +7,7 @@ import {
   validateRecord,
 } from "./agentgraph.ts";
 import type { NotConfigured } from "./config.ts";
+import { SUMMARY_MAX } from "./payload.ts";
 import { RatKing, ReaderState } from "./ratking.ts";
 import type {
   Delivered,
@@ -204,6 +205,14 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
   }
 
   if (params.summary !== undefined) {
+    const { length } = params.summary.replaceAll(/\s+/gu, " ").trim();
+
+    if (length > SUMMARY_MAX) {
+      return loud(
+        `NOT SENT: summary is ${length} characters; the limit is ${SUMMARY_MAX}. Keep summary to one short line and put the detail in message.`
+      );
+    }
+
     Object.assign(encryption, { summary: params.summary });
   }
 
