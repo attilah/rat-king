@@ -231,6 +231,14 @@ export const deskHandlers = (desk: string) =>
           const created = yield* millis(item.createdAt);
 
           const outcome = yield* store.transaction((tx) => {
+            const held = tx.held(item.uri);
+
+            if (held !== undefined) {
+              return held.cid === cid
+                ? ({ seq: held.seq, stored: false } as const)
+                : ({ held: held.cid } as const);
+            }
+
             const project = tx.project();
 
             if (
@@ -241,15 +249,7 @@ export const deskHandlers = (desk: string) =>
               throw failure("ProjectMismatch", 409);
             }
 
-            const held = tx.held(item.uri);
-
-            if (held === undefined) {
-              return { seq: tx.insert(item, created), stored: true } as const;
-            }
-
-            return held.cid === cid
-              ? ({ seq: held.seq, stored: false } as const)
-              : ({ held: held.cid } as const);
+            return { seq: tx.insert(item, created), stored: true } as const;
           });
 
           if ("held" in outcome) {
