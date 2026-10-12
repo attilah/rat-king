@@ -5,12 +5,29 @@ import {
   deploymentStageLayout,
   stageDeploymentFiles,
 } from "./deployment-stage.ts";
+import type { UnitRenderLimits } from "./instance-units.ts";
 import type { Node } from "./inventory-schema.ts";
 import { ObjectStore } from "./object-store.ts";
 
 export const probeInstance = "mischiefrb";
 
 export const probePortBase = 28_010;
+
+export const probeUnitLimits = {
+  celld: {
+    cpuQuota: "100%",
+    memoryMax: "1.5G",
+    oomPolicy: "continue",
+    workerIPv4: "127.0.0.1",
+  },
+  seaweed: {
+    cpuQuota: "100%",
+    memoryMax: "1.5G",
+    oomPolicy: "continue",
+    volumeMax: 32,
+  },
+  slice: { cpuQuota: "100%", memoryHigh: "2.5G", memoryMax: "3G" },
+} satisfies UnitRenderLimits;
 
 export const probeIdentity = {
   commit: "rollback-proof",
@@ -24,25 +41,20 @@ export const instanceProbeProgram = (
 ) =>
   Effect.gen(function* probeStack() {
     const slice = yield* ObjectStore.Slice({
-      cpuQuota: "100%",
+      ...probeUnitLimits.slice,
       home: host.home,
       instance: probeInstance,
-      memoryHigh: "2.5G",
-      memoryMax: "3G",
     });
 
     const bucket = yield* ObjectStore.Bucket("store", {
-      cpuQuota: "100%",
+      ...probeUnitLimits.seaweed,
       dataRoot,
       host: { ...host, tailnetIPv4: "127.0.0.1" },
       instance: probeInstance,
-      memoryMax: "1.5G",
       name: "mischiefrb-cells",
-      oomPolicy: "continue",
       portBase: probePortBase,
       purgeOnDelete,
       slice: slice.sha256,
-      volumeMax: 32,
     });
 
     const prepared = {
@@ -68,16 +80,13 @@ export const instanceProbeProgram = (
     );
 
     const node = yield* Celld.Node("celld", {
+      ...probeUnitLimits.celld,
       bucket,
-      cpuQuota: "100%",
       host,
       instance: probeInstance,
-      memoryMax: "1.5G",
-      oomPolicy: "continue",
       portBase: probePortBase,
       prepared: staged,
       purgeOnDelete,
-      workerIPv4: "127.0.0.1",
     });
 
     return yield* Celld.Deployment("worker", {

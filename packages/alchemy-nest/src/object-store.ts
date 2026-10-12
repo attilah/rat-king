@@ -5,6 +5,7 @@ import { Effect, Layer, Redacted, Schema } from "effect";
 
 import { BucketProvider, BucketResource } from "./bucket-api.ts";
 import { refuse, textDigest } from "./files.ts";
+import { instanceStoreUnit } from "./instance-units.ts";
 import { InstanceNameSchema, validateInstance } from "./instance.ts";
 import type { InstanceProps } from "./instance.ts";
 import type { Node } from "./inventory-schema.ts";
@@ -17,7 +18,7 @@ import {
   SystemdUnit,
   providers as hostProviders,
 } from "./providers.ts";
-import { sliceUnit, storeUnit } from "./service-units.ts";
+import { sliceUnit } from "./service-units.ts";
 import type { ServiceLimits } from "./service-units.ts";
 import { storageMaintenanceScript } from "./storage-maintenance-script.ts";
 import {
@@ -132,23 +133,11 @@ export const Bucket = (id: string, props: StoreProps) =>
     const access = yield* Random("access-key", { bytes: 16 });
     const secret = yield* Random("secret-key", { bytes: 32 });
 
-    const declaration = storeUnit({
-      binary: `${layout.bin}/weed`,
-      config: `${layout.configuration}/s3.json`,
+    const declaration = instanceStoreUnit(host, layout, {
       cpuQuota: props.cpuQuota,
-      data: `${layout.dataRoot}/seaweedfs`,
-      home: host.home,
-      layout,
       memoryMax: props.memoryMax,
       oomPolicy: props.oomPolicy,
-      restartGate:
-        gate === undefined
-          ? undefined
-          : {
-              address: host.tailnetIPv4,
-              path: `${layout.bin}/restart-gate.mjs`,
-            },
-      restartOn: [],
+      restartGate: gate !== undefined,
       volumeMax: props.volumeMax,
     });
 

@@ -12,6 +12,7 @@ const Actions = Schema.Literals([
   "destroy-plan",
   "destroy",
   "verify-gone",
+  "render-units",
 ]);
 
 const program = Effect.gen(function* launcher() {
@@ -22,6 +23,11 @@ const program = Effect.gen(function* launcher() {
   const action = yield* Schema.decodeUnknownEffect(Actions)(process.argv[2]);
   yield* Config.String("RAT_KING_LIVE_NODE");
   yield* Config.String("RAT_KING_PROBE_DATA_ROOT");
+
+  if (action === "render-units") {
+    return yield* runInstanceProbe(action);
+  }
+
   const directory = yield* Config.String("RAT_KING_STATE_DIR");
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;

@@ -29,12 +29,14 @@ import { deleteDeployment } from "../src/deployment.ts";
 import { makeFakeShell } from "../src/fake-shell.ts";
 import { textDigest } from "../src/files.ts";
 import { HostShell } from "../src/host-shell.ts";
+import { renderUnits } from "../src/index.ts";
 import { deleteDirectory, deleteFile } from "../src/instance-files.ts";
 import { declaredListeners } from "../src/instance-listener-contract.ts";
 import { instanceGoneScript } from "../src/instance-probe-scripts.ts";
 import {
   instanceProbeProgram,
   probeIdentity,
+  probeUnitLimits,
 } from "../src/instance-probe-stack.ts";
 import { startupLayer } from "../src/instance-startup-contract.ts";
 import { InstanceNameSchema, instanceLayout } from "../src/instance.ts";
@@ -419,6 +421,24 @@ test.provider(
       );
 
       yield* stack.deploy(instanceProbeProgram(host, probeLayout.dataRoot));
+
+      const units = renderUnits(
+        { ...host, tailnetIPv4: "127.0.0.1" },
+        {
+          dataRoot: probeLayout.dataRoot,
+          instance: "mischiefrb",
+          portBase: 28_010,
+        },
+        probeUnitLimits
+      );
+
+      expect(units).toHaveLength(5);
+
+      for (const unit of units) {
+        const bytes = yield* fake.shell.read(unit.path);
+
+        expect(new TextDecoder().decode(bytes)).toBe(unit.text);
+      }
 
       yield* fake.shell.write({
         bytes: new TextEncoder().encode("invented data"),
