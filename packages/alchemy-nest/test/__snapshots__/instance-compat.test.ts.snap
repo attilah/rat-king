@@ -2,7 +2,7 @@
 
 exports[`gated mailbox units keep main 920884e bytes 1`] = `
 {
-  "node": "b66c55f2c3fac0024b9c0b01755414926783afb0930c8b446eb426463ec5e6cb",
-  "store": "018f5e6a33d5a78febba5ee6be87b7a72df68df440561c52a621785724e0660e",
+  "node": "61381c2fa1b121e4016004e6e1bcefa0e9fe1bf96ae6beaf13994ae1e01b1d96",
+  "store": "717aca97f05f4461f7cb96e93bab37fab5b54f2a1e3ed86d6b33889f89c539c2",
 }
 `;

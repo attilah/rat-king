@@ -52,7 +52,7 @@ exports[`default plan preserves baseline with structural storage alarms 1`] = `
       "rotationOwner": {
         "home": "/home/example",
         "name": "rat-king-celld.service",
-        "sha256": "8337f17c59df7196d2c192ac7857c4f38c9ed5dff48b477ace4110da6d119f3a",
+        "sha256": "78ec7dc0c57db4461344bf715150e464fe6523ddb09fccd2c5594dc6b8afcb08",
       },
     },
     "provider": {},
@@ -128,7 +128,7 @@ exports[`default plan preserves baseline with structural storage alarms 1`] = `
             ],
             [
               "Environment",
-              "CELLD_LTX_RETENTION_SECS=604800",
+              "CELLD_LTX_RETENTION_SECS=86400",
             ],
             [
               "Environment",
@@ -373,7 +373,7 @@ exports[`default plan preserves baseline with structural storage alarms 1`] = `
       "rotationOwner": {
         "home": "/home/example",
         "name": "rat-king-seaweedfs.service",
-        "sha256": "c6441e4f04acb9c0d614439fe7d2946f22c66141395c714b0768c68845ccb58b",
+        "sha256": "38e3e4ca25aed875b7183197997d82000dfbfa5cfd129a617be117cf1b519ce2",
       },
     },
     "provider": {},
@@ -433,7 +433,7 @@ exports[`default plan preserves baseline with structural storage alarms 1`] = `
           "lines": [
             [
               "ExecStart",
-              ""/home/example/.local/share/rat-king/bin/weed" server -ip=127.0.0.1 -ip.bind=127.0.0.1 -filer.port=18888 -filer.port.grpc=28888 -master.port=19333 -master.port.grpc=29333 -s3.port=18333 -s3.port.grpc=28333 -volume.port=18081 -volume.port.grpc=28081 -filer -s3 -s3.port.iceberg=0 -s3.port.lance=0 -dir="/srv/example/mailbox/seaweedfs" -s3.config="/home/example/.config/rat-king/s3.json" -master.telemetry=false -metricsPort=0 -debug=false -volume.pprof=false -master.volumeSizeLimitMB=64 -volume.max=256",
+              ""/home/example/.local/share/rat-king/bin/weed" server -ip=127.0.0.1 -ip.bind=127.0.0.1 -filer.port=18888 -filer.port.grpc=28888 -master.port=19333 -master.port.grpc=29333 -s3.port=18333 -s3.port.grpc=28333 -volume.port=18081 -volume.port.grpc=28081 -filer -s3 -s3.port.iceberg=0 -s3.port.lance=0 -dir="/srv/example/mailbox/seaweedfs" -s3.config="/home/example/.config/rat-king/s3.json" -master.telemetry=false -metricsPort=0 -debug=false -volume.pprof=false -master.volumeSizeLimitMB=64 -volume.max=512",
             ],
             [
               "WorkingDirectory",
@@ -744,7 +744,7 @@ ExecStopPost=-/usr/bin/python3 "/home/example/.local/share/rat-king/bin/storage-
 EnvironmentFile=/home/example/.config/rat-king/celld.env
 WorkingDirectory=/srv/example/mailbox/celld
 Environment=CELLD_OTEL=0
-Environment=CELLD_LTX_RETENTION_SECS=604800
+Environment=CELLD_LTX_RETENTION_SECS=86400
 Environment=CELLD_SHUTDOWN_TOTAL_MS=8000
 Environment="CELLD_TEST_DATA_DIR=/srv/example/mailbox/celld"
 Slice=rat-king.slice
@@ -766,7 +766,7 @@ Description=Rat King object storage
 StartLimitIntervalSec=0
 
 [Service]
-ExecStart="/home/example/.local/share/rat-king/bin/weed" server -ip=127.0.0.1 -ip.bind=127.0.0.1 -filer.port=18888 -filer.port.grpc=28888 -master.port=19333 -master.port.grpc=29333 -s3.port=18333 -s3.port.grpc=28333 -volume.port=18081 -volume.port.grpc=28081 -filer -s3 -s3.port.iceberg=0 -s3.port.lance=0 -dir="/srv/example/mailbox/seaweedfs" -s3.config="/home/example/.config/rat-king/s3.json" -master.telemetry=false -metricsPort=0 -debug=false -volume.pprof=false -master.volumeSizeLimitMB=64 -volume.max=256
+ExecStart="/home/example/.local/share/rat-king/bin/weed" server -ip=127.0.0.1 -ip.bind=127.0.0.1 -filer.port=18888 -filer.port.grpc=28888 -master.port=19333 -master.port.grpc=29333 -s3.port=18333 -s3.port.grpc=28333 -volume.port=18081 -volume.port.grpc=28081 -filer -s3 -s3.port.iceberg=0 -s3.port.lance=0 -dir="/srv/example/mailbox/seaweedfs" -s3.config="/home/example/.config/rat-king/s3.json" -master.telemetry=false -metricsPort=0 -debug=false -volume.pprof=false -master.volumeSizeLimitMB=64 -volume.max=512
 WorkingDirectory=/srv/example/mailbox/seaweedfs
 Environment=SENTRY_DSN=
 Environment=OTEL_SDK_DISABLED=true

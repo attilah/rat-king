@@ -123,7 +123,7 @@ export const storeUnit = (
             "-debug=false",
             "-volume.pprof=false",
             "-master.volumeSizeLimitMB=64",
-            `-volume.max=${input.volumeMax ?? 256}`,
+            `-volume.max=${input.volumeMax ?? 512}`,
           ].join(" "),
         ],
         ...(input.restartGate === undefined
@@ -209,7 +209,7 @@ export const nodeUnit = (
         ["EnvironmentFile", input.environment.replaceAll("%", "%%")],
         ["WorkingDirectory", input.data.replaceAll("%", "%%")],
         ["Environment", "CELLD_OTEL=0"],
-        ["Environment", "CELLD_LTX_RETENTION_SECS=604800"],
+        ["Environment", "CELLD_LTX_RETENTION_SECS=86400"],
         ["Environment", "CELLD_SHUTDOWN_TOTAL_MS=8000"],
         ["Environment", quote(`CELLD_TEST_DATA_DIR=${input.data}`)],
         ["Slice", input.layout?.slice ?? "rat-king.slice"],
