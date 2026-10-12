@@ -152,6 +152,22 @@ const probe = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     Effect.catchCause(() => Effect.succeed(Option.none<A>()))
   );
 
+const backupWindowOf = (digest: HealthDigest | null) => {
+  const run = digest?.backup.lastRun ?? null;
+
+  if (run === null || run.startedAt === null) {
+    return null;
+  }
+
+  const start = DateTime.toEpochMillis(run.startedAt);
+
+  if (run.endedAt === null || DateTime.toEpochMillis(run.endedAt) < start) {
+    return { end: null, start };
+  }
+
+  return { end: DateTime.toEpochMillis(run.endedAt), start };
+};
+
 export const collectAlarmFacts = Effect.fn("Alarm.collect")(
   function* collectAlarmFacts<E, R, E2, R2>(
     config: StageConfigValue,
@@ -258,6 +274,7 @@ export const collectAlarmFacts = Effect.fn("Alarm.collect")(
     const healthy = Option.getOrNull(observations.health);
 
     return yield* Schema.decodeUnknownEffect(AlarmFacts)({
+      backup: backupWindowOf(healthy),
       cacheBreaches: Option.getOrNull(observations.cache),
       deploy: Option.getOrNull(observations.deploy),
       deployKnown: Option.isSome(observations.deploy),

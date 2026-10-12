@@ -81,7 +81,13 @@ export const InstanceHealth = Schema.Union([
   }),
 ]);
 
+export const BackupWindow = Schema.Struct({
+  end: Schema.NullOr(Schema.Finite),
+  start: Schema.Finite,
+});
+
 export const AlarmFacts = Schema.Struct({
+  backup: Schema.optionalKey(Schema.NullOr(BackupWindow)),
   cacheBreaches: Schema.NullOr(Schema.Array(CacheBreach)),
   deploy: Schema.NullOr(DeployMarker),
   deployKnown: Schema.Boolean,
@@ -151,7 +157,11 @@ const trackSources = (
     facts.receipts.some(
       (receipt) =>
         receipt.start * 1000 <= instant && receipt.end * 1000 >= instant
-    );
+    ) ||
+    (facts.backup !== undefined &&
+      facts.backup !== null &&
+      facts.backup.start <= instant &&
+      (facts.backup.end ?? now) >= instant);
 
   const unexplained = prior.unexplained.filter(
     (instant) => !explains(instant) && now - instant < RESTART_MEMORY_MS
@@ -316,7 +326,7 @@ const restartReading = (
   return sources.unexplained.length > 0
     ? firing(
         "warn",
-        `${sources.unexplained.length} observed process starts lack an explaining ship receipt`
+        `${sources.unexplained.length} observed process starts lack an explaining ship receipt or backup run`
       )
     : ok;
 };

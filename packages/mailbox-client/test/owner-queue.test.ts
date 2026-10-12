@@ -140,7 +140,7 @@ it.prop(
     const filler = "é".repeat(bodyBytes);
 
     expect(withinCaps(`${prefix}${flat}\n${capBody(body)}`)).toBe(
-      !/\p{Cs}/u.test(`${flat}${body}`)
+      !/\p{Cs}/u.test(flat) && !/\p{Cs}/u.test(body)
     );
     expect(withinCaps(`${prefix}${capBody(filler)}`)).toBe(true);
     expect(withinCaps(`${prefix}${capBody(filler)}é`)).toBe(false);
