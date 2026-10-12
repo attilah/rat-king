@@ -68,6 +68,7 @@ const summaries: Record<AlarmKeyValue, string> = {
   "celld.restarted": "Unexplained process restart",
   "digest.fail": "Fleet digest failed",
   "filer.slots": "Storage free slots are low",
+  "instance.down": "Named celld instance health is unavailable",
   "issuer.broken": "Identity configuration is broken",
   "quarantine.growth": "Quarantine is growing",
   "readers.stuck": "Desk readers are stuck",
@@ -76,8 +77,20 @@ const summaries: Record<AlarmKeyValue, string> = {
 
 export const alarmRecipients = (
   settings: AlarmSettingsValue,
-  key: AlarmKeyValue
+  key: AlarmKeyValue,
+  downInstances: readonly string[] = []
 ) => {
+  if (key === "instance.down") {
+    return [
+      ...new Set([
+        settings.broadcast,
+        ...(settings.instances ?? [])
+          .filter((instance) => downInstances.includes(instance.name))
+          .map((instance) => instance.owner),
+      ]),
+    ];
+  }
+
   const [owner] = Object.keys(settings.owners)
     .filter((prefix) => key === prefix || key.startsWith(`${prefix}.`))
     .toSorted((a, b) => b.length - a.length);
@@ -189,7 +202,13 @@ export const alarmCycle = Effect.fn("Alarm.cycle")(function* alarmCycle<R>(
       kind: next.notice,
       recipients: [
         ...new Set([
-          ...alarmRecipients(settings, key),
+          ...alarmRecipients(
+            settings,
+            key,
+            (facts.instances ?? [])
+              .filter((instance) => instance.status === "down")
+              .map((instance) => instance.name)
+          ),
           ...(reading.status === "firing" ? (reading.recipients ?? []) : []),
         ]),
       ],
