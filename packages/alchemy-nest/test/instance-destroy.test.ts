@@ -2,9 +2,19 @@ import { NodePath, NodeServices } from "@effect/platform-node";
 import { it } from "@effect/vitest";
 import * as Plan from "alchemy/Plan";
 import * as Provider from "alchemy/Provider";
+import { Cli } from "alchemy/Report";
 import { State } from "alchemy/State";
 import * as Test from "alchemy/Test/Vitest";
-import { Arbitrary, Cause, Context, Effect, Exit, Layer, Schema } from "effect";
+import {
+  Arbitrary,
+  Cause,
+  Context,
+  Effect,
+  Exit,
+  Layer,
+  Predicate,
+  Schema,
+} from "effect";
 import { HttpClient, HttpClientResponse } from "effect/http";
 import { expect } from "vitest";
 
@@ -30,12 +40,14 @@ import { startupLayer } from "../src/instance-startup-contract.ts";
 import { InstanceNameSchema, instanceLayout } from "../src/instance.ts";
 import { localExec } from "../src/local-exec.ts";
 import { ObjectStore } from "../src/object-store.ts";
+import { withDestroyReceipt } from "../src/probe-receipts.ts";
 import { ReleaseBinary } from "../src/providers.ts";
 import { ReleaseSource } from "../src/release.ts";
 import { s3Script } from "../src/s3-script.ts";
 import { deleteUnit } from "../src/systemd.ts";
 import { storeSocketScript } from "../src/unit-cleanup.ts";
 import { checkedRead, checkedStack } from "./checked-stack.ts";
+import { BucketFixture } from "./instance-bucket-model.ts";
 import { goneFixture } from "./instance-teardown-model.ts";
 
 const host = {
@@ -210,6 +222,8 @@ const runtime = Layer.effectContext(
 
     yield* fake.shell.mkdir({ mode: 0o700, path: "/srv/example/mailbox" });
     let bucketExists = false;
+    const objects = new Set<string>();
+    const requests: string[] = [];
 
     const shell = {
       ...fake.shell,
@@ -245,15 +259,24 @@ const runtime = Layer.effectContext(
         }
 
         if (argv[2] === s3Script) {
-          if (argv[6] === "create") {
+          const operation = argv[6] ?? "";
+
+          requests.push(operation);
+
+          if (operation === "create") {
             bucketExists = true;
           }
 
-          if (argv[6] === "purge") {
-            bucketExists = false;
-          }
+          let status = bucketExists ? 200 : 404;
 
-          const status = argv[6] === "purge" ? 204 : 200;
+          if (operation === "purge" || operation === "delete") {
+            status = operation === "delete" && objects.size > 0 ? 409 : 204;
+
+            if (status === 204) {
+              bucketExists = false;
+              objects.clear();
+            }
+          }
 
           return Effect.succeed({
             code: 0,
@@ -292,6 +315,20 @@ const runtime = Layer.effectContext(
     };
 
     return Context.make(Fake, fake).pipe(
+      Context.add(BucketFixture, {
+        clearRequests: Effect.sync(() => {
+          requests.length = 0;
+        }),
+        drain: Effect.sync(() => {
+          objects.clear();
+        }),
+        objects: Effect.sync(() => [...objects]),
+        put: (key) =>
+          Effect.sync(() => {
+            objects.add(key);
+          }),
+        requests: Effect.sync(() => [...requests]),
+      }),
       Context.add(HostShell, shell),
       Context.add(
         HttpClient.HttpClient,
@@ -857,6 +894,249 @@ test.provider(
             return true;
           }),
         { runs: 4 }
+      );
+
+      expect(result._tag, Arbitrary.formatCheckFailure(result)).toBe("Passed");
+    })
+);
+
+test.provider(
+  "nonpurging bucket refusal preserves journals, allows empty rmdir, and resumes after external archive and drain",
+  (scratch) =>
+    Effect.gen(function* refusedDestroy() {
+      const fake = yield* Fake;
+      const bucket = yield* BucketFixture;
+      let archiveSequence = 0;
+
+      const cli = yield* Cli;
+      const stack = checkedStack(scratch);
+
+      const result = yield* Arbitrary.checkEffect(
+        Arbitrary.schema(Schema.String),
+        (key) =>
+          Effect.gen(function* retry() {
+            for (const journals of [false, true]) {
+              yield* stack.deploy(
+                instanceProbeProgram(host, probeLayout.dataRoot, false)
+              );
+              yield* bucket.put(key);
+
+              const journal = `${probeLayout.dataRoot}/celld/journal.db`;
+
+              const content = new TextEncoder().encode(
+                key || "journal evidence"
+              );
+
+              if (journals) {
+                yield* fake.shell.write({
+                  bytes: content,
+                  mode: 0o600,
+                  path: journal,
+                });
+              }
+
+              const before = yield* Plan.destroy({
+                name: scratch.name,
+                stage: scratch.stage,
+              }).pipe(Effect.provide(scratch.state));
+
+              const lines: string[] = [];
+              const events: string[] = [];
+
+              yield* bucket.clearRequests;
+              yield* fake.clear();
+
+              const failed = yield* withDestroyReceipt(
+                Object.keys(before.deletions),
+                (session) =>
+                  stack.destroy().pipe(
+                    Effect.provideService(Cli, {
+                      approvePlan: (plan, options) =>
+                        cli.approvePlan(plan, options),
+                      displayPlan: (plan, options) =>
+                        cli.displayPlan(plan, options),
+                      startApplySession: () =>
+                        Effect.succeed({
+                          done: session.done,
+                          emit: (event) =>
+                            Effect.gen(function* emit() {
+                              if (
+                                Predicate.isTagged(
+                                  event,
+                                  "apply.resource.status"
+                                )
+                              ) {
+                                events.push(`${event.status} ${event.fqn}`);
+                              }
+
+                              yield* session.emit(event);
+                            }),
+                        }),
+                      startPlanningSession: (label, detail, title) =>
+                        cli.startPlanningSession(label, detail, title),
+                    })
+                  ),
+                (line) =>
+                  Effect.sync(() => {
+                    lines.push(line);
+                  })
+              ).pipe(Effect.exit);
+
+              expect(Exit.isFailure(failed)).toBe(true);
+
+              if (Exit.isFailure(failed)) {
+                expect(Cause.pretty(failed.cause)).toContain(
+                  "Bucket delete refused; drain owned objects first."
+                );
+              }
+
+              expect(yield* bucket.objects).toEqual([key]);
+              expect(yield* bucket.requests).not.toContain("purge");
+              expect(lines).toContain("failed store/bucket");
+              expect(lines).toContain(
+                journals ? "failed celld/data" : "deleted celld/data"
+              );
+
+              const calls = yield* fake.calls();
+
+              for (const path of [
+                probeLayout.dataRoot,
+                `${probeLayout.dataRoot}/seaweedfs`,
+              ]) {
+                expect(yield* fake.shell.stat(path)).toBeDefined();
+                expect(
+                  calls.filter(
+                    (call) =>
+                      ["remove", "rmdir"].includes(call.operation) &&
+                      call.argv.includes(path)
+                  )
+                ).toEqual([]);
+              }
+
+              expect(events.indexOf("deleted celld/node")).toBeLessThan(
+                events.indexOf("deleting celld/data")
+              );
+              expect(
+                calls.filter(
+                  (call) =>
+                    call.operation === "rmdir" &&
+                    call.argv.includes(`${probeLayout.dataRoot}/celld`)
+                )
+              ).toHaveLength(1);
+              expect(
+                calls.filter(
+                  (call) =>
+                    call.operation === "exec" &&
+                    call.argv.includes(`${probeLayout.dataRoot}/celld`)
+                )
+              ).toEqual([]);
+
+              if (journals) {
+                expect(
+                  yield* fake.shell.stat(`${probeLayout.dataRoot}/celld`)
+                ).toBeDefined();
+                expect(yield* fake.shell.read(journal)).toEqual(content);
+              } else {
+                expect(
+                  yield* fake.shell.stat(`${probeLayout.dataRoot}/celld`)
+                ).toBeUndefined();
+              }
+
+              const independent = [
+                "celld/celld",
+                "celld/environment",
+                "celld/node",
+                "mischiefrb-deployment-stage-configuration",
+                "mischiefrb-deployment-stage-directory",
+                "mischiefrb-deployment-stage-worker",
+                "store/storage-maintenance",
+                "store/storage-retention",
+                "store/storage-retention-timer",
+                "worker",
+                ...(journals ? [] : ["celld/data"]),
+              ].toSorted();
+
+              expect(
+                lines
+                  .flatMap((line) =>
+                    line.startsWith("deleted ") ? [line.slice(8)] : []
+                  )
+                  .toSorted()
+              ).toEqual(independent);
+
+              const remaining = yield* Plan.destroy({
+                name: scratch.name,
+                stage: scratch.stage,
+              }).pipe(Effect.provide(scratch.state));
+
+              expect(Object.keys(remaining.deletions).toSorted()).toEqual(
+                Object.keys(before.deletions)
+                  .filter((name) => !independent.includes(name))
+                  .toSorted()
+              );
+
+              const archivedObjects = yield* bucket.objects;
+
+              const archiveMoves: { destination: string; source: string }[] =
+                [];
+
+              if (journals) {
+                archiveSequence += 1;
+
+                const moved = yield* fake.archive(
+                  journal,
+                  `/srv/example/archive/journal-${archiveSequence}.db`
+                );
+
+                archiveMoves.push(moved);
+                expect(yield* fake.shell.read(moved.destination)).toEqual(
+                  content
+                );
+              }
+
+              yield* bucket.drain;
+              yield* stack.destroy();
+
+              expect(archivedObjects).toEqual([key]);
+              expect(archiveMoves).toHaveLength(journals ? 1 : 0);
+
+              for (const path of [
+                ...instanceDeleteCustody(host.home, probeLayout).files,
+                ...instanceDeleteCustody(host.home, probeLayout).directories,
+              ]) {
+                expect(yield* fake.shell.stat(path)).toBeUndefined();
+              }
+
+              const gone = yield* localExec.pipe(
+                Effect.flatMap((executor) =>
+                  executor.exec([
+                    "python3",
+                    "-c",
+                    goneFixture,
+                    JSON.stringify({
+                      commands: false,
+                      directory: false,
+                      inactive: false,
+                      link: false,
+                      listener: false,
+                      loaded: false,
+                      pid: false,
+                      slice: false,
+                      socket: false,
+                      units: false,
+                    }),
+                    instanceGoneScript,
+                  ])
+                ),
+                Effect.provide(NodeServices.layer)
+              );
+
+              expect(gone.code, gone.stdout).toBe(0);
+            }
+
+            return true;
+          }),
+        { runs: 3 }
       );
 
       expect(result._tag, Arbitrary.formatCheckFailure(result)).toBe("Passed");

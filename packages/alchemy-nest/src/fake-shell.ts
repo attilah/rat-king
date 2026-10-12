@@ -393,6 +393,31 @@ export const makeFakeShell = Effect.fn("HostShell.fake")((custody?: Custody) =>
     };
 
     return {
+      archive: Effect.fn("HostShell.fake.archive")(function* archive(
+        path: string,
+        destination: string
+      ) {
+        const file = files.get(path);
+
+        if (
+          file === undefined ||
+          files.has(destination) ||
+          directories.has(destination) ||
+          symlinks.has(destination)
+        ) {
+          return yield* new HostError({
+            operation: "archive",
+            reason: "Invalid external archive move.",
+          });
+        }
+
+        return yield* Effect.sync(() => {
+          files.set(destination, file);
+          files.delete(path);
+
+          return { destination, source: path };
+        });
+      }),
       calls: () => Effect.sync(() => [...calls]),
       clear: () =>
         Effect.sync(() => {

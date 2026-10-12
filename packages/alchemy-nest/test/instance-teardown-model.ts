@@ -1,11 +1,13 @@
 export const goneFixture = String.raw`
-import glob, json, os, subprocess, sys, types
+import glob, json, os, subprocess, sys
 world = json.loads(sys.argv[1])
 script = sys.argv[2]
 before = {'rat-king-celld.service': 111, 'rat-king-seaweedfs.service': 222}
 def run(args, **kwargs):
     if world['commands']:
-        raise subprocess.CalledProcessError(1, args)
+        result = subprocess.CompletedProcess(args, 2, '', 'modeled failure')
+        if kwargs.get('check'): result.check_returncode()
+        return result
     output = ''
     if 'list-unit-files' in args:
         if 'mischiefrb-*' in args and world['units']:
@@ -23,7 +25,14 @@ def run(args, **kwargs):
         output = 'ActiveState=' + state + '\nMainPID=' + str(pid)
     else:
         raise ValueError('Unexpected command')
-    return types.SimpleNamespace(stdout=output)
+    code = 1 if 'list-unit-files' in args and not output else 0
+    if 'list-unit-files' in args and world.get('listingError'): code = 2
+    if 'list-unit-files' in args and world.get('listingOneOutput'):
+        code, output = 1, 'modeled diagnostic'
+    if 'list-units' in args and world.get('otherExitOne'): code = 1
+    result = subprocess.CompletedProcess(args, code, output, '')
+    if kwargs.get('check'): result.check_returncode()
+    return result
 subprocess.run = run
 glob.glob = lambda path: ['mischiefrb-leftover'] if world['link'] and '.wants' in path else []
 os.path.lexists = lambda path: world['directory'] or (world['socket'] and path.startswith('/tmp/'))
