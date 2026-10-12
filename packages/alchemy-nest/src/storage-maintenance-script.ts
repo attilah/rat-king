@@ -40,7 +40,7 @@ def retention(call=request, now=None):
             page = call(FILER + ROOT + '/?' + query)
         except urllib.error.HTTPError as error:
             if error.code == 404 and not cursor:
-                return []
+                return 0
             raise
         if page.get('Path') != ROOT or not isinstance(page.get('Entries'), (list, type(None))):
             raise RuntimeError('unexpected metadata log listing')
