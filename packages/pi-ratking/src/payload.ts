@@ -62,6 +62,7 @@ export interface Inbound {
   readonly summary: Option.Option<string>;
   readonly cc: boolean;
   readonly ccNames?: readonly string[];
+  readonly copy?: boolean;
   readonly to?: string;
   readonly thread?: string;
 }
@@ -98,6 +99,26 @@ const renderSent = (inbound: Inbound, by: string) =>
     `Context only: ${by} already sent this. Do not reply to it.`,
   ].join("\n");
 
+export const COPY_BODY_MAX = 500;
+
+export const COPY_NOTE =
+  "You are cc'd, so this did not wake you. No action is expected unless it names you; the sender uses to: for whoever must act.";
+
+const quietCopy = (inbound: Inbound) =>
+  inbound.copy === true &&
+  inbound.kind !== "ask" &&
+  inbound.relay === undefined;
+
+const copyBody = (inbound: Inbound) => {
+  if (Option.isSome(inbound.summary)) {
+    return "(Full text kept in the session view.)";
+  }
+
+  return inbound.body.length > COPY_BODY_MAX
+    ? `${inbound.body.slice(0, COPY_BODY_MAX)}… (clipped; full text kept in the session view)`
+    : inbound.body;
+};
+
 export const renderInbound = (tool: string, inbound: Inbound) => {
   if (inbound.sentBy !== undefined) {
     return renderSent(inbound, inbound.sentBy);
@@ -129,7 +150,13 @@ export const renderInbound = (tool: string, inbound: Inbound) => {
       onNone: () => [],
       onSome: (summary) => [`Summary: ${summary}`, ""],
     }),
-    inbound.kind === "data" ? renderRecordBody(inbound.body) : inbound.body,
+    ...(quietCopy(inbound)
+      ? [copyBody(inbound), "", COPY_NOTE]
+      : [
+          inbound.kind === "data"
+            ? renderRecordBody(inbound.body)
+            : inbound.body,
+        ]),
     "",
     replyHint(tool, inbound),
   ].join("\n");

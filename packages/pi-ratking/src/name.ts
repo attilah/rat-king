@@ -149,3 +149,9 @@ export const verifiedSender = (input: {
   Option.exists(input.known, (name) => name === input.claimed) ||
   (Schema.is(AgentName)(input.claimed) &&
     didFor(input.template, input.reserved, input.claimed) === input.did);
+
+export const addressedElsewhere = (
+  reserved: ReservedValue,
+  to: string,
+  own: string
+) => canonicalName(reserved, to) !== own;

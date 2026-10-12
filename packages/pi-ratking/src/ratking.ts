@@ -52,6 +52,7 @@ import type { SessionFacts } from "./identity.ts";
 import { Issuer } from "./issuer.ts";
 import {
   AgentName,
+  addressedElsewhere,
   canonicalName,
   didFor,
   isReserved,
@@ -569,7 +570,14 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
             }
 
             if (payload.value.to !== undefined) {
-              Object.assign(inbound, { to: payload.value.to });
+              Object.assign(inbound, {
+                copy: addressedElsewhere(
+                  settings.reserved,
+                  payload.value.to,
+                  own.name
+                ),
+                to: payload.value.to,
+              });
             }
 
             if (payload.value.thread !== undefined) {

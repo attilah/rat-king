@@ -4,10 +4,19 @@ import { deliveryMode } from "../src/extension.ts";
 
 describe("deliveryMode", () => {
   it("steers mail addressed to this reader so a long turn sees it at the next tool batch", () => {
-    expect(deliveryMode({ cc: false })).toBe("steer");
+    expect(deliveryMode({ kind: "message" })).toBe("steer");
+    expect(deliveryMode({ copy: false, kind: "message" })).toBe("steer");
   });
 
-  it("keeps a copy as a follow-up for when the turn ends", () => {
-    expect(deliveryMode({ cc: true })).toBe("followUp");
+  it("holds a cc'd copy for the next turn without waking the reader", () => {
+    expect(deliveryMode({ copy: true, kind: "message" })).toBe("nextTurn");
+    expect(deliveryMode({ copy: true, kind: "data" })).toBe("nextTurn");
+  });
+
+  it("still wakes a cc'd reader for an ask or relayed mail", () => {
+    expect(deliveryMode({ copy: true, kind: "ask" })).toBe("steer");
+    expect(
+      deliveryMode({ copy: true, kind: "message", relay: { name: "front" } })
+    ).toBe("steer");
   });
 });

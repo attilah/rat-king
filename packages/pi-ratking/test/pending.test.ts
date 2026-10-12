@@ -51,7 +51,7 @@ describe("pending mail", () => {
     ]);
     expect(session.entries[0]).toEqual({
       customType: PENDING_ENTRY,
-      data: mail("a"),
+      data: { ...mail("a"), deliverAs: "steer" },
       type: "custom",
     });
   });
@@ -96,6 +96,24 @@ describe("pending mail", () => {
     second.restore(before.entries);
 
     expect(after.steps).toEqual(["show b steer", "show c steer"]);
+  });
+
+  it("leaves a cc'd copy for the next turn: never re-sent on idle, restored without a wake", () => {
+    const before = fakeSession();
+    const first = inbox(before.host);
+
+    first.take(mail("a"), "nextTurn");
+    before.steps.length = 0;
+
+    first.resend();
+
+    expect(before.steps).toEqual([]);
+
+    const after = fakeSession();
+
+    inbox(after.host).restore(before.entries);
+
+    expect(after.steps).toEqual(["show a nextTurn"]);
   });
 
   it("restoring a session where everything was shown shows nothing", () => {

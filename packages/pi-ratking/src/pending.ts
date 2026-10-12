@@ -6,6 +6,7 @@ export const MAIL_MESSAGE = "ratking_message";
 
 export interface PendingMail {
   readonly content: string;
+  readonly deliverAs?: DeliverAs;
   readonly details: unknown;
   readonly id: string;
 }
@@ -14,6 +15,9 @@ const PendingEntry = Schema.Struct({
   customType: Schema.Literal(PENDING_ENTRY),
   data: Schema.Struct({
     content: Schema.String,
+    deliverAs: Schema.optionalKey(
+      Schema.Literals(["followUp", "nextTurn", "steer"])
+    ),
     details: Schema.Unknown,
     id: Schema.String,
   }),
@@ -65,37 +69,40 @@ export const unshown = (entries: readonly unknown[]): PendingMail[] => {
   return [...pending.values()].filter((mail) => !shown.has(mail.id));
 };
 
-export type DeliverAs = "followUp" | "steer";
+export type DeliverAs = "followUp" | "nextTurn" | "steer";
 
 export interface MailHost {
   readonly appendEntry?: (customType: string, data: PendingMail) => void;
   readonly show: (pending: PendingMail, deliverAs: DeliverAs) => void;
 }
 
+const quiet = (mail: PendingMail) => mail.deliverAs === "nextTurn";
+
 export const inbox = (host: MailHost) => {
   const pending = new Map<string, PendingMail>();
 
-  const resend = () => {
-    for (const mail of pending.values()) {
-      host.show(mail, "steer");
-    }
-  };
-
   return {
-    resend,
+    resend: () => {
+      for (const mail of pending.values()) {
+        if (!quiet(mail)) {
+          host.show(mail, "steer");
+        }
+      }
+    },
     restore: (entries: readonly unknown[]) => {
       pending.clear();
 
       for (const mail of unshown(entries)) {
         pending.set(mail.id, mail);
+        host.show(mail, quiet(mail) ? "nextTurn" : "steer");
       }
-
-      resend();
     },
     shown: (id: string) => {
       pending.delete(id);
     },
-    take: (mail: PendingMail, deliverAs: DeliverAs) => {
+    take: (taken: PendingMail, deliverAs: DeliverAs) => {
+      const mail = { ...taken, deliverAs };
+
       pending.set(mail.id, mail);
       host.appendEntry?.(PENDING_ENTRY, mail);
       host.show(mail, deliverAs);

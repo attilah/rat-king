@@ -32,7 +32,7 @@ import { messageView } from "./message-view.ts";
 import { LexiconRecord, renderInbound } from "./payload.ts";
 import type { Inbound } from "./payload.ts";
 import { inbox, MAIL_MESSAGE, shownId } from "./pending.ts";
-import type { PendingMail } from "./pending.ts";
+import type { DeliverAs, PendingMail } from "./pending.ts";
 import { NotDelivered, RatKing, ratKingLayer } from "./ratking.ts";
 import type { Deliver, SendOptions } from "./ratking.ts";
 import { recordNotice } from "./record-visibility.ts";
@@ -76,8 +76,13 @@ export const RETIRE_RESULT_EVENT = "ratking/retire:result";
 const RELEASE_WAIT_MS = 2000;
 
 export const deliveryMode = (inbound: {
-  readonly cc: boolean;
-}): "followUp" | "steer" => (inbound.cc ? "followUp" : "steer");
+  readonly copy?: boolean;
+  readonly kind: string;
+  readonly relay?: unknown;
+}): DeliverAs =>
+  inbound.copy === true && inbound.kind !== "ask" && inbound.relay === undefined
+    ? "nextTurn"
+    : "steer";
 
 export const injects = (
   inbound: { readonly kind: string; readonly body?: string },
@@ -505,7 +510,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
             details: pending.details,
             display: true,
           },
-          { deliverAs, triggerTurn: true }
+          { deliverAs, triggerTurn: deliverAs !== "nextTurn" }
         );
       },
     });
