@@ -1013,6 +1013,33 @@ test.provider(
                 ).toEqual([]);
               }
 
+              expect(
+                calls.filter(
+                  (call) =>
+                    call.operation === "remove" &&
+                    call.argv.some((path) =>
+                      path.startsWith(`${probeLayout.dataRoot}/`)
+                    )
+                )
+              ).toEqual([]);
+              expect(
+                calls.filter(
+                  (call) =>
+                    call.operation === "exec" &&
+                    call.argv.some(
+                      (path) =>
+                        path === probeLayout.dataRoot ||
+                        path.startsWith(`${probeLayout.dataRoot}/`)
+                    )
+                )
+              ).toEqual([]);
+              expect(events.indexOf("deleted celld/node")).toBeLessThan(
+                events.indexOf("fail store/bucket")
+              );
+              expect(events.indexOf("fail store/bucket")).toBeLessThan(
+                events.indexOf("deleting celld/data")
+              );
+
               expect(events.indexOf("deleted celld/node")).toBeLessThan(
                 events.indexOf("deleting celld/data")
               );
