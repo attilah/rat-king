@@ -138,7 +138,7 @@ export const storeUnit = (
         ["Environment", "SENTRY_DSN="],
         ["Environment", "OTEL_SDK_DISABLED=true"],
         ["Slice", input.layout?.slice ?? "rat-king.slice"],
-        ...limitLines(input, "2G", "100%"),
+        ...limitLines(input, "3G", "100%"),
         ["TasksMax", "512"],
         ["Nice", "10"],
         ["Restart", "on-failure"],

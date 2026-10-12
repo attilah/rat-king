@@ -373,7 +373,7 @@ exports[`default plan preserves baseline with structural storage alarms 1`] = `
       "rotationOwner": {
         "home": "/home/example",
         "name": "rat-king-seaweedfs.service",
-        "sha256": "38e3e4ca25aed875b7183197997d82000dfbfa5cfd129a617be117cf1b519ce2",
+        "sha256": "29dc71890743477d6a414fff272eeebb39645af4cc7e045f9bb5acdebb216277",
       },
     },
     "provider": {},
@@ -453,7 +453,7 @@ exports[`default plan preserves baseline with structural storage alarms 1`] = `
             ],
             [
               "MemoryMax",
-              "2G",
+              "3G",
             ],
             [
               "MemorySwapMax",
@@ -771,7 +771,7 @@ WorkingDirectory=/srv/example/mailbox/seaweedfs
 Environment=SENTRY_DSN=
 Environment=OTEL_SDK_DISABLED=true
 Slice=rat-king.slice
-MemoryMax=2G
+MemoryMax=3G
 MemorySwapMax=0
 CPUQuota=100%
 TasksMax=512
