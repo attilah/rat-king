@@ -187,6 +187,10 @@ export const BucketProvider = () =>
           output,
           olds,
         }) {
+          if (output === undefined) {
+            return yield* Effect.void;
+          }
+
           const custody = shell.deleteCustody;
 
           if (

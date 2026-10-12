@@ -1,43 +1,13 @@
 import { NodeServices } from "@effect/platform-node";
 import { it } from "@effect/vitest";
-import { Arbitrary, Effect, Schema } from "effect";
+import { Arbitrary, Effect, Schema, Exit } from "effect";
 import { expect } from "vitest";
 
+import { makeFakeShell } from "../src/fake-shell.ts";
 import { instanceGoneScript } from "../src/instance-probe-scripts.ts";
 import { localExec } from "../src/local-exec.ts";
-
-const fixture = String.raw`
-import glob, json, os, subprocess, sys, types
-world = json.loads(sys.argv[1])
-script = sys.argv[2]
-before = {'rat-king-celld.service': 111, 'rat-king-seaweedfs.service': 222}
-def run(args, **kwargs):
-    if world['commands']:
-        raise subprocess.CalledProcessError(1, args)
-    output = ''
-    if 'list-unit-files' in args:
-        if 'mischiefrb-*' in args and world['units']:
-            output = 'mischiefrb-celld.service enabled'
-        if 'mischiefrb.slice' in args and world['slice']:
-            output = 'mischiefrb.slice static'
-    elif 'list-units' in args:
-        output = 'mischiefrb.slice loaded inactive' if world['loaded'] else ''
-    elif args[0] == 'ss':
-        output = 'LISTEN 0 128 127.0.0.1:28019 0.0.0.0:*' if world['listener'] else ''
-    elif 'show' in args:
-        unit = args[3]
-        pid = before[unit] + int(world['pid'])
-        state = 'inactive' if world['inactive'] else 'active'
-        output = 'ActiveState=' + state + '\nMainPID=' + str(pid)
-    else:
-        raise ValueError('Unexpected command')
-    return types.SimpleNamespace(stdout=output)
-subprocess.run = run
-glob.glob = lambda path: ['mischiefrb-leftover'] if world['link'] and '.wants' in path else []
-os.path.lexists = lambda path: world['directory'] or (world['socket'] and path.startswith('/tmp/'))
-sys.argv = ['probe', '/home/example', '/srv/example/mischiefrb', json.dumps(before)]
-exec(script)
-`;
+import { probeTeardown, verifyInstanceGone } from "../src/probe-receipts.ts";
+import { goneFixture } from "./instance-teardown-model.ts";
 
 const leftovers = [
   "commands",
@@ -54,11 +24,20 @@ const leftovers = [
 
 it.effect.prop(
   "verify-gone fails for every modeled leftover or mailbox regression and succeeds only for a clean world",
-  { scenario: Arbitrary.schema(Schema.Literals(["clean", ...leftovers])) },
+  {
+    scenario: Arbitrary.schema(
+      Schema.Literals(["clean", "dirty", ...leftovers])
+    ),
+  },
   ({ scenario }) =>
     Effect.gen(function* probeModel() {
       const modeled = Object.fromEntries(
-        leftovers.map((key) => [key, key === scenario])
+        leftovers.map((key) => [
+          key,
+          key === scenario ||
+            (scenario === "dirty" &&
+              ["units", "slice", "directory"].includes(key)),
+        ])
       );
 
       const shell = yield* localExec;
@@ -66,11 +45,37 @@ it.effect.prop(
       const result = yield* shell.exec([
         "python3",
         "-c",
-        fixture,
+        goneFixture,
         JSON.stringify(modeled),
         instanceGoneScript,
       ]);
 
       expect(result.code === 0).toBe(scenario === "clean");
+
+      const fake = yield* makeFakeShell();
+
+      const code = yield* verifyInstanceGone(
+        { ...fake.shell, exec: () => Effect.succeed(result) },
+        "/home/example",
+        "/srv/example/mischiefrb",
+        {}
+      );
+
+      const exits: number[] = [];
+      probeTeardown(Exit.succeed(code), (status) => {
+        exits.push(status);
+      });
+      expect(exits).toEqual([scenario === "clean" ? 0 : 1]);
+
+      if (scenario === "dirty") {
+        for (const label of [
+          "FAIL instance units absent",
+          "FAIL configuration and staging absent",
+          "FAIL binary root absent",
+          "FAIL data root absent",
+        ]) {
+          expect(result.stdout).toContain(label);
+        }
+      }
     }).pipe(Effect.provide(NodeServices.layer))
 );
