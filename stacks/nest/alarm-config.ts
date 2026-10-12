@@ -13,6 +13,7 @@ export const AlarmKey = Schema.Literals([
   "digest.fail",
   "cache.rewrites",
   "instance.down",
+  "backup.sessions-index",
 ]);
 
 export type AlarmKeyValue = typeof AlarmKey.Type;
@@ -68,6 +69,12 @@ export const AlarmSettings = Schema.Struct({
   renotifyMinutes: Schema.optionalKey(
     Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))
   ),
+  sessionsBackup: Schema.optionalKey(
+    Schema.Struct({
+      alarmFile: Schema.NonEmptyString,
+      receipt: Schema.NonEmptyString,
+    })
+  ),
 });
 
 export type AlarmSettingsValue = typeof AlarmSettings.Type;
@@ -111,4 +118,5 @@ export const alarmKeys: readonly AlarmKeyValue[] = [
   "digest.fail",
   "cache.rewrites",
   "instance.down",
+  "backup.sessions-index",
 ];

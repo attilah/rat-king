@@ -2,6 +2,7 @@ import { DateTime, Schema } from "effect";
 
 import { readerVerdict } from "../../packages/pi-ratking/src/reader-health.ts";
 import type { ReaderHeartbeatValue } from "../../packages/pi-ratking/src/reader-health.ts";
+import { SessionsBackupFact, sessionsBackupReading } from "./alarm-backups.ts";
 import { AlarmKey, AlarmReading } from "./alarm-config.ts";
 import type { AlarmReadingValue } from "./alarm-config.ts";
 import { Sha, ShipReceipt } from "./ship-config.ts";
@@ -107,6 +108,9 @@ export const AlarmFacts = Schema.Struct({
   ),
   receipts: Schema.Array(ShipReceipt),
   receiptsKnown: Schema.Boolean,
+  sessionsBackup: Schema.optionalKey(
+    Schema.Union([Schema.Literal("off"), Schema.NullOr(SessionsBackupFact)])
+  ),
   slots: Schema.NullOr(Schema.Struct({ free: Count, max: Count })),
 });
 
@@ -441,6 +445,7 @@ export const observeAlarms = (
   const sources = trackSources(prior, facts, now);
 
   const readings: typeof Readings.Type = {
+    "backup.sessions-index": sessionsBackupReading(facts.sessionsBackup, now),
     "cache.rewrites": cacheReading(facts, now),
     "celld.down": downReading(facts, sources, now),
     "celld.restarted": restartReading(facts, sources, now),

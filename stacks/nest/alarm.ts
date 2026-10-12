@@ -64,6 +64,7 @@ export interface AlarmPorts<R> {
 }
 
 const summaries: Record<AlarmKeyValue, string> = {
+  "backup.sessions-index": "Session index backup failed or is stale",
   "cache.rewrites": "Claude sessions are rebuilding their prompt cache",
   "celld.down": "Mailbox health is unavailable",
   "celld.restarted": "Unexplained process restart",

@@ -12,6 +12,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { shellQuote } from "../../packages/alchemy-nest/src/ssh.ts";
 import { HeartbeatJson } from "../../packages/pi-ratking/src/reader-health.ts";
+import { collectSessionsBackup } from "./alarm-backups.ts";
 import { collectInstanceHealth } from "./alarm-instances.ts";
 import type { DeployMarker } from "./alarm-sources.ts";
 import { AlarmFacts, CacheBreach, sightReaders } from "./alarm-sources.ts";
@@ -278,6 +279,10 @@ export const collectAlarmFacts = Effect.fn("Alarm.collect")(
           ),
           Effect.option
         ),
+        sessionsBackup:
+          config.alarm.sessionsBackup === undefined
+            ? Effect.succeed("off" as const)
+            : collectSessionsBackup(config.alarm.sessionsBackup),
       },
       { concurrency: "unbounded" }
     );
@@ -316,6 +321,7 @@ export const collectAlarmFacts = Effect.fn("Alarm.collect")(
       readers: observations.readers.facts,
       receipts: Option.getOrElse(observations.receipts, () => []),
       receiptsKnown: Option.isSome(observations.receipts),
+      sessionsBackup: observations.sessionsBackup,
       slots: healthy?.storage.slots ?? null,
     }).pipe(
       Effect.mapError(
