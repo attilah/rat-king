@@ -56,6 +56,10 @@ The node uses systemd's default `Type=simple`: an active unit is not a health pr
 
 Storage retention treats a 404 on the first metadata-log root listing as no log days and still runs diagnostics. Missing later pages or delete targets, other HTTP errors and connection failures remain alarms. Existing-root retention and the storage health thresholds are unchanged.
 
+Named maintenance scripts have no baked master or filer target. Their `retain` and `diagnose` commands require `--instance`, `--master`, `--filer` and `--root`; units render those flags from the layout. The root must be `/topics/.system/log`, and targets must be explicit loopback HTTP endpoints. Named invocations refuse every mailbox listener port unless `--instance rat-king` is explicit. Named retention uses `Restart=no` and leaves retries to its hourly timer. Default units and script bytes remain unchanged.
+
+The exported pure `renderMaintenanceScript(host, instanceProps)` returns `{ path, text }`, exactly as written by deployment. It shares the retention and diagnostic implementation with the legacy script, without first-match replacement. Named script and unit rendering rejects literal mailbox filer/master ports before producing output. The SeaweedFS identity name also follows the instance name; the default remains `rat-king`.
+
 Opt-in purge drains paginated bucket objects before DeleteBucket. Alchemy dependencies then stop the store and remove its dedicated data directory. The node stops before its work directory is purged. The proof stack opts in; normal resource declarations do not. Never run destroy without separate authorization.
 
 The live provider layer installs `UnitStartup` checks in both SystemdUnit and Celld.Node create/update reconciliation. Only missing allowed sockets may wait for up to ten seconds; any extra port, wrong process or wrong bind stops both units immediately and fails the reconcile. Store startup requires its exact eight ports; node startup requires the final ten. No diagnose runs before that gate. Probe diagnostics retain at most 16 KiB of stderr, redact generated credentials and host facts, and drain the stream.

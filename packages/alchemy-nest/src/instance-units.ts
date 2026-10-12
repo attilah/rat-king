@@ -1,6 +1,8 @@
 import { instanceLayout } from "./instance.ts";
 import type { InstanceLayout, InstanceProps } from "./instance.ts";
 import type { Node } from "./inventory-schema.ts";
+import { renderMaintenanceScript } from "./maintenance-render.ts";
+import { assertMaintenanceIsolation } from "./maintenance-targets.ts";
 import { nodeUnit, sliceUnit, storeUnit } from "./service-units.ts";
 import type { ServiceLimits } from "./service-units.ts";
 import {
@@ -84,6 +86,8 @@ export const renderUnits = (
 ): readonly { readonly path: string; readonly text: string }[] => {
   const layout = instanceLayout(host, props);
 
+  renderMaintenanceScript(host, props);
+
   const units = [
     sliceUnit(host.home, limits.slice?.memoryMax, limits.slice?.cpuQuota, {
       ...props,
@@ -100,8 +104,11 @@ export const renderUnits = (
     storageRetentionTimer(host.home, [], layout),
   ];
 
-  return units.map((unit) => ({
-    path: unitPath(unit),
-    text: renderUnit(unit),
-  }));
+  return units.map((unit) => {
+    const text = renderUnit(unit);
+
+    assertMaintenanceIsolation(layout, text);
+
+    return { path: unitPath(unit), text };
+  });
 };

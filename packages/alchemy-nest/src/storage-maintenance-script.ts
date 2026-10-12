@@ -1,4 +1,4 @@
-export const storageMaintenanceScript = String.raw`import datetime
+export const maintenancePrelude = String.raw`import datetime
 import json
 import re
 import sys
@@ -6,10 +6,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-ROOT = '/topics/.system/log'
-MASTER = 'http://127.0.0.1:19333'
-FILER = 'http://127.0.0.1:18888'
-DAYS = 7
+`;
+
+export const maintenanceImplementation = String.raw`DAYS = 7
 THRESHOLD = 8
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -109,3 +108,8 @@ if __name__ == '__main__':
         print(json.dumps({'alarm': True, 'diagnosticUnavailable': True, 'error': str(error)}), flush=True)
         sys.exit(1)
 `;
+
+export const legacyMaintenanceScript = (master: number, filer: number) =>
+  `${maintenancePrelude}ROOT = '/topics/.system/log'\nMASTER = 'http://127.0.0.1:${master}'\nFILER = 'http://127.0.0.1:${filer}'\n${maintenanceImplementation}`;
+
+export const storageMaintenanceScript = legacyMaintenanceScript(19_333, 18_888);

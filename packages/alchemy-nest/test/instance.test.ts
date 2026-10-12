@@ -4,7 +4,7 @@ import * as Test from "alchemy/Test/Vitest";
 import { Effect, Layer, Schema } from "effect";
 import { expect } from "vitest";
 
-import { Celld, ObjectStore } from "../src/index.ts";
+import { Celld, ObjectStore, renderMaintenanceScript } from "../src/index.ts";
 import { ReleaseSource } from "../src/release.ts";
 import { checkedStack } from "./checked-stack.ts";
 import {
@@ -184,16 +184,41 @@ renderTest.provider(
       expect(
         surface.files[`${host.home}/.config/mischief/celld.env`]
       ).toContain('S3_ENDPOINT="http://127.0.0.1:28006"');
-      expect(
+
+      const maintenance = renderMaintenanceScript(host, {
+        dataRoot: "/srv/example/mischief",
+        instance: "mischief",
+        portBase: 28_000,
+      });
+
+      expect(surface.files[maintenance.path]).toBe(maintenance.text);
+      expect(maintenance.text).not.toContain("http://127.0.0.1:28004");
+      expect(maintenance.text).not.toContain("http://127.0.0.1:28002");
+      expect(node).toContain(
+        'diagnose --instance "mischief" --master http://127.0.0.1:28004 --filer http://127.0.0.1:28002 --root /topics/.system/log'
+      );
+
+      const retention =
         surface.files[
-          `${host.home}/.local/share/mischief/bin/storage-maintenance.py`
-        ]
-      ).toContain("http://127.0.0.1:28004");
-      expect(
-        surface.files[
-          `${host.home}/.local/share/mischief/bin/storage-maintenance.py`
-        ]
-      ).toContain("http://127.0.0.1:28002");
+          `${host.home}/.config/systemd/user/mischief-storage-retention.service`
+        ];
+
+      expect(retention).toContain(
+        'retain --instance "mischief" --master http://127.0.0.1:28004 --filer http://127.0.0.1:28002 --root /topics/.system/log'
+      );
+      expect(retention).toContain("Restart=no");
+      expect(retention).not.toContain("RestartSec=60");
+      expect(retention).not.toContain("StartLimitIntervalSec=0");
+
+      const identity = yield* Schema.decodeEffect(
+        Schema.fromJsonString(
+          Schema.Struct({
+            identities: Schema.Array(Schema.Struct({ name: Schema.String })),
+          })
+        )
+      )(surface.files[`${host.home}/.config/mischief/s3.json`] ?? "");
+
+      expect(identity.identities.map(({ name }) => name)).toEqual(["mischief"]);
       expect(
         surface.files[`${host.home}/.config/systemd/user/mischief.slice`]
       ).toContain("MemoryHigh=2.5G");
