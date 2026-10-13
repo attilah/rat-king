@@ -49,6 +49,7 @@ export interface PendingMail {
   readonly deliverAs?: Hold;
   readonly details: unknown;
   readonly digestMinutes?: number | undefined;
+  readonly notBefore?: number | undefined;
   readonly id: string;
   readonly line?: string;
 }
@@ -98,7 +99,11 @@ const held = (mail: PendingMail) => mail.deliverAs === "digest";
 
 const intervalMs = (mails: readonly PendingMail[]) =>
   Math.min(
-    ...mails.map((mail) => mail.digestMinutes ?? DEFAULT_DIGEST_MINUTES)
+    ...mails.map((mail) =>
+      mail.notBefore === undefined
+        ? (mail.digestMinutes ?? DEFAULT_DIGEST_MINUTES)
+        : 0
+    )
   ) * 60_000;
 
 export const inbox = (host: MailHost) => {
@@ -131,7 +136,10 @@ export const inbox = (host: MailHost) => {
     },
     tick: (now: number) => {
       const due = [...pending.values()].filter(
-        (mail) => held(mail) && !digested.has(mail.id)
+        (mail) =>
+          held(mail) &&
+          !digested.has(mail.id) &&
+          (mail.notBefore === undefined || now >= mail.notBefore)
       );
 
       if (Option.isNone(last)) {

@@ -33,6 +33,16 @@ export type {
   AcquireRequest,
 } from "./mailbox.ts";
 
+export {
+  attentionBytes,
+  defaultPreferences,
+  defaultStatus,
+  fromBasisPoints,
+  toBasisPoints,
+} from "./attention.ts";
+
+export type { AttentionClient } from "./attention.ts";
+
 export { authenticateClaims } from "./auth.ts";
 
 export type { AuthenticateRequest } from "./auth.ts";

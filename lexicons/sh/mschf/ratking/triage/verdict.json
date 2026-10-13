@@ -1,0 +1,21 @@
+{
+  "defs": {
+    "main": {
+      "key": "any",
+      "record": {
+        "properties": {
+          "arrivalId": { "minLength": 1, "type": "string" },
+          "modelId": { "minLength": 1, "type": "string" },
+          "probabilityBp": { "maximum": 10000, "minimum": 0, "type": "integer" },
+          "reason": { "maxLength": 280, "type": "string" },
+          "verdict": { "enum": ["Now", "Next", "Later", "Never"], "type": "string" }
+        },
+        "required": ["arrivalId", "modelId", "probabilityBp", "reason", "verdict"],
+        "type": "object"
+      },
+      "type": "record"
+    }
+  },
+  "id": "sh.mschf.ratking.triage.verdict",
+  "lexicon": 1
+}

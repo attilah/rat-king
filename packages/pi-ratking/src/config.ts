@@ -56,6 +56,7 @@ export const PiConfig = Schema.Struct({
   askTimeoutMs: Schema.optionalKey(
     Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))
   ),
+  attentionLevers: Schema.optionalKey(Schema.Boolean),
   ccDigestMinutes: Schema.optionalKey(
     Schema.Record(
       Schema.String,
@@ -85,6 +86,7 @@ export const PiConfig = Schema.Struct({
 export type PiConfigValue = typeof PiConfig.Type;
 
 export interface SettingsValue {
+  readonly attentionLevers?: boolean;
   readonly askTimeoutMs: number;
   readonly ccDigestMinutes?: Readonly<Record<string, number>>;
   readonly didTemplate: string;
@@ -181,15 +183,32 @@ export const resolveTurnOwner = Effect.fn("RatKing.resolveTurnOwner")(
   }
 );
 
+export const resolveAttentionLevers = Effect.fn(
+  "RatKing.resolveAttentionLevers"
+)(function* resolveAttentionLevers(
+  config: Pick<PiConfigValue, "attentionLevers">
+) {
+  const override = yield* Config.option(
+    Config.schema(Schema.Literals(["0", "1"]), "RATKING_ATTENTION")
+  ).pipe(Effect.mapError(notConfigured("RATKING_ATTENTION must be 1 or 0")));
+
+  return Option.match(override, {
+    onNone: () => config.attentionLevers ?? false,
+    onSome: (value) => value === "1",
+  });
+});
+
 export const loadSettings = Effect.fn("RatKing.loadSettings")(
   function* loadSettings() {
     const path = yield* Path.Path;
     const { config, home } = yield* readConfig();
     const state = config.state ?? path.join(home, ".local/state/rat-king/pi");
     const turnRecords = yield* resolveTurnRecords(config);
+    const attentionLevers = yield* resolveAttentionLevers(config);
 
     const settings = Settings.of({
       askTimeoutMs: config.askTimeoutMs ?? 600_000,
+      attentionLevers,
       didTemplate: config.didTemplate,
       directory: config.directory ?? path.join(state, "directory.json"),
       documents: config.documents ?? [],

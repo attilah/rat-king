@@ -1,7 +1,7 @@
 {
   "effect": "4.0.1",
   "generatorVersion": "0.1.0",
-  "sourceDigest": "3219794d497a63bfcc4a298b402b6767e684220648b3a009e32aab65278d0d9d",
+  "sourceDigest": "4d11d29d0bb7447a9b2f326d970b0ef226e977baeaad4d8b635bac1168338489",
   "sources": [
     "lexicons/sh/mschf/agentgraph/checkin.json",
     "lexicons/sh/mschf/agentgraph/friction.json",
@@ -10,6 +10,13 @@
     "lexicons/sh/mschf/agentgraph/turn.json",
     "lexicons/sh/mschf/ratking/admin/putDidDocument.json",
     "lexicons/sh/mschf/ratking/agent/profile.json",
+    "lexicons/sh/mschf/ratking/attention/getPreferences.json",
+    "lexicons/sh/mschf/ratking/attention/getStatus.json",
+    "lexicons/sh/mschf/ratking/attention/prefs.json",
+    "lexicons/sh/mschf/ratking/attention/putPreferences.json",
+    "lexicons/sh/mschf/ratking/attention/putStatus.json",
+    "lexicons/sh/mschf/ratking/attention/receipt.json",
+    "lexicons/sh/mschf/ratking/attention/status.json",
     "lexicons/sh/mschf/ratking/defs.json",
     "lexicons/sh/mschf/ratking/desk/ack.json",
     "lexicons/sh/mschf/ratking/desk/answer.json",
@@ -43,6 +50,8 @@
     "lexicons/sh/mschf/ratking/runtime/lease.json",
     "lexicons/sh/mschf/ratking/runtime/releaseLease.json",
     "lexicons/sh/mschf/ratking/runtime/renewLease.json",
-    "lexicons/sh/mschf/ratking/runtime/resolveLease.json"
+    "lexicons/sh/mschf/ratking/runtime/resolveLease.json",
+    "lexicons/sh/mschf/ratking/triage/judge.json",
+    "lexicons/sh/mschf/ratking/triage/verdict.json"
   ]
 }

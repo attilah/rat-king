@@ -2,6 +2,10 @@ import { Context } from "effect";
 import type { Effect } from "effect";
 
 import type * as PutDidDocument from "./admin.putDidDocument.ts";
+import type * as GetPreferences from "./attention.getPreferences.ts";
+import type * as GetStatus from "./attention.getStatus.ts";
+import type * as PutPreferences from "./attention.putPreferences.ts";
+import type * as PutStatus from "./attention.putStatus.ts";
 import type * as Ack from "./mailbox.ack.ts";
 import type * as Deliver from "./mailbox.deliver.ts";
 import type * as List from "./mailbox.list.ts";
@@ -13,6 +17,10 @@ import type * as ResolveLease from "./runtime.resolveLease.ts";
 import type { XrpcFailure } from "./xrpc-failure.ts";
 
 export interface HandlerInterface {
+  readonly getPreferences: (params: GetPreferences.ParamsValue) => Effect.Effect<GetPreferences.OutputValue, XrpcFailure>;
+  readonly getStatus: (params: GetStatus.ParamsValue) => Effect.Effect<GetStatus.OutputValue, XrpcFailure>;
+  readonly putPreferences: (input: PutPreferences.InputValue) => Effect.Effect<PutPreferences.OutputValue, XrpcFailure>;
+  readonly putStatus: (input: PutStatus.InputValue) => Effect.Effect<PutStatus.OutputValue, XrpcFailure>;
   readonly acquireLease: (
     input: AcquireLease.InputValue
   ) => Effect.Effect<AcquireLease.OutputValue, XrpcFailure>;

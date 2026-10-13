@@ -7,6 +7,7 @@ import {
   validateRecord,
 } from "./agentgraph.ts";
 import { askAge } from "./asks.ts";
+import { decimalPreferences } from "./attention.ts";
 import { ccRefusalPrompt } from "./cc-lint.ts";
 import type { NotConfigured } from "./config.ts";
 import { recipientLines } from "./delivery.ts";
@@ -22,6 +23,7 @@ import type {
 import { clampSummary, withSummaryLead } from "./summary.ts";
 
 export const Action = Schema.Literals([
+  "attention",
   "list",
   "list-cwd",
   "send",
@@ -54,11 +56,14 @@ export const ToolParams = Schema.Struct({
   focus: Schema.optionalKey(Schema.Boolean),
   message: Schema.optionalKey(Schema.String),
   messageId: Schema.optionalKey(Schema.String),
+  note: Schema.optionalKey(Schema.String),
   openProjectPaneIfMissing: Schema.optionalKey(Schema.Boolean),
+  prefs: Schema.optionalKey(Schema.Json),
   record: Schema.optionalKey(Schema.Json),
   replyAll: Schema.optionalKey(Schema.Boolean),
   replyTo: Schema.optionalKey(Schema.String),
   retryOf: Schema.optionalKey(Schema.String),
+  status: Schema.optionalKey(Schema.Literals(["available", "busy", "dnd"])),
   successor: Schema.optionalKey(Schema.String),
   summary: Schema.optionalKey(Schema.String),
   supersedes: Schema.optionalKey(Schema.String),
@@ -67,6 +72,7 @@ export const ToolParams = Schema.Struct({
   ),
   to: Schema.optionalKey(Schema.String),
   type: Schema.optionalKey(Schema.String),
+  until: Schema.optionalKey(Schema.String),
   wait: Schema.optionalKey(Schema.Boolean),
 });
 
@@ -148,6 +154,7 @@ Usage:
   ${tool}({ action: "pending" })                                     → Unanswered inbound asks and open outbound asks
   ${tool}({ action: "list" })                                        → The Rat King directory
   ${tool}({ action: "status" })                                      → This Pi's name and reader
+  ${tool}({ action: "attention" })                                   → Public status and private preferences; status/until/note sets status, prefs replaces preferences (Jev now/later use decimals 0..1)
   ${tool}({ action: "retire", successor: "name" })                   → Retire this Pi's own name; mail to it is refused naming the successor, and this reader stops`;
 
 export const promptSnippet = (tool: string) =>
@@ -291,6 +298,22 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
           ].join("\n")
         );
       })
+    ),
+    Match.when("attention", () =>
+      ratking.attention(params).pipe(
+        Effect.map((value) =>
+          ok(
+            JSON.stringify(
+              { prefs: decimalPreferences(value.prefs), status: value.status },
+              null,
+              2
+            )
+          )
+        ),
+        Effect.catch((error) =>
+          Effect.succeed(loud(`Attention refused: ${String(error)}`))
+        )
+      )
     ),
     Match.when("cancel", () =>
       Effect.succeed(

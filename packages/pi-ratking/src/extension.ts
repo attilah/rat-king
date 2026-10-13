@@ -35,7 +35,7 @@ import {
   Settings,
   toolName,
 } from "./config.ts";
-import { DIGEST_REASON, deliveryReason } from "./delivery.ts";
+import { DIGEST_REASON, deliveryReason, injects } from "./delivery.ts";
 import { directoryLayer } from "./directory.ts";
 import { paneLabel } from "./herdr.ts";
 import type { SessionFacts } from "./identity.ts";
@@ -132,14 +132,7 @@ export const digestDetails = (mails: readonly PendingMail[]) => ({
   reason: DIGEST_REASON,
 });
 
-export const injects = (
-  inbound: { readonly kind: string; readonly body?: string },
-  settled: boolean
-) =>
-  !settled &&
-  (inbound.kind !== "data" ||
-    (inbound.body !== undefined &&
-      Option.isSome(decodeAgentGraphBody(inbound.body))));
+export { injects } from "./delivery.ts";
 
 const sendFields = {
   cc: Schema.optionalKey(Schema.Array(Schema.String)),
@@ -474,6 +467,7 @@ const forwardSend = (request: typeof SendRequest.Type) =>
 const parameters = Type.Object({
   action: Type.Union(
     [
+      "attention",
       "list",
       "list-cwd",
       "send",
@@ -542,8 +536,15 @@ const parameters = Type.Object({
   messageId: Type.Optional(
     Type.String({ description: "Accepted for compatibility; unused." })
   ),
+  note: Type.Optional(Type.String({ maxLength: 120 })),
   openProjectPaneIfMissing: Type.Optional(
     Type.Boolean({ description: "Not available on Rat King." })
+  ),
+  prefs: Type.Optional(
+    Type.Unknown({
+      description:
+        "Replace private preferences. Jev now/later are decimals 0..1.",
+    })
   ),
   record: Type.Optional(
     Type.Unknown({ description: "Record content, validated before sending." })
@@ -561,6 +562,13 @@ const parameters = Type.Object({
   ),
   retryOf: Type.Optional(
     Type.String({ description: "Accepted for compatibility; unused." })
+  ),
+  status: Type.Optional(
+    Type.Union([
+      Type.Literal("available"),
+      Type.Literal("busy"),
+      Type.Literal("dnd"),
+    ])
   ),
   successor: Type.Optional(
     Type.String({
@@ -587,6 +595,9 @@ const parameters = Type.Object({
   to: Type.Optional(Type.String({ description: "Target Rat King name." })),
   type: Type.Optional(
     Type.String({ description: "Agent-graph NSID for action record." })
+  ),
+  until: Type.Optional(
+    Type.String({ description: "Attention expiry as an ISO datetime." })
   ),
   wait: Type.Optional(
     Type.Boolean({
@@ -840,21 +851,37 @@ export const ratkingExtension = (options: ExtensionOptions) =>
         }
 
         if (injects(inbound, settled)) {
-          const verdict = attend(inbound, {}, now, undefined, Option.none());
+          const verdict = attend(
+            inbound,
+            inbound.levers ?? {},
+            now,
+            undefined,
+            Option.none()
+          );
 
           yield* applyDelivery(verdictToHold(verdict), {
             inject: (hold) =>
               Effect.sync(() => {
-                mail.take(
-                  {
-                    content: renderInbound(tool, inbound),
-                    details: inboundDetails(inbound, settled),
-                    digestMinutes: inbound.digestMinutes,
-                    id: inbound.id,
-                    line: digestLine(inbound),
-                  },
-                  hold
-                );
+                const pending = {
+                  content: renderInbound(tool, inbound),
+                  details: inboundDetails(inbound, settled),
+                  digestMinutes:
+                    Predicate.isTagged(verdict, "Later") &&
+                    Predicate.isTagged(verdict.reason, "lever")
+                      ? verdict.window / 60_000
+                      : inbound.digestMinutes,
+                  id: inbound.id,
+                  line: digestLine(inbound),
+                };
+
+                if (
+                  Predicate.isTagged(verdict, "Later") &&
+                  Predicate.isTagged(verdict.reason, "lever")
+                ) {
+                  Object.assign(pending, { notBefore: now + verdict.window });
+                }
+
+                mail.take(pending, hold);
               }),
             settle: () =>
               Effect.logInfo("Rat King arrival settled without injection").pipe(

@@ -1,3 +1,6 @@
+import * as Prefs from "@rat-king/lexicon/attention.prefs";
+import * as AttentionReceipt from "@rat-king/lexicon/attention.receipt";
+import * as Status from "@rat-king/lexicon/attention.status";
 import * as Defs from "@rat-king/lexicon/defs";
 import * as List from "@rat-king/lexicon/mailbox.list";
 import { Effect, Layer, Schema } from "effect";
@@ -87,6 +90,26 @@ export const sqliteStore = (
             .events[0]
         )
       );
+    },
+    attentionPreferences: () => {
+      const value = firstValue(
+        sql,
+        "SELECT value FROM metadata WHERE key='attentionPreferences'"
+      );
+
+      return value === undefined
+        ? undefined
+        : Schema.decodeUnknownSync(Schema.fromJsonString(Prefs.Main))(value);
+    },
+    attentionStatus: () => {
+      const value = firstValue(
+        sql,
+        "SELECT value FROM metadata WHERE key='attentionStatus'"
+      );
+
+      return value === undefined
+        ? undefined
+        : Schema.decodeUnknownSync(Schema.fromJsonString(Status.Main))(value);
     },
     cursorSecret: () =>
       unbase64url(
@@ -178,6 +201,18 @@ export const sqliteStore = (
         ? undefined
         : Schema.decodeUnknownSync(Schema.fromJsonString(Retirement))(value);
     },
+    setAttentionPreferences: (prefs) => {
+      sql.exec(
+        "INSERT INTO metadata (key,value) VALUES ('attentionPreferences',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        Schema.encodeSync(Schema.fromJsonString(Prefs.Main))(prefs)
+      );
+    },
+    setAttentionStatus: (status) => {
+      sql.exec(
+        "INSERT INTO metadata (key,value) VALUES ('attentionStatus',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        Schema.encodeSync(Schema.fromJsonString(Status.Main))(status)
+      );
+    },
     setDocument: (document) => {
       sql.exec(
         "INSERT INTO metadata (key,value) VALUES ('didDocument',?)",
@@ -230,6 +265,10 @@ export const sqliteStore = (
                 });
 
                 for (const event of appended) {
+                  if (Schema.is(AttentionReceipt.Main)(event)) {
+                    continue;
+                  }
+
                   const entry = projectTraffic(transaction, event);
                   sql.exec(
                     "INSERT INTO traffic_outbox (seq,value) VALUES (?,?)",

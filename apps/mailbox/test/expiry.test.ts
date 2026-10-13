@@ -121,6 +121,8 @@ it.effect.prop(
             Effect.flatMap(recipient.deliver),
             Effect.mapError(clientError)
           ),
+        getPreferences: () => Effect.die("Unexpected attention call"),
+        getStatus: () => Effect.die("Unexpected attention call"),
         lease: {
           acquire: (input) =>
             Schema.decodeUnknownEffect(Acquire.Input)(input).pipe(
@@ -156,6 +158,8 @@ it.effect.prop(
           }),
         poll: () => Effect.die("unused"),
         putDidDocument: () => Effect.die("unused"),
+        putPreferences: () => Effect.die("Unexpected attention call"),
+        putStatus: () => Effect.die("Unexpected attention call"),
         send: () => Effect.die("unused"),
         watch: () =>
           Stream.fromEffect(

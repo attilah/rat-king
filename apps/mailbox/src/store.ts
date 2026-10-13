@@ -1,3 +1,5 @@
+import type * as Prefs from "@rat-king/lexicon/attention.prefs";
+import type * as Status from "@rat-king/lexicon/attention.status";
 import type * as Defs from "@rat-king/lexicon/defs";
 import type * as List from "@rat-king/lexicon/mailbox.list";
 import * as RuntimeLease from "@rat-king/lexicon/runtime.lease";
@@ -48,6 +50,10 @@ export type RetirementValue = typeof Retirement.Type;
 export type Event = List.OutputValue["events"][number];
 
 export interface Transaction {
+  readonly attentionPreferences: () => Prefs.MainValue | undefined;
+  readonly attentionStatus: () => Status.MainValue | undefined;
+  readonly setAttentionPreferences: (prefs: Prefs.MainValue) => void;
+  readonly setAttentionStatus: (status: Status.MainValue) => void;
   readonly delivered: () => readonly Message[];
   readonly recipient: () => string;
   readonly get: (sender: string, tid: string) => Message | undefined;

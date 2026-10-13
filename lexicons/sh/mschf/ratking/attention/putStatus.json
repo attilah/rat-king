@@ -1,0 +1,31 @@
+{
+  "defs": {
+    "main": {
+      "errors": [{ "name": "AuthRequired" }, { "name": "Forbidden" }, { "name": "InvalidRequest" }],
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "properties": {
+            "did": { "format": "did", "type": "string" },
+            "keyId": { "type": "string" },
+            "signature": { "type": "bytes" },
+            "status": { "ref": "sh.mschf.ratking.attention.status", "type": "ref" }
+          },
+          "required": ["did", "keyId", "signature", "status"],
+          "type": "object"
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "properties": { "status": { "ref": "sh.mschf.ratking.attention.status", "type": "ref" } },
+          "required": ["status"],
+          "type": "object"
+        }
+      },
+      "type": "procedure"
+    }
+  },
+  "id": "sh.mschf.ratking.attention.putStatus",
+  "lexicon": 1
+}

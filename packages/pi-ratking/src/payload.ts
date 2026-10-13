@@ -7,6 +7,7 @@ import type {
 } from "../../mailbox-client/src/payload.ts";
 import { renderRecordBody } from "./agentgraph.ts";
 import { formatReason } from "./attend.ts";
+import type { Levers } from "./attend.ts";
 import { deliveryReason, quietCopy } from "./delivery.ts";
 import { AgentName } from "./name.ts";
 
@@ -68,6 +69,8 @@ export const RelaySource = Schema.Struct({
 });
 
 export interface Inbound {
+  readonly levers?: Levers;
+  readonly sender?: string;
   readonly askSummary?: string;
   readonly noReply?: boolean;
   readonly relay?: typeof RelaySource.Type;

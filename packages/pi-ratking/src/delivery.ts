@@ -1,8 +1,20 @@
 import { Match, Option, Schema } from "effect";
 
 import type { KindValue } from "../../mailbox-client/src/payload.ts";
+import { decodeAgentGraphBody } from "./agentgraph.ts";
 import { attend, Reasons, Verdicts } from "./attend.ts";
 import type { Arrival, Reason } from "./attend.ts";
+
+export interface AttentionTarget {
+  readonly body?: string;
+  readonly kind: string;
+}
+
+export const injects = (inbound: AttentionTarget, settled: boolean) =>
+  !settled &&
+  (inbound.kind !== "data" ||
+    (inbound.body !== undefined &&
+      Option.isSome(decodeAgentGraphBody(inbound.body))));
 
 export const WakeLevel = Schema.Literals(["wake", "quiet"]);
 
