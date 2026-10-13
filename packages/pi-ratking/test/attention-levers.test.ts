@@ -59,6 +59,46 @@ const arrival = {
   verified: true,
 };
 
+it.prop(
+  "A verified direct prompt from the resolved owner keeps intent under any levers",
+  [prefs, status, Schema.Literals(["message", "ask", "reply"])],
+  ([preferences, state, kind]) => {
+    const owner = "project/desk";
+    const direct = { ...arrival, from: "display label", kind, sender: owner };
+    const levers = { enabled: true, owner, prefs: preferences, status: state };
+
+    const suggestion = Option.some(
+      Verdicts.Never({ reason: Reasons.judge({ facts: [] }) })
+    );
+
+    const intent = attend(direct, {}, 0, undefined, Option.none());
+
+    expect(attend(direct, levers, 0, undefined, suggestion)).toEqual(intent);
+
+    const forged = { ...direct, from: owner, sender: "forger" };
+
+    const refusal = {
+      ...levers,
+      prefs: { ...preferences, refuse: [owner, "forger"] },
+    };
+
+    expect(attend(direct, refusal, 0, undefined, suggestion)).toEqual(intent);
+    expect(attend(forged, refusal, 0, undefined, suggestion)._tag).toBe(
+      "Never"
+    );
+    expect(
+      attend({ ...direct, verified: false }, refusal, 0, undefined, suggestion)
+        ._tag
+    ).toBe("Never");
+    expect(
+      attend(direct, { ...refusal, enabled: false }, 0, undefined, suggestion)
+    ).toEqual(attend(direct, {}, 0, undefined, suggestion));
+    expect(
+      attend({ ...direct, copy: true }, refusal, 0, undefined, suggestion)._tag
+    ).toBe("Never");
+  }
+);
+
 const dnd = (until?: string) =>
   Schema.decodeUnknownSync(Status.Main)(
     until === undefined

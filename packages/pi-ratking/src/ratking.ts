@@ -47,6 +47,7 @@ import { HttpClient } from "effect/http";
 import { AskJournal, askAge, openAsks } from "./asks.ts";
 import type { AsksApi, PendingAskValue } from "./asks.ts";
 import { forwardNames } from "./attend.ts";
+import type { Levers } from "./attend.ts";
 import { attentionReader } from "./attention.ts";
 import type { AttentionApi } from "./attention.ts";
 import { AskAimedAtCc, ccLint, ccRefusal } from "./cc-lint.ts";
@@ -1681,7 +1682,13 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       Option.some(own.name),
       routing(own, (inbound, settled, ack) =>
         Effect.gen(function* deliverAttention() {
-          const levers = yield* attention.levers;
+          const levers: Levers = { ...(yield* attention.levers) };
+          const owner = facts.owner ?? Option.none<string>();
+
+          if (Option.isSome(owner)) {
+            Object.assign(levers, { owner: owner.value });
+          }
+
           yield* deliver(
             "record" in inbound ? inbound : { ...inbound, levers },
             settled,

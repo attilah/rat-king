@@ -219,6 +219,7 @@ it.live.prop(
           {
             alive: () => false,
             env: Option.some("tester"),
+            owner: Option.some("peer"),
             pane: Option.none(),
             pid: 1,
             session: "attention",
@@ -293,6 +294,7 @@ it.live.prop(
         expect(original.from).toBe("peer");
         expect(original.body).toBe(body);
         expect(original.levers?.prefs?.forward).toEqual(["copy/desk"]);
+        expect(original.levers?.owner).toBe("peer");
         expect(acks).toBe(0);
 
         const copied = yield* Deferred.await(forwarded).pipe(

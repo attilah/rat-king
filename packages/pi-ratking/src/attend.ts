@@ -19,6 +19,7 @@ export interface Arrival {
 
 export interface Levers {
   readonly enabled?: boolean;
+  readonly owner?: string;
   readonly prefs?: Prefs.MainValue;
   readonly status?: Status.MainValue;
 }
@@ -136,6 +137,15 @@ const intent = (arrival: Arrival): Verdict => {
   return quiet ? Verdicts.Next({ reason }) : Verdicts.Now({ reason });
 };
 
+const ownerVerdict = (arrival: Arrival, levers: Levers): Verdict | undefined =>
+  levers.enabled === true &&
+  levers.owner !== undefined &&
+  arrival.copy !== true &&
+  arrival.verified === true &&
+  arrival.sender === levers.owner
+    ? intent(arrival)
+    : undefined;
+
 export const attend = (
   arrival: Arrival,
   levers: Levers,
@@ -144,6 +154,7 @@ export const attend = (
   suggestion: Option.Option<Verdict>
 ): Verdict =>
   joelVerdict(arrival, levers) ??
+  ownerVerdict(arrival, levers) ??
   leverVerdict(arrival, levers, now) ??
   Option.getOrUndefined(suggestion) ??
   intent(arrival);
