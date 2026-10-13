@@ -30,6 +30,7 @@ import { sealCommand, sealedSendCommand } from "./seal.ts";
 import { sendCommand } from "./send.ts";
 import { launchdPlist, shipCommand } from "./ship-command.ts";
 import { FleetError, loadStageConfig, stageProvider } from "./stage-config.ts";
+import { usageCommand } from "./usage.ts";
 
 const program = Effect.gen(function* launcher() {
   const stageConfigPath = yield* Config.String("RAT_KING_STAGE_CONFIG");
@@ -229,6 +230,10 @@ const program = Effect.gen(function* launcher() {
 });
 
 const scriptCommand = () => {
+  if (process.argv[2] === "usage") {
+    return usageCommand(process.argv.slice(3));
+  }
+
   if (process.argv[2] === "billing-relay") {
     return billingCommand(process.argv.slice(3));
   }
@@ -252,6 +257,8 @@ const scriptCommand = () => {
   return program;
 };
 
-const main = scriptCommand();
+const main = Effect.gen(function* command() {
+  return yield* scriptCommand();
+});
 
 NodeRuntime.runMain(main.pipe(Effect.provide(NodeServices.layer)));
