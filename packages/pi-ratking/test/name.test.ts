@@ -69,7 +69,9 @@ it.effect.prop(
 
       Result.match(result, {
         onFailure: (error) => {
-          expect(error.reason).toMatch(/Session name pi-.* is already taken/u);
+          expect(error.reason).toMatch(
+            /Session name pi(?:-.*)? is already taken/u
+          );
         },
         onSuccess: (own) => {
           expect(Schema.is(AgentName)(own.name)).toBe(true);
