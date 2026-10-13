@@ -6,7 +6,10 @@ import {
   recordSummary,
   validateRecord,
 } from "./agentgraph.ts";
+import { ccRefusalPrompt } from "./cc-lint.ts";
 import type { NotConfigured } from "./config.ts";
+import { recipientLines } from "./delivery.ts";
+import type { RecipientLevelValue } from "./delivery.ts";
 import { SUMMARY_MAX } from "./payload.ts";
 import { RatKing, ReaderState } from "./ratking.ts";
 import type {
@@ -42,6 +45,7 @@ export const ToolParams = Schema.Struct({
   action: Action,
   attachments: Schema.optionalKey(Schema.Array(Attachment)),
   cc: Schema.optionalKey(Schema.Array(Schema.String)),
+  ccOnPurpose: Schema.optionalKey(Schema.Boolean),
   cwd: Schema.optionalKey(Schema.String),
   encrypt: Schema.optionalKey(Schema.Boolean),
   focus: Schema.optionalKey(Schema.Boolean),
@@ -61,10 +65,21 @@ export const ToolParams = Schema.Struct({
 
 export type ToolParamsValue = typeof ToolParams.Type;
 
+export const toolCall = (tool: string, params: ToolParamsValue) =>
+  `${tool}(${JSON.stringify(
+    Schema.encodeSync(ToolParams)(params, { onExcessProperty: "error" })
+  )})`;
+
+export type DetailValue =
+  | string
+  | number
+  | boolean
+  | readonly RecipientLevelValue[];
+
 export interface ToolText {
   readonly text: string;
   readonly isError: boolean;
-  readonly details: Readonly<Record<string, string | number | boolean>>;
+  readonly details: Readonly<Record<string, DetailValue>>;
 }
 
 const ok = (text: string, details: ToolText["details"] = {}): ToolText => ({
@@ -85,9 +100,20 @@ const withPresence = (text: string, delivered: Delivered) =>
 const presenceDetails = (delivered: Delivered) =>
   delivered.presence === undefined ? {} : { presence: delivered.presence };
 
+const recipientsOf = (delivered: Delivered) =>
+  delivered.recipients ?? [{ level: "wake" as const, name: delivered.to }];
+
+export const receiptText = (lead: string, delivered: Delivered) =>
+  recipientsOf(delivered).length > 1
+    ? [
+        `Delivered over Rat King (id ${delivered.id}, seq ${delivered.seq}).`,
+        ...recipientLines(recipientsOf(delivered)),
+      ].join("\n")
+    : `${lead} ${delivered.to} over Rat King (id ${delivered.id}, seq ${delivered.seq}).`;
+
 export const notDeliveredText = (error: NotDelivered) =>
   Match.value(error.code).pipe(
-    Match.when("ReaderCannotRender", () => error.reason),
+    Match.whenOr("ReaderCannotRender", "AskAimedAtCc", () => error.reason),
     Match.when("Partial", () => `PARTIAL DELIVERY: ${error.reason}`),
     Match.orElse(
       () =>
@@ -102,7 +128,7 @@ Messages are signed plaintext by default, readable by operators and observers su
 
 Address agents by Rat King name (for example switchboard, or project/row).
 
-send and ask accept cc: ["name", ...]. reply defaults to reply-all; replyAll: false answers only the sender. To answer a message that arrived before this Pi's reader last started, add to: the asker's name. handled with replyTo confirms a relayed original to its desk without replying to the sender.
+send and ask accept cc: ["name", ...]. to: is for whoever must act, and wakes them. cc: is for whoever should know: a quiet copy that does not wake. A send whose message or summary addresses a cc'd name (@name, or an "ask for name" line) is refused; pass ccOnPurpose: true if the cc is deliberate. reply defaults to reply-all; replyAll: false answers only the sender. To answer a message that arrived before this Pi's reader last started, add to: the asker's name. handled with replyTo confirms a relayed original to its desk without replying to the sender.
 
 Give every send, ask and reply a summary: one line (at most 280 characters) that leads with the point or the ask. Phones and compact views show it first; the message holds the detail.
 
@@ -202,6 +228,10 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
 
   if (params.encrypt !== undefined) {
     Object.assign(encryption, { encrypt: params.encrypt });
+  }
+
+  if (params.ccOnPurpose !== undefined) {
+    Object.assign(encryption, { ccOnPurpose: params.ccOnPurpose });
   }
 
   if (params.summary !== undefined) {
@@ -321,12 +351,10 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
         });
 
         return ok(
-          withPresence(
-            `Reply delivered to ${delivered.to} over Rat King (id ${delivered.id}, seq ${delivered.seq}).`,
-            delivered
-          ),
+          withPresence(receiptText("Reply delivered to", delivered), delivered),
           {
             id: delivered.id,
+            recipients: recipientsOf(delivered),
             replyTo: target,
             seq: delivered.seq,
             ...presenceDetails(delivered),
@@ -366,12 +394,10 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
         });
 
         return ok(
-          withPresence(
-            `Delivered to ${delivered.to} over Rat King (id ${delivered.id}, seq ${delivered.seq}).`,
-            delivered
-          ),
+          withPresence(receiptText("Delivered to", delivered), delivered),
           {
             id: delivered.id,
+            recipients: recipientsOf(delivered),
             seq: delivered.seq,
             to: delivered.to,
             ...presenceDetails(delivered),
@@ -392,8 +418,17 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
         );
 
         return ok(
-          `**Reply from ${reply.from}** (id ${reply.id}):\n${reply.body}`,
-          { id: delivered.id, replyId: reply.id }
+          [
+            ...(recipientsOf(delivered).length > 1
+              ? [receiptText("Delivered to", delivered), ""]
+              : []),
+            `**Reply from ${reply.from}** (id ${reply.id}):\n${reply.body}`,
+          ].join("\n"),
+          {
+            id: delivered.id,
+            recipients: recipientsOf(delivered),
+            replyId: reply.id,
+          }
         );
       })
     ),
@@ -423,7 +458,18 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
           loud(`${error.code}: ${error.reason}`, { code: error.code })
         ),
       NotDelivered: (error) =>
-        Effect.succeed(loud(notDeliveredText(error), { code: error.code })),
+        Effect.succeed(
+          loud(
+            error.addressed === undefined
+              ? notDeliveredText(error)
+              : ccRefusalPrompt({
+                  action: params.action,
+                  addressed: error.addressed,
+                  call: (call) => toolCall(tool, call),
+                }),
+            { code: error.code }
+          )
+        ),
     }),
     Effect.match({ onFailure: (text) => text, onSuccess: (text) => text })
   );

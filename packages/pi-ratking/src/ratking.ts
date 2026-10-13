@@ -43,7 +43,10 @@ import {
 import type { Scope } from "effect";
 import { HttpClient } from "effect/http";
 
+import { AskAimedAtCc, ccLint, ccRefusal } from "./cc-lint.ts";
 import { Settings } from "./config.ts";
+import { recipientLevels } from "./delivery.ts";
+import type { RecipientLevelValue } from "./delivery.ts";
 import { Directory, writePrivateJson } from "./directory.ts";
 import type { Listed, Resolved } from "./directory.ts";
 import { reasonOf } from "./errors.ts";
@@ -106,11 +109,16 @@ export const NotDeliveredCode = Schema.Literals([
   "Partial",
   "Retired",
   "ReaderCannotRender",
+  "AskAimedAtCc",
 ]);
 
 export class NotDelivered extends Schema.TaggedError<NotDelivered>()(
   "NotDelivered",
-  { code: NotDeliveredCode, reason: Schema.String }
+  {
+    addressed: Schema.optionalKey(AskAimedAtCc),
+    code: NotDeliveredCode,
+    reason: Schema.String,
+  }
 ) {}
 
 export class AskFailed extends Schema.TaggedError<AskFailed>()("AskFailed", {
@@ -157,12 +165,16 @@ export interface Self {
   readonly label?: () => Option.Option<string>;
 }
 
-export interface Delivered {
+interface Admitted {
   readonly id: string;
   readonly seq: number;
   readonly to: string;
   readonly did: string;
+}
+
+export interface Delivered extends Admitted {
   readonly presence?: string;
+  readonly recipients?: readonly RecipientLevelValue[];
 }
 
 interface FrontLoops {
@@ -188,6 +200,7 @@ const oneLineSummary = (text: string) =>
   text.replaceAll(/\s+/gu, " ").trim().slice(0, SUMMARY_MAX);
 
 export interface SendOptions {
+  readonly ccOnPurpose?: boolean;
   readonly encrypt?: boolean;
   readonly kind?: KindValue;
   readonly replyTo?: { readonly messageId: string; readonly senderDid: string };
@@ -237,7 +250,7 @@ export class RatKing extends Context.Service<
       to: string,
       body: string,
       timeout: Duration.Input,
-      options?: Pick<SendOptions, "encrypt" | "cc" | "summary">
+      options?: Pick<SendOptions, "ccOnPurpose" | "encrypt" | "cc" | "summary">
     ) => Effect.Effect<
       { readonly delivered: Delivered; readonly reply: Reply },
       NotDelivered | AskFailed
@@ -245,7 +258,10 @@ export class RatKing extends Context.Service<
     readonly reply: (
       id: string,
       body: string | LexiconRecordValue,
-      options?: Pick<SendOptions, "encrypt" | "kind" | "summary"> & {
+      options?: Pick<
+        SendOptions,
+        "ccOnPurpose" | "encrypt" | "kind" | "summary"
+      > & {
         readonly replyAll?: boolean;
         readonly to?: string | undefined;
       }
@@ -939,7 +955,23 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       return yield* refused("NotAttempted")("No recipient");
     }
 
-    const accepted: Delivered[] = [];
+    const addressed = ccLint({
+      body: Option.liftPredicate(body, Schema.is(Schema.String)),
+      ccOnPurpose: options.ccOnPurpose,
+      kind: options.kind,
+      names: targets.map((target) => target.name),
+      summary: options.summary,
+    });
+
+    if (Option.isSome(addressed)) {
+      return yield* new NotDelivered({
+        addressed: addressed.value,
+        code: "AskAimedAtCc",
+        reason: ccRefusal(addressed.value),
+      });
+    }
+
+    const accepted: Admitted[] = [];
 
     const checkReaders = Effect.fn("RatKing.checkReaders")(
       function* checkReaders(
@@ -1143,9 +1175,15 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
         client.presence(admitted.did)
       )).pipe(Option.flatMap((presence) => presenceLine(presence, now)));
 
+      const recipients = recipientLevels(
+        primary.name,
+        targets.slice(1).map((target) => target.name),
+        options.kind ?? "message"
+      );
+
       const delivered: Delivered = Option.match(line, {
-        onNone: () => admitted,
-        onSome: (presence) => ({ ...admitted, presence }),
+        onNone: () => ({ ...admitted, recipients }),
+        onSome: (presence) => ({ ...admitted, presence, recipients }),
       });
 
       const summary = oneLineSummary(options.summary ?? "");

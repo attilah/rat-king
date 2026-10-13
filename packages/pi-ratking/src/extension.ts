@@ -26,6 +26,7 @@ import { Type } from "typebox";
 
 import { decodeAgentGraphBody } from "./agentgraph.ts";
 import { NotConfigured, settingsLayer, Settings, toolName } from "./config.ts";
+import { DIGEST_REASON, deliveryReason } from "./delivery.ts";
 import { directoryLayer } from "./directory.ts";
 import { paneLabel } from "./herdr.ts";
 import type { SessionFacts } from "./identity.ts";
@@ -111,11 +112,17 @@ export const digestLine = (inbound: Inbound) => {
 export const renderDigest = (tool: string, mails: readonly PendingMail[]) =>
   [
     `**Rat King cc digest** · ${mails.length} cc'd since the last digest, newest first`,
+    DIGEST_REASON,
     "",
     ...mails.map((mail) => mail.line ?? `- id ${mail.id}`),
     "",
     `These are copies; the sender used to: for whoever must act. To answer one: ${tool}({ action: "reply", replyTo: "<id>", summary: "...", message: "..." })`,
   ].join("\n");
+
+export const digestDetails = (mails: readonly PendingMail[]) => ({
+  ids: mails.map((held) => held.id),
+  reason: DIGEST_REASON,
+});
 
 export const injects = (
   inbound: { readonly kind: string; readonly body?: string },
@@ -224,7 +231,7 @@ export const collectFacts = (
     } satisfies SessionFacts;
   }).pipe(Effect.provide(NodeServices.layer));
 
-const inboundDetails = (inbound: Inbound, settled: boolean) => ({
+export const inboundDetails = (inbound: Inbound, settled: boolean) => ({
   body: inbound.body,
   cc: inbound.cc,
   ccNames: inbound.ccNames,
@@ -233,6 +240,7 @@ const inboundDetails = (inbound: Inbound, settled: boolean) => ({
   id: inbound.id,
   kind: inbound.kind,
   label: Option.getOrUndefined(inbound.label),
+  reason: deliveryReason(inbound),
   relay: inbound.relay,
   replyTo: Option.getOrUndefined(inbound.replyTo),
   sentBy: inbound.sentBy,
@@ -337,6 +345,7 @@ const forwardSend = (request: typeof SendRequest.Type) =>
 
     const options: SendOptions & { readonly replyAll: boolean } = {
       cc: request.cc ?? [],
+      ccOnPurpose: true,
       kind: request.kind ?? "message",
       replyAll: request.replyAll ?? true,
     };
@@ -441,9 +450,16 @@ const parameters = Type.Object({
   cc: Type.Optional(
     Type.Array(
       Type.String({
-        description: "Additional recipient names for send and ask.",
+        description:
+          "Additional recipient names for send and ask. A cc gets a quiet copy and does not wake.",
       })
     )
+  ),
+  ccOnPurpose: Type.Optional(
+    Type.Boolean({
+      description:
+        "Send even though the message or summary addresses a cc'd name. A cc gets a quiet copy and does not wake.",
+    })
   ),
   cwd: Type.Optional(
     Type.String({ description: "Not supported: Rat King addresses by name." })
@@ -526,7 +542,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
           {
             content: renderDigest(tool, mails),
             customType: DIGEST_MESSAGE,
-            details: { ids: mails.map((held) => held.id) },
+            details: digestDetails(mails),
             display: true,
           },
           { deliverAs: "followUp", triggerTurn: true }
