@@ -1,4 +1,6 @@
 /* oxlint-disable eslint/max-classes-per-file, eslint/no-redeclare -- Effect service, Schema errors and the reader state enum share their owning port. */
+import type * as Prefs from "@rat-king/lexicon/attention.prefs";
+import type * as AttentionStatus from "@rat-king/lexicon/attention.status";
 import * as Defs from "@rat-king/lexicon/defs";
 import * as Retire from "@rat-king/lexicon/identity.retireName";
 import * as Runtime from "@rat-king/lexicon/runtime";
@@ -50,7 +52,11 @@ import type { AsksApi, PendingAskValue } from "./asks.ts";
 import { forwardNames } from "./attend.ts";
 import type { Levers } from "./attend.ts";
 import { attentionReader } from "./attention.ts";
-import type { AttentionApi } from "./attention.ts";
+import type {
+  AttentionApi,
+  AttentionChange,
+  AttentionValue,
+} from "./attention.ts";
 import { AskAimedAtCc, ccLint, ccRefusal } from "./cc-lint.ts";
 import { Settings } from "./config.ts";
 import { injects, recipientLevels } from "./delivery.ts";
@@ -186,6 +192,12 @@ export interface Peek {
   readonly messages: readonly Peeked[];
   readonly throughSeq: number;
   readonly unreadable: readonly Unreadable[];
+}
+
+export interface AttentionSnapshot {
+  readonly enabled: boolean;
+  readonly prefs: Prefs.MainValue;
+  readonly status: AttentionStatus.MainValue;
 }
 
 export interface HoldOptions {
@@ -377,8 +389,15 @@ export class Inbox extends Context.Service<
       options: HoldOptions
     ) => Effect.Effect<void, NotDelivered | LeaseHeld>;
     readonly holder: Effect.Effect<Option.Option<LeaseHolder>, NotDelivered>;
+    readonly change: (
+      change: AttentionChange
+    ) => Effect.Effect<AttentionValue, NotDelivered>;
+    readonly levers: Effect.Effect<AttentionSnapshot, NotDelivered>;
     readonly locate: (name: string) => Effect.Effect<Located, NotDelivered>;
     readonly peek: (options?: PeekOptions) => Effect.Effect<Peek, NotDelivered>;
+    readonly statusOf: (
+      name: string
+    ) => Effect.Effect<AttentionStatus.MainValue, NotDelivered>;
   }
 >()("ratking-client/Inbox") {}
 
@@ -2273,6 +2292,60 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
     );
   });
 
+  const change = (input: AttentionChange) =>
+    attention
+      .change(input)
+      .pipe(
+        Effect.mapError((failure) =>
+          Schema.is(NotDelivered)(failure) ? failure : unreachable(failure)
+        )
+      );
+
+  const levers = Effect.gen(function* currentLevers() {
+    yield* attention.refresh;
+
+    const current = yield* attention.levers;
+
+    if (current.prefs === undefined || current.status === undefined) {
+      return yield* refused("Uncertain")(
+        "Attention levers did not load from the mailbox"
+      );
+    }
+
+    return {
+      enabled: settings.attentionLevers === true,
+      prefs: current.prefs,
+      status: current.status,
+    } satisfies AttentionSnapshot;
+  }).pipe(
+    Effect.mapError((failure) =>
+      Schema.is(NotDelivered)(failure) ? failure : unreachable(failure)
+    )
+  );
+
+  const statusOf = Effect.fn("RatKing.statusOf")(function* statusOf(
+    requested: string
+  ) {
+    const own = yield* awaitSelf;
+    const name = canonicalName(settings.reserved, requested);
+
+    if (!Schema.is(AgentName)(name)) {
+      return yield* refused("UnknownName")(
+        `${requested} is not a valid Rat King name`
+      );
+    }
+
+    const did = didFor(settings.didTemplate, settings.reserved, name);
+
+    return yield* withClient(own, [], (client) =>
+      client.mailbox.getStatus(did)
+    ).pipe(
+      Effect.mapError((failure) =>
+        Schema.is(NotDelivered)(failure) ? failure : unreachable(failure)
+      )
+    );
+  });
+
   const awaitReader = Ref.get(state).pipe(
     Effect.flatMap((reader) =>
       ReaderState.$is("Live")(reader)
@@ -2778,7 +2851,19 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
   });
 
   return Context.make(RatKing, ratking).pipe(
-    Context.add(Inbox, Inbox.of({ attach, hold, holder, locate, peek }))
+    Context.add(
+      Inbox,
+      Inbox.of({
+        attach,
+        change,
+        hold,
+        holder,
+        levers,
+        locate,
+        peek,
+        statusOf,
+      })
+    )
   );
 });
 

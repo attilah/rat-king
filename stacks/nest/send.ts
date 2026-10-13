@@ -6,7 +6,6 @@ import {
   Duration,
   Effect,
   FileSystem,
-  Layer,
   Option,
   Predicate,
   Redacted,
@@ -15,8 +14,8 @@ import {
   Stdio,
   Stream,
 } from "effect";
-import { FetchHttpClient } from "effect/http";
 
+import { runRatking } from "../../apps/ratking-cli/src/main.ts";
 import {
   Identity,
   ownIdentity,
@@ -30,14 +29,8 @@ import {
   recordSummary,
   validateRecord,
 } from "../../packages/ratking-client/src/agentgraph.ts";
-import {
-  loadSettings,
-  Settings,
-} from "../../packages/ratking-client/src/config.ts";
-import {
-  Directory,
-  directoryLayer,
-} from "../../packages/ratking-client/src/directory.ts";
+import { Settings } from "../../packages/ratking-client/src/config.ts";
+import { Directory } from "../../packages/ratking-client/src/directory.ts";
 import type { Resolved } from "../../packages/ratking-client/src/directory.ts";
 import { reasonOf } from "../../packages/ratking-client/src/errors.ts";
 import {
@@ -51,10 +44,7 @@ import {
   SUMMARY_MAX,
 } from "../../packages/ratking-client/src/payload.ts";
 import type { PayloadValue } from "../../packages/ratking-client/src/payload.ts";
-import {
-  SecretStore,
-  secretStoreLayer,
-} from "../../packages/ratking-client/src/secrets.ts";
+import { SecretStore } from "../../packages/ratking-client/src/secrets.ts";
 
 export const SEND_TRIES = 10;
 
@@ -582,44 +572,82 @@ export const resolveSendRecord = Effect.fn("Nest.resolveSendRecord")(
   }
 );
 
+export const DEPRECATION =
+  "stacks/nest/send.ts is deprecated: use `ratking send`. This wrapper is removed after one release.";
+
+const IDENTITY_NAME = /^rat_king_agent_(?<name>.+)_identity$/u;
+
+export const wrappedArgs = (argv: readonly string[]) => {
+  const out = ["send", "--json"];
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const flag = argv[index] ?? "";
+    const value = argv[index + 1];
+
+    if (flag === "--as" && value !== undefined) {
+      out.push(
+        "--as",
+        IDENTITY_NAME.exec(value)?.groups?.name?.replaceAll("_", "-") ?? value
+      );
+      index += 1;
+    } else {
+      out.push(flag);
+    }
+  }
+
+  return out;
+};
+
+const Sent = Schema.Struct({
+  delivered: Schema.Struct({
+    id: Schema.String,
+    seq: Schema.Int,
+    to: Schema.String,
+  }),
+  ok: Schema.Literal(true),
+});
+
+const Failed = Schema.Struct({
+  error: Schema.Struct({ tag: Schema.String, why: Schema.String }),
+});
+
 export const sendCommand = Effect.fn("Nest.send")(function* sendCommand(
   argv: readonly string[]
 ) {
-  const verdict = yield* Effect.gen(function* run() {
-    const parsed = parseSend(argv);
+  yield* Console.error(DEPRECATION);
 
-    if (Result.isFailure(parsed)) {
-      return yield* Effect.fail(refused("Usage", parsed.failure));
-    }
+  const lines: string[] = [];
 
-    const request = yield* resolveSendRecord(
-      parsed.success,
-      argv.includes("--summary")
-    );
+  yield* runRatking(wrappedArgs(argv)).pipe(
+    Effect.provideService(Console.Console, {
+      ...console,
+      log: (...parts: readonly unknown[]) => {
+        lines.push(parts.join(" "));
+      },
+    })
+  );
 
-    const settings = yield* loadSettings().pipe(
-      Effect.mapError((error) => refused("NotConfigured", error.reason))
-    );
+  const text = lines.join("\n");
 
-    return yield* scriptSend(request).pipe(
-      Effect.provide(
-        Layer.mergeAll(directoryLayer, secretStoreLayer, FetchHttpClient.layer)
-      ),
-      Effect.provideService(Settings, settings)
-    );
-  }).pipe(Effect.match({ onFailure: settle, onSuccess: settle }));
+  const sent = Schema.decodeUnknownOption(Schema.fromJsonString(Sent))(text);
 
-  const shown = render(verdict);
+  if (Option.isSome(sent)) {
+    const { id, seq, to } = sent.value.delivered;
 
-  if (shown.stdout !== undefined) {
-    yield* Console.log(shown.stdout);
+    yield* Console.log(JSON.stringify({ id, seq, to }));
+
+    return;
   }
 
-  if (shown.stderr !== undefined) {
-    yield* Console.error(shown.stderr);
-  }
+  const failed = Schema.decodeUnknownOption(Schema.fromJsonString(Failed))(
+    text
+  );
 
-  yield* Effect.sync(() => {
-    process.exitCode = shown.code;
-  });
+  yield* Console.error(
+    Option.match(failed, {
+      onNone: () => `NOT DELIVERED: ${oneLine(text)}`,
+      onSome: ({ error }) =>
+        `NOT DELIVERED: ${error.tag}. ${oneLine(error.why)}`,
+    })
+  );
 });

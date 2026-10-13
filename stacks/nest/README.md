@@ -19,6 +19,10 @@ For an existing P3 deployment, import its resource-state rows into the private `
 
 The launcher refuses state inside the public repository, including through a symlink. The plan refuses delete and replace actions. For an explicitly approved teardown, run `destroy-plan`, inspect the resource list, then `destroy` and `teardown-probe`. Destroy drains the bucket before stopping its server, purges owned data children, removes deployment files and the explicitly owned provisioned remote agents directory, and removes empty roots. Purge refuses symlinks and paths outside inventory-owned roots. The probe is read-only and prints only pass/fail labels. A failed probe means stop, report leftovers and retain state; never hand-clean the host. Local operator keys and state retention remain the operator’s responsibility.
 
+## Deprecated: `send`
+
+`stacks/nest/send.ts` is now a thin wrapper over `ratking send` (`apps/ratking-cli`). It prints one deprecation line on stderr, maps an identity secret name such as `rat_king_agent_example_identity` given to `--as` to the agent name `example`, and prints the old `{id,seq,to}` line on success. The wrapper is deleted after one release; use `ratking send --as <name> --to <name> ...` directly. The sealed path (`send --sealed`) is unchanged.
+
 ## Scheduled batch intake
 
 [Drain and ack](DRAIN.md) read a dedicated script name in scheduled batches. Plain `nest drain` never acks anything, including unverified lines; the consumer chooses which IDs to `nest ack`. Unverified lines are counted on stderr. `--exec` acknowledges its batch only after its consumer exits 0.

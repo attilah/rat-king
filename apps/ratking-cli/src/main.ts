@@ -2,6 +2,7 @@ import { NodeServices } from "@effect/platform-node";
 import { Effect } from "effect";
 import { Command } from "effect/cli";
 
+import { attentionCommand } from "./attention.ts";
 import { doctorCommand, whoamiCommand } from "./identity.ts";
 import { inboxCommand, readCommand, threadCommand } from "./inbox.ts";
 import {
@@ -10,6 +11,7 @@ import {
   replyCommand,
   sendCommand,
 } from "./messaging.ts";
+import { operatorCommands } from "./operator.ts";
 
 export const command = Command.make("ratking").pipe(
   Command.withDescription(
@@ -25,6 +27,8 @@ export const command = Command.make("ratking").pipe(
     pendingCommand,
     whoamiCommand,
     doctorCommand,
+    attentionCommand,
+    ...operatorCommands,
   ])
 );
 
