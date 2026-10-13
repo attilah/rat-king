@@ -2,6 +2,7 @@ import type { Component } from "@earendil-works/pi-tui";
 import { truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { Option, Schema } from "effect";
 
+import { messageView } from "./message-view.ts";
 import {
   FRAME_MIN,
   clip,
@@ -18,17 +19,21 @@ import { Box } from "./ui/box.ts";
 import { Fold } from "./ui/fold.ts";
 import { Header } from "./ui/header.ts";
 import { Party } from "./ui/party.ts";
+import { ShortId } from "./ui/short-id.ts";
+import { Text } from "./ui/text.ts";
 
 const PartyDetails = Schema.Struct({
   body: Schema.optional(Schema.String),
   from: Schema.String,
   id: Schema.optional(Schema.String),
   label: Schema.optional(Schema.String),
+  replyTo: Schema.optional(Schema.String),
   summary: Schema.optional(Schema.String),
 });
 
 const DigestDetails = Schema.Struct({
   messages: Schema.Array(Schema.Unknown),
+  variant: Schema.optional(Schema.Literal("wake")),
 });
 
 export interface NoticeInput {
@@ -37,6 +42,7 @@ export interface NoticeInput {
   readonly expanded: boolean;
   readonly labels?: Labels;
   readonly theme: Paint;
+  readonly tool?: string;
 }
 
 const component = (render: (width: number) => readonly string[]): Component => {
@@ -65,10 +71,121 @@ const component = (render: (width: number) => readonly string[]): Component => {
   };
 };
 
+interface DigestEntry {
+  readonly depth: number;
+  readonly details: unknown;
+  readonly value: typeof PartyDetails.Type;
+}
+
+const threaded = (messages: readonly unknown[]): readonly DigestEntry[] => {
+  const entries = messages.flatMap((details) =>
+    Option.match(Schema.decodeUnknownOption(PartyDetails)(details), {
+      onNone: () => [],
+      onSome: (value) => [{ depth: 0, details, value }],
+    })
+  );
+
+  const ids = new Set(
+    entries.flatMap((entry) =>
+      entry.value.id === undefined ? [] : [entry.value.id]
+    )
+  );
+
+  const roots = entries.filter(
+    (entry) =>
+      entry.value.replyTo === undefined || !ids.has(entry.value.replyTo)
+  );
+
+  const seen = new Set<unknown>();
+  const ordered: DigestEntry[] = [];
+  const stack = [...roots, ...entries].toReversed();
+
+  while (stack.length > 0) {
+    const entry = stack.pop();
+
+    if (entry === undefined || seen.has(entry.details)) {
+      continue;
+    }
+
+    seen.add(entry.details);
+    ordered.push(entry);
+
+    if (entry.value.id !== undefined) {
+      stack.push(
+        ...entries
+          .flatMap((child) =>
+            child.value.replyTo === entry.value.id
+              ? [{ ...child, depth: entry.depth + 1 }]
+              : []
+          )
+          .toReversed()
+      );
+    }
+  }
+
+  return ordered;
+};
+
+const wakeLines = (
+  input: NoticeInput,
+  messages: readonly unknown[],
+  width: number
+): readonly string[] => {
+  const labels = input.labels ?? noLabels;
+  const entries = threaded(messages);
+
+  const header = Header({
+    facts: [String(messages.length)],
+    theme: input.theme,
+    variant: "digest",
+    verb: "while you were away",
+  });
+
+  const rows = entries.map(({ depth, value }) =>
+    Text({
+      suffix: input.theme.fg(
+        "dim",
+        ` · ${ShortId({ id: value.id ?? "unknown" })}`
+      ),
+      text: `${"  ".repeat(Math.min(depth, 3))}${Party({ label: value.label ?? labels(value.from), name: value.from, theme: input.theme })}${input.theme.fg("dim", ` · ${oneLine(value.summary ?? value.body ?? "message")}`)}`,
+      width,
+    })
+  );
+
+  if (!input.expanded) {
+    return [
+      header,
+      ...rows.slice(0, 8),
+      ...(rows.length > 8
+        ? [input.theme.fg("dim", `+${rows.length - 8} more`)]
+        : []),
+      input.theme.fg("dim", "ctrl+o expands"),
+    ];
+  }
+
+  return [
+    header,
+    ...entries.flatMap(
+      ({ details, value }) =>
+        messageView({
+          details,
+          expanded: true,
+          labels,
+          theme: input.theme,
+          tool: input.tool ?? "ratking",
+        })?.render(width) ?? paragraphs(value.body ?? "", width)
+    ),
+  ];
+};
+
 export const digestView = (input: NoticeInput): Component =>
   component((width) => {
     const labels = input.labels ?? noLabels;
     const decoded = Schema.decodeUnknownOption(DigestDetails)(input.details);
+
+    if (Option.isSome(decoded) && decoded.value.variant === "wake") {
+      return wakeLines(input, decoded.value.messages, width);
+    }
 
     const entries = Option.match(decoded, {
       onNone: () =>

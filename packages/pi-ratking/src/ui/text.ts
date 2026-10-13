@@ -75,6 +75,19 @@ export const recordType = (text: string) =>
     .slice(-2)
     .join(".");
 
+export interface TextProps {
+  readonly suffix?: string;
+  readonly text: string;
+  readonly width: number;
+}
+
+export const Text = ({ suffix = "", text, width }: TextProps) =>
+  truncateToWidth(
+    `${truncateToWidth(text, Math.max(0, width - visibleWidth(suffix)), "…")}${suffix}`,
+    Math.max(1, width),
+    "…"
+  );
+
 export const clip = (
   theme: Paint,
   lines: readonly string[],
