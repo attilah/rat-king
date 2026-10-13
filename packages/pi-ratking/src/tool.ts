@@ -184,7 +184,7 @@ export const statusText = (_tool: string, status: Status) => {
           }
         )}`;
 
-  return `🐀 Rat King status: ${self} · reader ${reader}${quarantine} · mailbox ${status.endpoint}`;
+  return `🐀 status: ${self} · reader ${reader}${quarantine} · mailbox ${status.endpoint}`;
 };
 
 const withAttachments = (params: ToolParamsValue) =>

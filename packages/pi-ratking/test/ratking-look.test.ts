@@ -129,7 +129,10 @@ it.effect.prop(
       );
 
       for (const view of [call, result, statusView]) {
-        expect(view).toContain("🐀 Rat King");
+        expect(view).toContain("🐀");
+        expect(view).not.toMatch(
+          /Rat King (?:send|ask|reply|status|cc|record|message)|🐀 Rat King/u
+        );
         expect(view).not.toContain("intercom");
         expect(view).toContain(known ? "🔮 Merlin · Desk peer" : "peer");
       }
@@ -140,7 +143,7 @@ it.effect.prop(
         );
       }
 
-      expect(call).toMatch(/^🐀 Rat King send/u);
+      expect(call).toMatch(/^🐀 send/u);
     })
 );
 
@@ -270,7 +273,10 @@ it.effect.prop(
       );
 
       for (const view of [digest, notice, copy]) {
-        expect(view).toContain("🐀 Rat King");
+        expect(view).toContain("🐀");
+        expect(view).not.toMatch(
+          /Rat King (?:send|ask|reply|status|cc|record|message)|🐀 Rat King/u
+        );
         expect(view).toContain("🔮 Merlin · Desk peer");
       }
 

@@ -118,7 +118,7 @@ export const digestLine = (inbound: Inbound) => {
 
 export const renderDigest = (tool: string, mails: readonly PendingMail[]) =>
   [
-    `**Rat King cc digest** · ${mails.length} cc'd since the last digest, newest first`,
+    `**🐀 cc digest** · ${mails.length} cc'd since the last digest, newest first`,
     DIGEST_REASON,
     "",
     ...mails.map((mail) => mail.line ?? `- id ${mail.id}`),
@@ -831,7 +831,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
 
         return result;
       },
-      label: "Rat King",
+      label: "🐀",
       name: tool,
       parameters,
       promptSnippet: promptSnippet(tool),

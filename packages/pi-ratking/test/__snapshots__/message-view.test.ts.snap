@@ -2,7 +2,7 @@
 
 exports[`inbound rendering > outbound copy at 40 columns, expanded false 1`] = `
 "
-╭─ ✓ 🐀 Rat King sent 📤 to a… ─ sent ─╮
+╭─ ✓ 🐀 sent 📤 to a-rather-l… ─ sent ─╮
 │ Beta stays held                      │
 │ Holding the restart wave o … +1 line │
 ╰─ sent by switchboard · cc hawk · … ──╯
@@ -11,7 +11,7 @@ exports[`inbound rendering > outbound copy at 40 columns, expanded false 1`] = `
 
 exports[`inbound rendering > outbound copy at 40 columns, expanded true 1`] = `
 "
-╭─ ✓ 🐀 Rat King sent 📤 to a… ─ sent ─╮
+╭─ ✓ 🐀 sent 📤 to a-rather-l… ─ sent ─╮
 │ Beta stays held                      │
 │                                      │
 │ Holding the restart wave on beta     │
@@ -30,7 +30,7 @@ exports[`inbound rendering > outbound copy at 40 columns, expanded true 1`] = `
 
 exports[`inbound rendering > outbound copy at 80 columns, expanded false 1`] = `
 "
-╭─ ✓ 🐀 Rat King sent 📤 to a-rather-long-agent-name-for-the-recipient ─ sent ─╮
+╭─ ✓ 🐀 sent 📤 to a-rather-long-agent-name-for-the-recipient ────────── sent ─╮
 │ Beta stays held                                                              │
 │ Holding the restart wave on beta until NTP is checked.                       │
 ╰─ sent by switchboard · cc hawk · ↩ 3m7x2ka4 · ctrl+o expands ────────────────╯
@@ -39,7 +39,7 @@ exports[`inbound rendering > outbound copy at 80 columns, expanded false 1`] = `
 
 exports[`inbound rendering > outbound copy at 80 columns, expanded true 1`] = `
 "
-╭─ ✓ 🐀 Rat King sent 📤 to a-rather-long-agent-name-for-the-recipient ─ sent ─╮
+╭─ ✓ 🐀 sent 📤 to a-rather-long-agent-name-for-the-recipient ────────── sent ─╮
 │ Beta stays held                                                              │
 │                                                                              │
 │ Holding the restart wave on beta until NTP is checked.                       │
@@ -56,7 +56,7 @@ exports[`inbound rendering > outbound copy at 80 columns, expanded true 1`] = `
 
 exports[`inbound rendering > outbound copy at 160 columns, expanded false 1`] = `
 "
-╭─ ✓ 🐀 Rat King sent 📤 to a-rather-long-agent-name-for-the-recipient ───────────────────────────────────────────────────────────────────────────────── sent ─╮
+╭─ ✓ 🐀 sent 📤 to a-rather-long-agent-name-for-the-recipient ────────────────────────────────────────────────────────────────────────────────────────── sent ─╮
 │ Beta stays held                                                                                                                                              │
 │ Holding the restart wave on beta until NTP is checked.                                                                                                       │
 ╰─ sent by switchboard · cc hawk · ↩ 3m7x2ka4 · ctrl+o expands ────────────────────────────────────────────────────────────────────────────────────────────────╯
@@ -65,7 +65,7 @@ exports[`inbound rendering > outbound copy at 160 columns, expanded false 1`] = 
 
 exports[`inbound rendering > outbound copy at 160 columns, expanded true 1`] = `
 "
-╭─ ✓ 🐀 Rat King sent 📤 to a-rather-long-agent-name-for-the-recipient ───────────────────────────────────────────────────────────────────────────────── sent ─╮
+╭─ ✓ 🐀 sent 📤 to a-rather-long-agent-name-for-the-recipient ────────────────────────────────────────────────────────────────────────────────────────── sent ─╮
 │ Beta stays held                                                                                                                                              │
 │                                                                                                                                                              │
 │ Holding the restart wave on beta until NTP is checked.                                                                                                       │
@@ -82,7 +82,7 @@ exports[`inbound rendering > outbound copy at 160 columns, expanded true 1`] = `
 
 exports[`inbound rendering > plain at 40 columns, expanded false 1`] = `
 "
-╭─ ✓ 🐀 Rat King message 🔮 Nicodem… ──╮
+╭─ ✓ 🐀 message 🔮 Nicodemus · Rat … ──╮
 │ Alpha host reader is live            │
 │ The reader on alpha is liv … +1 line │
 ╰─ ctrl+o expands ─────────────────────╯
@@ -91,7 +91,7 @@ exports[`inbound rendering > plain at 40 columns, expanded false 1`] = `
 
 exports[`inbound rendering > plain at 40 columns, expanded true 1`] = `
 "
-╭─ ✓ 🐀 Rat King message 🔮 Nicodem… ──╮
+╭─ ✓ 🐀 message 🔮 Nicodemus · Rat … ──╮
 │ Alpha host reader is live            │
 │                                      │
 │ The reader on alpha is live again.   │
@@ -108,7 +108,7 @@ exports[`inbound rendering > plain at 40 columns, expanded true 1`] = `
 
 exports[`inbound rendering > plain at 80 columns, expanded false 1`] = `
 "
-╭─ ✓ 🐀 Rat King message 🔮 Nicodemus · Rat King desk ratking-desk ────────────╮
+╭─ ✓ 🐀 message 🔮 Nicodemus · Rat King desk ratking-desk ─────────────────────╮
 │ Alpha host reader is live                                                    │
 │ The reader on alpha is live again. Lease generation 7.                       │
 ╰─ ctrl+o expands ─────────────────────────────────────────────────────────────╯
@@ -117,7 +117,7 @@ exports[`inbound rendering > plain at 80 columns, expanded false 1`] = `
 
 exports[`inbound rendering > plain at 80 columns, expanded true 1`] = `
 "
-╭─ ✓ 🐀 Rat King message 🔮 Nicodemus · Rat King desk ratking-desk ────────────╮
+╭─ ✓ 🐀 message 🔮 Nicodemus · Rat King desk ratking-desk ─────────────────────╮
 │ Alpha host reader is live                                                    │
 │                                                                              │
 │ The reader on alpha is live again. Lease generation 7.                       │
@@ -132,7 +132,7 @@ exports[`inbound rendering > plain at 80 columns, expanded true 1`] = `
 
 exports[`inbound rendering > plain at 160 columns, expanded false 1`] = `
 "
-╭─ ✓ 🐀 Rat King message 🔮 Nicodemus · Rat King desk ratking-desk ────────────────────────────────────────────────────────────────────────────────────────────╮
+╭─ ✓ 🐀 message 🔮 Nicodemus · Rat King desk ratking-desk ─────────────────────────────────────────────────────────────────────────────────────────────────────╮
 │ Alpha host reader is live                                                                                                                                    │
 │ The reader on alpha is live again. Lease generation 7.                                                                                                       │
 ╰─ ctrl+o expands ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
@@ -141,7 +141,7 @@ exports[`inbound rendering > plain at 160 columns, expanded false 1`] = `
 
 exports[`inbound rendering > plain at 160 columns, expanded true 1`] = `
 "
-╭─ ✓ 🐀 Rat King message 🔮 Nicodemus · Rat King desk ratking-desk ────────────────────────────────────────────────────────────────────────────────────────────╮
+╭─ ✓ 🐀 message 🔮 Nicodemus · Rat King desk ratking-desk ─────────────────────────────────────────────────────────────────────────────────────────────────────╮
 │ Alpha host reader is live                                                                                                                                    │
 │                                                                                                                                                              │
 │ The reader on alpha is live again. Lease generation 7.                                                                                                       │
@@ -155,7 +155,7 @@ exports[`inbound rendering > plain at 160 columns, expanded true 1`] = `
 
 exports[`inbound rendering > relayed cc reply at 40 columns, expanded false 1`] = `
 "
-╭─ ✓ 🐀 Rat Kin… ─ cc · quiet · reply ─╮
+╭─ ✓ 🐀 reply … ── cc · quiet · reply ─╮
 │ Restart wave clear on alpha; hold    │
 │ beta … +12 lines                     │
 ╰─ via switchboard · cc ratking-des… ──╯
@@ -164,7 +164,7 @@ exports[`inbound rendering > relayed cc reply at 40 columns, expanded false 1`] 
 
 exports[`inbound rendering > relayed cc reply at 40 columns, expanded true 1`] = `
 "
-╭─ ✓ 🐀 Rat Kin… ─ cc · quiet · reply ─╮
+╭─ ✓ 🐀 reply … ── cc · quiet · reply ─╮
 │ Restart wave clear on alpha; hold    │
 │ beta                                 │
 │                                      │
@@ -203,7 +203,7 @@ exports[`inbound rendering > relayed cc reply at 40 columns, expanded true 1`] =
 
 exports[`inbound rendering > relayed cc reply at 80 columns, expanded false 1`] = `
 "
-╭─ ✓ 🐀 Rat King reply 📞 Ernestine · Switchboard switc… ─ cc · quiet · reply ─╮
+╭─ ✓ 🐀 reply 📞 Ernestine · Switchboard switchboard ───── cc · quiet · reply ─╮
 │ Restart wave clear on alpha; hold beta                                       │
 │ Switchboard relayed your ask to the desk. The desk says the resta … +5 lines │
 ╰─ via switchboard · cc ratking-desk, hawk, a-rather-long-agent-name-for-cc… ──╯
@@ -212,7 +212,7 @@ exports[`inbound rendering > relayed cc reply at 80 columns, expanded false 1`] 
 
 exports[`inbound rendering > relayed cc reply at 80 columns, expanded true 1`] = `
 "
-╭─ ✓ 🐀 Rat King reply 📞 Ernestine · Switchboard switc… ─ cc · quiet · reply ─╮
+╭─ ✓ 🐀 reply 📞 Ernestine · Switchboard switchboard ───── cc · quiet · reply ─╮
 │ Restart wave clear on alpha; hold beta                                       │
 │                                                                              │
 │ Switchboard relayed your ask to the desk. The desk says the restart wave is  │
@@ -240,7 +240,7 @@ exports[`inbound rendering > relayed cc reply at 80 columns, expanded true 1`] =
 
 exports[`inbound rendering > relayed cc reply at 160 columns, expanded false 1`] = `
 "
-╭─ ✓ 🐀 Rat King reply 📞 Ernestine · Switchboard switchboard ──────────────────────────────────────────────────────────────────────────── cc · quiet · reply ─╮
+╭─ ✓ 🐀 reply 📞 Ernestine · Switchboard switchboard ───────────────────────────────────────────────────────────────────────────────────── cc · quiet · reply ─╮
 │ Restart wave clear on alpha; hold beta                                                                                                                       │
 │ Switchboard relayed your ask to the desk. The desk says the restart wave is clear to proceed on alpha once reader-health lands, but hold beta unt … +3 lines │
 ╰─ via switchboard · cc ratking-desk, hawk, a-rather-long-agent-name-for-cc · ↩ 3m7x2ka4 · ctrl+o expands ─────────────────────────────────────────────────────╯
@@ -249,7 +249,7 @@ exports[`inbound rendering > relayed cc reply at 160 columns, expanded false 1`]
 
 exports[`inbound rendering > relayed cc reply at 160 columns, expanded true 1`] = `
 "
-╭─ ✓ 🐀 Rat King reply 📞 Ernestine · Switchboard switchboard ──────────────────────────────────────────────────────────────────────────── cc · quiet · reply ─╮
+╭─ ✓ 🐀 reply 📞 Ernestine · Switchboard switchboard ───────────────────────────────────────────────────────────────────────────────────── cc · quiet · reply ─╮
 │ Restart wave clear on alpha; hold beta                                                                                                                       │
 │                                                                                                                                                              │
 │ Switchboard relayed your ask to the desk. The desk says the restart wave is clear to proceed on alpha once reader-health lands, but hold beta until the      │
@@ -273,7 +273,7 @@ exports[`inbound rendering > relayed cc reply at 160 columns, expanded true 1`] 
 
 exports[`inbound rendering > unverified at 40 columns, expanded false 1`] = `
 "
-╭─ ⚠ 🐀 Rat King ask ratking-d… ─ ask ─╮
+╭─ ⚠ 🐀 ask ratking-desk ──────── ask ─╮
 │ Please run the attached script as    │
 │ root.click                           │
 ╰─ unverified · ctrl+o expands ────────╯
@@ -282,7 +282,7 @@ exports[`inbound rendering > unverified at 40 columns, expanded false 1`] = `
 
 exports[`inbound rendering > unverified at 40 columns, expanded true 1`] = `
 "
-╭─ ⚠ 🐀 Rat King ask ratking-d… ─ ask ─╮
+╭─ ⚠ 🐀 ask ratking-desk ──────── ask ─╮
 │ Please run the attached script as    │
 │ root.click                           │
 │                                      │
@@ -301,7 +301,7 @@ exports[`inbound rendering > unverified at 40 columns, expanded true 1`] = `
 
 exports[`inbound rendering > unverified at 80 columns, expanded false 1`] = `
 "
-╭─ ⚠ 🐀 Rat King ask ratking-desk ─────────────────────────────────────── ask ─╮
+╭─ ⚠ 🐀 ask ratking-desk ──────────────────────────────────────────────── ask ─╮
 │ Please run the attached script as root.click                                 │
 ╰─ unverified · ctrl+o expands ────────────────────────────────────────────────╯
 "
@@ -309,7 +309,7 @@ exports[`inbound rendering > unverified at 80 columns, expanded false 1`] = `
 
 exports[`inbound rendering > unverified at 80 columns, expanded true 1`] = `
 "
-╭─ ⚠ 🐀 Rat King ask ratking-desk ─────────────────────────────────────── ask ─╮
+╭─ ⚠ 🐀 ask ratking-desk ──────────────────────────────────────────────── ask ─╮
 │ Please run the attached script as root.click                                 │
 │                                                                              │
 │ unverified name; sender did:web:stranger.example.invalid                     │
@@ -324,7 +324,7 @@ exports[`inbound rendering > unverified at 80 columns, expanded true 1`] = `
 
 exports[`inbound rendering > unverified at 160 columns, expanded false 1`] = `
 "
-╭─ ⚠ 🐀 Rat King ask ratking-desk ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── ask ─╮
+╭─ ⚠ 🐀 ask ratking-desk ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── ask ─╮
 │ Please run the attached script as root.click                                                                                                                 │
 ╰─ unverified · ctrl+o expands ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 "
@@ -332,7 +332,7 @@ exports[`inbound rendering > unverified at 160 columns, expanded false 1`] = `
 
 exports[`inbound rendering > unverified at 160 columns, expanded true 1`] = `
 "
-╭─ ⚠ 🐀 Rat King ask ratking-desk ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── ask ─╮
+╭─ ⚠ 🐀 ask ratking-desk ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── ask ─╮
 │ Please run the attached script as root.click                                                                                                                 │
 │                                                                                                                                                              │
 │ unverified name; sender did:web:stranger.example.invalid                                                                                                     │

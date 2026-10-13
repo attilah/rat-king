@@ -173,10 +173,7 @@ export const resultLines = (
 
   const head =
     input.action === "status"
-      ? receipt.replace(
-          "🐀 Rat King status:",
-          `${ratKingTitle(theme, "status")}:`
-        )
+      ? receipt.replace("🐀 status:", `${ratKingTitle(theme, "status")}:`)
       : `${ratKingTitle(theme, input.action)} · ${receipt}`;
 
   if (failed(input)) {
