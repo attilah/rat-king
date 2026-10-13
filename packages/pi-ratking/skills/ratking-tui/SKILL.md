@@ -9,7 +9,7 @@ Grammar: `🐀 <verb> <party> · <short facts>`. The call owns the header; its r
 
 Compose, never draw. Read [the swipe file](references/primitives.md) for props, variants and composition examples. Use `src/ui/` primitives. Add a swipe-file entry when adding a primitive; regenerate with `pnpm --filter pi-ratking tui:frames`.
 
-Collapsed parties show the callsign alone, or the raw name when no callsign exists. Expand to `callsign (name)`. Spend the saved space on content: receipt `✓ party · summary · id8`, inbound header `🐀 from party · summary`. Reserve the receipt id before truncating the summary. Multiple recipients share one summary row. Render repeated summary/body prefixes once; a reply's footer does not repeat its header id.
+Collapsed parties show the callsign alone, or the raw name when no callsign exists. Expand to `callsign (name)`. The call owns its summary and primary party: `🐀 send → party · +N cc`. A single-recipient receipt is `✓ id8`; with CC, show `✓ woken · id8` for the primary, then `✓ party · woken|quiet` for each copy. Never repeat the call's summary or primary party in the receipt. Reply headers resolve the party from result details and retain `sender only` when reply-all is disabled. Inbound headers spend space on `🐀 from party · summary`. Render repeated summary/body prefixes once; a reply's footer does not repeat its header id.
 
 Keep full model content. Only renders fold; rendering must not edit the message, summary, id or diagnostics the model receives.
 

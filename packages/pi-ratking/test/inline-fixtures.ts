@@ -57,7 +57,6 @@ const base: ResultInput = {
   expanded: false,
   isError: false,
   isPartial: false,
-  summary: "Gate ready",
   text: "Reply delivered to peer over Rat King (id 3abcdefghijk, seq 9).",
 };
 

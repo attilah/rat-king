@@ -107,25 +107,27 @@ const entries: readonly Entry[] = [
     variants: "expanded false | true",
   },
   {
-    dont: "Put a delivery tick on inbound mail.",
+    dont: "Repeat the call's summary or primary party, or put a delivery tick on inbound mail.",
     example:
-      "CompactReceipt({ id: '3abcdefghijk', parties: [{ level: 'woken', party: Party({ label: '🔮 Merlin', name: 'sample/desk', theme }) }], summary: 'The gate is clear', theme, trimmed: false, width })",
-    intent: "Mark each delivered recipient without another rat header.",
+      "CompactReceipt({ id: '3abcdefghijk', parties: [{ level: 'woken', party: '🔮 Merlin' }, { level: 'quiet', party: '🦉 Scout' }], theme, width })",
+    intent:
+      "Confirm delivery once; leave the primary identity and summary in the call.",
     name: "Receipt",
     pattern: "detail-fold",
     props:
-      "Receipt: lines, theme, width; CompactReceipt: id, parties (party and level), summary?, theme, trimmed, width",
+      "Receipt: lines, theme, width; CompactReceipt: id, parties (primary first, party and level), theme, width",
     render: (width) =>
       CompactReceipt({
         id: "3abcdefghijk",
-        parties: [{ level: "woken", party }],
-        summary: "The gate is clear",
+        parties: [
+          { level: "woken", party },
+          { level: "quiet", party: "🦉 Scout" },
+        ],
         theme,
-        trimmed: false,
         width,
       }),
     variants:
-      "single recipient: party · summary · id8; multiple: one summary · id8 row, then party · woken|quiet rows",
+      "single recipient: id8; multiple: primary wake fact · id8, then each CC party · woken|quiet",
   },
   {
     dont: "Hide the reason behind expanded diagnostics.",

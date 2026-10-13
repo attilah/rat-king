@@ -31,7 +31,7 @@ const plain = (lines: readonly string[]) =>
   lines.map(stripTerminalSequences).join("\n");
 
 it.effect.prop(
-  "collapsed receipts omit the duplicated rat/action header, show every party and id8 or wake level, expand the model receipt, and never change model content",
+  "collapsed receipts omit the call's primary party and summary, show each CC wake fact and id8 once, expand the model receipt, and never change model content",
   [Arbitrary.schema(Sample)],
   ([sample]) =>
     Effect.sync(() => {
@@ -91,16 +91,20 @@ it.effect.prop(
       expect(collapsed).not.toContain("delivered");
       expect(collapsed).not.toContain("over Rat King");
 
-      for (const recipient of recipients) {
-        const level = recipient.level === "wake" ? "woken" : "quiet";
-        const suffix = recipients.length === 1 ? sample.id.slice(0, 8) : level;
+      for (const recipient of recipients.slice(1)) {
+        const suffix = recipient.level === "wake" ? "woken" : "quiet";
         expect(collapsed).toContain(
           party(plainTheme, recipient.name, lookup(recipient.name))
         );
         expect(collapsed).toContain(` · ${suffix}`);
       }
 
-      expect(collapsed.includes("summary trimmed")).toBe(sample.trimmed);
+      expect(collapsed).not.toContain("summary trimmed");
+      expect(collapsed.split("\n")[0]).toBe(
+        recipients.length === 1
+          ? `✓ ${sample.id.slice(0, 8)}`
+          : `✓ woken · ${sample.id.slice(0, 8)}`
+      );
 
       if (sample.action === "ask") {
         expect(collapsed).toContain("↩");

@@ -181,32 +181,34 @@ import { ShortId } from '../../../src/ui/short-id.ts';
 
 ## Receipt
 
-Mark each delivered recipient without another rat header.
+Confirm delivery once; leave the primary identity and summary in the call.
 
-Props: Receipt: lines, theme, width; CompactReceipt: id, parties (party and level), summary?, theme, trimmed, width.
+Props: Receipt: lines, theme, width; CompactReceipt: id, parties (primary first, party and level), theme, width.
 
-Variants: single recipient: party · summary · id8; multiple: one summary · id8 row, then party · woken|quiet rows.
+Variants: single recipient: id8; multiple: primary wake fact · id8, then each CC party · woken|quiet.
 
 Pattern: [detail-fold](https://pi-tui.ratstack.sh/patterns/detail-fold.md).
 
-Don't: Put a delivery tick on inbound mail.
+Don't: Repeat the call's summary or primary party, or put a delivery tick on inbound mail.
 
 ```
 import { CompactReceipt } from '../../../src/ui/receipt.ts';
 import { Party } from '../../../src/ui/party.ts';
-CompactReceipt({ id: '3abcdefghijk', parties: [{ level: 'woken', party: Party({ label: '🔮 Merlin', name: 'sample/desk', theme }) }], summary: 'The gate is clear', theme, trimmed: false, width })
+CompactReceipt({ id: '3abcdefghijk', parties: [{ level: 'woken', party: '🔮 Merlin' }, { level: 'quiet', party: '🦉 Scout' }], theme, width })
 ```
 
 ### 40 columns
 
 ```text
-✓ 🔮 Merlin · The gate is cl[0m…[0m · 3abcdefg
+✓ woken · 3abcdefg
+✓ 🦉 Scout · quiet
 ```
 
 ### 80 columns
 
 ```text
-✓ 🔮 Merlin · The gate is clear · 3abcdefg
+✓ woken · 3abcdefg
+✓ 🦉 Scout · quiet
 ```
 
 ## Fault

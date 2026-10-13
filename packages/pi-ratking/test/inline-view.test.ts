@@ -97,24 +97,30 @@ const renders = (theme: Theme, width: number, expanded: boolean) => ({
     ])
   ),
   ...Object.fromEntries(
-    Object.entries(results).map(([name, input]) => [
-      name,
-      [
-        ...callView(
-          "ratking",
-          {
-            action: input.action,
-            replyAll: false,
-            replyTo: "3replyabcdef",
-            summary: "Gate ready",
-            to: "peer",
-          },
-          theme,
-          labels
-        ).render(width),
-        ...resultView({ ...input, expanded }, theme, labels).render(width),
-      ],
-    ])
+    Object.entries(results).map(([name, input]) => {
+      const state = {};
+
+      const call = callView(
+        "ratking",
+        {
+          action: input.action,
+          cc: name === "send with cc" ? ["observer"] : [],
+          replyAll: false,
+          replyTo: "3replyabcdef",
+          summary: "Gate ready",
+          to: input.action === "reply" ? undefined : "peer",
+        },
+        theme,
+        labels,
+        { state }
+      );
+
+      const result = resultView({ ...input, expanded }, theme, labels, {
+        state,
+      });
+
+      return [name, [...call.render(width), ...result.render(width)]];
+    })
   ),
   "cc digest": digestView({ ...digest, expanded, labels, theme }).render(width),
   "record notice": recordView({ ...record, expanded, labels, theme }).render(
