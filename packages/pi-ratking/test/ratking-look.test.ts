@@ -134,13 +134,11 @@ it.effect.prop(
           /Rat King (?:send|ask|reply|status|cc|record|message)|🐀 Rat King/u
         );
         expect(view).not.toContain("intercom");
-        expect(view).toContain(known ? "🔮 Merlin · Desk peer" : "peer");
+        expect(view).toContain(known ? "🔮 Merlin · Desk" : "peer");
       }
 
       for (const view of [call, result]) {
-        expect(view).toContain(
-          known ? "🦉 Scout · Watch observer" : "observer"
-        );
+        expect(view).toContain(known ? "🦉 Scout · Watch" : "observer");
       }
 
       expect(call).toMatch(/^🐀 send/u);
@@ -196,7 +194,8 @@ it.effect.prop(
       expect(collapsed).not.toContain("intercom");
       expect(collapsed).not.toContain("To reply:");
       expect(collapsed).not.toContain(COPY_NOTE);
-      expect(collapsed).toContain("🔮 Merlin · Desk peer");
+      expect(collapsed).toContain("🔮 Merlin · Desk");
+      expect(collapsed).not.toContain("Desk peer");
       expect(expanded).toContain(hint);
       expect(content).toContain(hint);
 
@@ -276,10 +275,16 @@ it.effect.prop(
         expect(view).not.toMatch(
           /Rat King (?:send|ask|reply|status|cc|record|message)|🐀 Rat King/u
         );
-        expect(view).toContain("🔮 Merlin · Desk peer");
+        expect(view).toContain(
+          expanded ? "🔮 Merlin · Desk (peer)" : "🔮 Merlin · Desk"
+        );
       }
 
-      expect(digest).toContain("🔮 Merlin · Desk peer · Gate ready");
+      expect(digest).toContain(
+        expanded
+          ? "🔮 Merlin · Desk (peer) · Gate ready"
+          : "🔮 Merlin · Desk · Gate ready"
+      );
       expect(digest.includes("intercom")).toBe(expanded);
       expect(copy).not.toContain("intercom");
       expect(notice).not.toContain("intercom");

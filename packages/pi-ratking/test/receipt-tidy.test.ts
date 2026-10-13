@@ -8,6 +8,7 @@ import { callView, resultView } from "../src/tool-view.ts";
 import type { ResultInput } from "../src/tool-view.ts";
 import { receiptText } from "../src/tool.ts";
 import { noLabels, party } from "../src/tui.ts";
+import { Party } from "../src/ui/party.ts";
 import { ansiTheme, plainTheme } from "./view-arbitraries.ts";
 
 const Sample = Schema.Struct({
@@ -94,23 +95,22 @@ it.effect.prop(
         const level = recipient.level === "wake" ? "woken" : "quiet";
         const suffix = recipients.length === 1 ? sample.id.slice(0, 8) : level;
         expect(collapsed).toContain(
-          `${party(plainTheme, recipient.name, lookup(recipient.name))} · ${suffix}`
+          party(plainTheme, recipient.name, lookup(recipient.name))
         );
+        expect(collapsed).toContain(` · ${suffix}`);
       }
 
-      expect(collapsed.includes(" · summary trimmed")).toBe(sample.trimmed);
+      expect(collapsed.includes("summary trimmed")).toBe(sample.trimmed);
 
       if (sample.action === "ask") {
         expect(collapsed).toContain("↩");
         expect(collapsed).toContain("The gate is clear.");
 
-        if (!sample.cc) {
-          expect(collapsed).toMatch(/^✓ asked /u);
-        }
+        expect(collapsed).not.toContain("asked ");
       }
 
       if (sample.action === "record") {
-        expect(collapsed).toMatch(/^✓ record → /u);
+        expect(collapsed).not.toContain("record → ");
       }
 
       const expanded = plain(
@@ -125,11 +125,21 @@ it.effect.prop(
         const styled =
           line.startsWith("peer:") || line.startsWith("observer:")
             ? line.replace(/^[^:]+/u, (name) =>
-                party(plainTheme, name, lookup(name))
+                Party({
+                  label: lookup(name),
+                  name,
+                  theme: plainTheme,
+                  variant: "expanded",
+                })
               )
             : line.replace(
                 /(?<=[Dd]elivered to |Reply from )peer/u,
-                party(plainTheme, "peer", lookup("peer"))
+                Party({
+                  label: lookup("peer"),
+                  name: "peer",
+                  theme: plainTheme,
+                  variant: "expanded",
+                })
               );
 
         expect(expanded).toContain(styled);
@@ -267,6 +277,7 @@ it.effect.prop(
         );
 
         expect(result).not.toContain("🐀");
+        expect(result).not.toContain("✓");
         expect(result).toContain("peer");
       }
     })

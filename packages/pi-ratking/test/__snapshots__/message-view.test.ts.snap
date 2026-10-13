@@ -3,8 +3,8 @@
 exports[`inbound rendering > outbound copy at 40 columns, expanded false 1`] = `
 "
 ╭─ 🐀 sent to a-rather-long-agent-n… ──╮
-│ Beta stays held                      │
-│ Holding the restart wave o … +1 line │
+│ Holding the restart wave on beta     │
+│ until NTP is checked.                │
 ╰─ sent by switchboard · cc hawk · … ──╯
 "
 `;
@@ -30,10 +30,9 @@ exports[`inbound rendering > outbound copy at 40 columns, expanded true 1`] = `
 
 exports[`inbound rendering > outbound copy at 80 columns, expanded false 1`] = `
 "
-╭─ 🐀 sent to a-rather-long-agent-name-for-the-recipient · ↩ 3m7x2ka4 ─────────╮
-│ Beta stays held                                                              │
+╭─ 🐀 sent to a-rather-long-agent-name-for-the-recipient · Beta stays held … ──╮
 │ Holding the restart wave on beta until NTP is checked.                       │
-╰─ sent by switchboard · cc hawk · ↩ 3m7x2ka4 · ctrl+o expands ────────────────╯
+╰─ sent by switchboard · cc hawk · ctrl+o expands ─────────────────────────────╯
 "
 `;
 
@@ -56,10 +55,9 @@ exports[`inbound rendering > outbound copy at 80 columns, expanded true 1`] = `
 
 exports[`inbound rendering > outbound copy at 160 columns, expanded false 1`] = `
 "
-╭─ 🐀 sent to a-rather-long-agent-name-for-the-recipient · ↩ 3m7x2ka4 ─────────────────────────────────────────────────────────────────────────────────────────╮
-│ Beta stays held                                                                                                                                              │
+╭─ 🐀 sent to a-rather-long-agent-name-for-the-recipient · Beta stays held · ↩ 3m7x2ka4 ───────────────────────────────────────────────────────────────────────╮
 │ Holding the restart wave on beta until NTP is checked.                                                                                                       │
-╰─ sent by switchboard · cc hawk · ↩ 3m7x2ka4 · ctrl+o expands ────────────────────────────────────────────────────────────────────────────────────────────────╯
+╰─ sent by switchboard · cc hawk · ctrl+o expands ─────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 "
 `;
 
@@ -83,8 +81,8 @@ exports[`inbound rendering > outbound copy at 160 columns, expanded true 1`] = `
 exports[`inbound rendering > plain at 40 columns, expanded false 1`] = `
 "
 ╭─ 🐀 from 🔮 Nicodemus · Rat King … ──╮
-│ Alpha host reader is live            │
-│ The reader on alpha is liv … +1 line │
+│ The reader on alpha is live again.   │
+│ Lease generation 7.                  │
 ╰─ ctrl+o expands ─────────────────────╯
 "
 `;
@@ -108,8 +106,7 @@ exports[`inbound rendering > plain at 40 columns, expanded true 1`] = `
 
 exports[`inbound rendering > plain at 80 columns, expanded false 1`] = `
 "
-╭─ 🐀 from 🔮 Nicodemus · Rat King desk ratking-desk ──────────────────────────╮
-│ Alpha host reader is live                                                    │
+╭─ 🐀 from 🔮 Nicodemus · Rat King desk · Alpha host reader is live ───────────╮
 │ The reader on alpha is live again. Lease generation 7.                       │
 ╰─ ctrl+o expands ─────────────────────────────────────────────────────────────╯
 "
@@ -117,7 +114,7 @@ exports[`inbound rendering > plain at 80 columns, expanded false 1`] = `
 
 exports[`inbound rendering > plain at 80 columns, expanded true 1`] = `
 "
-╭─ 🐀 from 🔮 Nicodemus · Rat King desk ratking-desk ──────────────────────────╮
+╭─ 🐀 from 🔮 Nicodemus · Rat King desk (ratking-desk) ────────────────────────╮
 │ Alpha host reader is live                                                    │
 │                                                                              │
 │ The reader on alpha is live again. Lease generation 7.                       │
@@ -132,8 +129,7 @@ exports[`inbound rendering > plain at 80 columns, expanded true 1`] = `
 
 exports[`inbound rendering > plain at 160 columns, expanded false 1`] = `
 "
-╭─ 🐀 from 🔮 Nicodemus · Rat King desk ratking-desk ──────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ Alpha host reader is live                                                                                                                                    │
+╭─ 🐀 from 🔮 Nicodemus · Rat King desk · Alpha host reader is live ───────────────────────────────────────────────────────────────────────────────────────────╮
 │ The reader on alpha is live again. Lease generation 7.                                                                                                       │
 ╰─ ctrl+o expands ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 "
@@ -141,7 +137,7 @@ exports[`inbound rendering > plain at 160 columns, expanded false 1`] = `
 
 exports[`inbound rendering > plain at 160 columns, expanded true 1`] = `
 "
-╭─ 🐀 from 🔮 Nicodemus · Rat King desk ratking-desk ──────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+╭─ 🐀 from 🔮 Nicodemus · Rat King desk (ratking-desk) ────────────────────────────────────────────────────────────────────────────────────────────────────────╮
 │ Alpha host reader is live                                                                                                                                    │
 │                                                                                                                                                              │
 │ The reader on alpha is live again. Lease generation 7.                                                                                                       │
@@ -156,8 +152,8 @@ exports[`inbound rendering > plain at 160 columns, expanded true 1`] = `
 exports[`inbound rendering > relayed cc reply at 40 columns, expanded false 1`] = `
 "
 ╭─ 🐀 cc from 📞 Ernestine ·… ─ quiet ─╮
-│ Restart wave clear on alpha; hold    │
-│ beta … +12 lines                     │
+│ Switchboard relayed your ask to the  │
+│ desk. The desk says the  … +10 lines │
 ╰─ cc ratking-desk, hawk, a-rather-… ──╯
 "
 `;
@@ -203,16 +199,16 @@ exports[`inbound rendering > relayed cc reply at 40 columns, expanded true 1`] =
 
 exports[`inbound rendering > relayed cc reply at 80 columns, expanded false 1`] = `
 "
-╭─ 🐀 cc from 📞 Ernestine · Switchboard switchboard · ↩ 3m7x2ka4 ───── quiet ─╮
-│ Restart wave clear on alpha; hold beta                                       │
-│ Switchboard relayed your ask to the desk. The desk says the resta … +5 lines │
-╰─ cc ratking-desk, hawk, a-rather-long-agent-name-for-cc · ↩ 3m7x2ka4 · vi… ──╯
+╭─ 🐀 cc from 📞 Ernestine · Switchboard · Restart wave clear on alp… ─ quiet ─╮
+│ Switchboard relayed your ask to the desk. The desk says the restart wave is  │
+│ clear to proceed on alpha once reader-health lands, but hold beta … +4 lines │
+╰─ cc ratking-desk, hawk, a-rather-long-agent-name-for-cc · via switchboard… ──╯
 "
 `;
 
 exports[`inbound rendering > relayed cc reply at 80 columns, expanded true 1`] = `
 "
-╭─ 🐀 cc from 📞 Ernestine · Switchboard switchboard · ↩ 3m7x2ka4xv2… ─ quiet ─╮
+╭─ 🐀 cc from 📞 Ernestine · Switchboard (switchboard) · ↩ 3m7x2ka4x… ─ quiet ─╮
 │ Restart wave clear on alpha; hold beta                                       │
 │                                                                              │
 │ Switchboard relayed your ask to the desk. The desk says the restart wave is  │
@@ -240,16 +236,16 @@ exports[`inbound rendering > relayed cc reply at 80 columns, expanded true 1`] =
 
 exports[`inbound rendering > relayed cc reply at 160 columns, expanded false 1`] = `
 "
-╭─ 🐀 cc from 📞 Ernestine · Switchboard switchboard · ↩ 3m7x2ka4 ───────────────────────────────────────────────────────────────────────────────────── quiet ─╮
-│ Restart wave clear on alpha; hold beta                                                                                                                       │
-│ Switchboard relayed your ask to the desk. The desk says the restart wave is clear to proceed on alpha once reader-health lands, but hold beta unt … +3 lines │
-╰─ cc ratking-desk, hawk, a-rather-long-agent-name-for-cc · ↩ 3m7x2ka4 · via switchboard · ctrl+o expands ─────────────────────────────────────────────────────╯
+╭─ 🐀 cc from 📞 Ernestine · Switchboard · Restart wave clear on alpha; hold beta · ↩ 3m7x2ka4 ──────────────────────────────────────────────────────── quiet ─╮
+│ Switchboard relayed your ask to the desk. The desk says the restart wave is clear to proceed on alpha once reader-health lands, but hold beta until the      │
+│ lease generation stops flapping. Ping back with the readback. … +2 lines                                                                                     │
+╰─ cc ratking-desk, hawk, a-rather-long-agent-name-for-cc · via switchboard · ctrl+o expands ──────────────────────────────────────────────────────────────────╯
 "
 `;
 
 exports[`inbound rendering > relayed cc reply at 160 columns, expanded true 1`] = `
 "
-╭─ 🐀 cc from 📞 Ernestine · Switchboard switchboard · ↩ 3m7x2ka4xv22b ──────────────────────────────────────────────────────────────────────────────── quiet ─╮
+╭─ 🐀 cc from 📞 Ernestine · Switchboard (switchboard) · ↩ 3m7x2ka4xv22b ────────────────────────────────────────────────────────────────────────────── quiet ─╮
 │ Restart wave clear on alpha; hold beta                                                                                                                       │
 │                                                                                                                                                              │
 │ Switchboard relayed your ask to the desk. The desk says the restart wave is clear to proceed on alpha once reader-health lands, but hold beta until the      │

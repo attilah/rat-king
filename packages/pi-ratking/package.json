@@ -7,6 +7,9 @@
     ".": "./src/index.ts",
     "./extension": "./src/extension.ts"
   },
+  "scripts": {
+    "tui:frames": "node scripts/tui-frames.ts"
+  },
   "dependencies": {
     "@effect/platform-node": "4.0.0",
     "@rat-king/envelope": "workspace:*",
@@ -29,6 +32,9 @@
   "pi": {
     "extensions": [
       "./src/extension.ts"
+    ],
+    "skills": [
+      "./skills/ratking-tui"
     ]
   }
 }

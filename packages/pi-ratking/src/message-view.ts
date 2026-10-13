@@ -15,13 +15,18 @@ import {
   oneLine,
   paragraphs,
   party,
-  ratKingTitle,
   noLabels,
   recordType,
   short,
   terminalStyles,
 } from "./tui.ts";
 import type { Labels, Paint } from "./tui.ts";
+import { Box } from "./ui/box.ts";
+import { Fold } from "./ui/fold.ts";
+import { Footer } from "./ui/footer.ts";
+import { Header } from "./ui/header.ts";
+import { Party } from "./ui/party.ts";
+import { Tag } from "./ui/tag.ts";
 
 const Details = Schema.Struct({
   body: Schema.String,
@@ -94,7 +99,7 @@ const sender = (
         )
       : "";
 
-  return `${mark}${ratKingTitle(theme, action)} ${party(theme, name, label)}${reply}`;
+  return `${mark}${Header({ party: Party({ label, name, theme, variant: expanded ? "expanded" : "collapsed" }), theme, variant: "inbound", verb: action })}${!expanded && value.summary !== undefined ? theme.fg("dim", ` · ${oneLine(value.summary)}`) : ""}${reply}`;
 };
 
 const senderLine = (
@@ -133,7 +138,12 @@ const tag = (theme: Paint, value: InboundView) => {
 
   const nondefault = value.sentBy === undefined && (held || quiet);
 
-  return nondefault ? theme.fg("dim", held ? "held" : "quiet") : undefined;
+  const level = held ? "held" : "quiet";
+
+  return Tag({
+    theme,
+    variant: nondefault ? level : "default",
+  });
 };
 
 const ccText = (value: InboundView, theme: Paint, labels: Labels) =>
@@ -147,26 +157,36 @@ const meta = (
   hint: string | undefined,
   labels: Labels
 ) =>
-  [
-    ...(value.sentBy === undefined
-      ? []
-      : [
-          `${theme.fg("muted", "sent by")} ${party(theme, value.sentBy, labels(value.sentBy))}`,
-        ]),
-    ...(ccText(value, theme, labels) === undefined
-      ? []
-      : [ccText(value, theme, labels) ?? ""]),
-    ...(value.replyTo === undefined
-      ? []
-      : [theme.fg("muted", `↩ ${short(value.replyTo)}`)]),
-    ...(value.relay === undefined
-      ? []
-      : [
-          `${theme.fg("muted", "via")} ${party(theme, value.relay.name, labels(value.relay.name))}`,
-        ]),
-    ...(value.verified ? [] : [theme.fg("warning", "unverified")]),
-    ...(hint === undefined ? [] : [theme.fg("dim", hint)]),
-  ].join(theme.fg("dim", " · "));
+  Footer({
+    cc: ccText(value, theme, labels),
+    hint: hint === undefined ? undefined : theme.fg("dim", hint),
+    relay:
+      value.relay === undefined
+        ? undefined
+        : `${theme.fg("muted", "via")} ${party(theme, value.relay.name, labels(value.relay.name))}`,
+    reply:
+      value.replyTo === undefined || value.kind === "reply"
+        ? undefined
+        : theme.fg("muted", `↩ ${short(value.replyTo)}`),
+    sentBy:
+      value.sentBy === undefined
+        ? undefined
+        : `${theme.fg("muted", "sent by")} ${party(theme, value.sentBy, labels(value.sentBy))}`,
+    theme,
+    warning: value.verified ? undefined : theme.fg("warning", "unverified"),
+  });
+
+const startsWithSummary = (value: InboundView) =>
+  value.summary !== undefined &&
+  clean(value.body).trimStart().startsWith(clean(value.summary).trim());
+
+const previewBody = (value: InboundView) =>
+  startsWithSummary(value)
+    ? clean(value.body)
+        .trimStart()
+        .slice(clean(value.summary ?? "").trim().length)
+        .trimStart()
+    : value.body;
 
 const preview = (theme: Paint, value: InboundView, width: number) => [
   ...(value.kind === "data" && Option.isSome(compactRecord(value.body))
@@ -175,15 +195,11 @@ const preview = (theme: Paint, value: InboundView, width: number) => [
         width
       ).map((line) => theme.bold(line))
     : []),
-  ...(value.summary === undefined
-    ? []
-    : wrapTextWithAnsi(oneLine(value.summary), width).map((line) =>
-        theme.bold(line)
-      )),
+
   ...paragraphs(
     value.kind === "data" && Option.isSome(compactRecord(value.body))
       ? ""
-      : value.body,
+      : previewBody(value),
     width
   )
     .filter((line) => line !== "")
@@ -208,11 +224,15 @@ const collapsed = (
   const lines = preview(theme, value, box.inner);
   const room = COMPACT_LINES - 2;
 
-  return [
-    box.top(sender(theme, value, false, labels), tag(theme, value)),
-    ...clip(theme, lines, room, box.inner).map(box.row),
-    box.bottom(meta(theme, value, "ctrl+o expands", labels)),
-  ];
+  return Box({
+    body: clip(theme, lines, room, box.inner),
+    border: border(value),
+    footer: meta(theme, value, "ctrl+o expands", labels),
+    header: sender(theme, value, false, labels),
+    tag: tag(theme, value),
+    theme,
+    width,
+  });
 };
 
 const expanded = (
@@ -262,7 +282,7 @@ const expanded = (
   ];
 
   const summary =
-    value.summary === undefined
+    value.summary === undefined || startsWithSummary(value)
       ? []
       : [
           ...wrapTextWithAnsi(oneLine(value.summary), inner).map((line) =>
@@ -314,13 +334,15 @@ const expanded = (
     ].map((line) => truncateToWidth(line, width, "…"));
   }
 
-  return [
-    box.top(sender(theme, value, true, labels), tag(theme, value)),
-    ...[...summary, ...body, "", ...details].map(box.row),
-    box.rule(),
-    ...hints.map(box.row),
-    box.bottom(),
-  ];
+  return Box({
+    body: [...summary, ...body, "", ...details],
+    border: border(value),
+    header: sender(theme, value, true, labels),
+    tag: tag(theme, value),
+    tail: hints,
+    theme,
+    width,
+  });
 };
 
 export const inboundLines = (input: {
@@ -335,20 +357,24 @@ export const inboundLines = (input: {
     return [];
   }
 
-  return input.expanded
-    ? expanded(
+  return Fold({
+    collapsed: () =>
+      collapsed(
+        input.theme,
+        input.value,
+        input.width,
+        input.labels ?? noLabels
+      ),
+    expanded: input.expanded,
+    full: () =>
+      expanded(
         input.theme,
         input.tool,
         input.value,
         input.width,
         input.labels ?? noLabels
-      )
-    : collapsed(
-        input.theme,
-        input.value,
-        input.width,
-        input.labels ?? noLabels
-      );
+      ),
+  });
 };
 
 export const messageView = (input: {

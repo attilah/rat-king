@@ -38,6 +38,11 @@ export const messages = {
   "inbound mail": mail,
   "inbound reply": { ...mail, kind: "reply", replyTo: "3replyabcdef" },
   "outbound copy": { ...mail, sentBy: "observer", to: "peer" },
+  "summary body prefix": {
+    ...mail,
+    body: "pong\nThe gate is clear.",
+    summary: "pong",
+  },
 } satisfies Readonly<Record<string, InboundView>>;
 
 const details = {
@@ -52,6 +57,7 @@ const base: ResultInput = {
   expanded: false,
   isError: false,
   isPartial: false,
+  summary: "Gate ready",
   text: "Reply delivered to peer over Rat King (id 3abcdefghijk, seq 9).",
 };
 
@@ -66,6 +72,18 @@ export const results = {
     ...base,
     details: { error: true },
     text: "NOT DELIVERED: NotConfigured. No identity.\nTag: NotConfigured\nFix: configure identity\nDebug: no reader",
+  },
+  "pending empty": {
+    ...base,
+    action: "pending",
+    details: {},
+    text: "No unresolved inbound or outbound asks.",
+  },
+  "pending outbound": {
+    ...base,
+    action: "pending",
+    details: {},
+    text: "**Inbound unanswered asks:**\n**Outbound open asks:**\n- to peer · 3abcdefghijk · Gate ready",
   },
   record: {
     ...base,
@@ -85,6 +103,12 @@ export const results = {
       ],
     },
     text: "Delivered over Rat King (id 3abcdefghijk, seq 9).\npeer: woken (to).\nobserver: quiet copy, no wake (cc: shows next turn or at its digest).",
+  },
+  status: {
+    ...base,
+    action: "status",
+    details: {},
+    text: "🐀 status: peer · reader live · mailbox https://mail.example.invalid",
   },
   "summary trimmed": {
     ...base,
