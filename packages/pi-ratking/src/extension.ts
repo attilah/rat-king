@@ -28,7 +28,13 @@ import { Type } from "typebox";
 
 import { decodeAgentGraphBody } from "./agentgraph.ts";
 import { attend, formatReason } from "./attend.ts";
-import { NotConfigured, settingsLayer, Settings, toolName } from "./config.ts";
+import {
+  NotConfigured,
+  resolveTurnOwner,
+  settingsLayer,
+  Settings,
+  toolName,
+} from "./config.ts";
 import { DIGEST_REASON, deliveryReason } from "./delivery.ts";
 import { directoryLayer } from "./directory.ts";
 import { paneLabel } from "./herdr.ts";
@@ -212,7 +218,7 @@ export const collectFacts = (
       ? yield* paneLabel(paneId.value)
       : Option.none<string>();
 
-    const owner = yield* Config.option(Config.String("MUSTER_OWNER_NAME"));
+    const owner = yield* resolveTurnOwner();
 
     return {
       alive,

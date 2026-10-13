@@ -171,6 +171,16 @@ export const resolveTurnRecords = Effect.fn("RatKing.resolveTurnRecords")(
   }
 );
 
+export const resolveTurnOwner = Effect.fn("RatKing.resolveTurnOwner")(
+  function* resolveTurnOwner() {
+    const turnOwner = yield* Config.option(Config.String("RATKING_TURN_OWNER"));
+
+    return Option.isSome(turnOwner)
+      ? turnOwner
+      : yield* Config.option(Config.String("MUSTER_OWNER_NAME"));
+  }
+);
+
 export const loadSettings = Effect.fn("RatKing.loadSettings")(
   function* loadSettings() {
     const path = yield* Path.Path;
