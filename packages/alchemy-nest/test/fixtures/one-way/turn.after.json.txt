@@ -1,0 +1,27 @@
+{
+  "defs": {
+    "main": {
+      "key": "tid",
+      "record": {
+        "properties": {
+          "agent": { "type": "string", "x-pattern": "^(?:[a-z0-9]+(?:-[a-z0-9]+)*/)?[a-z][a-z0-9_-]{0,31}$" },
+          "at": { "format": "datetime", "type": "string" },
+          "generation": { "minimum": 0, "type": "integer" },
+          "reason": { "type": "string", "x-maxCodeUnits": 280 },
+          "session": { "type": "string", "x-maxCodeUnits": 128, "x-minCodeUnits": 1 },
+          "state": { "enum": ["working", "done", "blocked", "idle", "crashed"], "type": "string" },
+          "stopReason": { "enum": ["stop", "aborted", "error", "length"], "type": "string" },
+          "turnId": { "type": "string", "x-maxCodeUnits": 128, "x-pattern": "^.+:[0-9]+$" },
+          "version": { "enum": ["0.1"], "type": "string" }
+        },
+        "required": ["agent", "at", "session", "state", "turnId", "version"],
+        "type": "object",
+        "x-allowedWhen": { "field": "state", "property": "generation", "value": "crashed" },
+        "x-strict": true
+      },
+      "type": "record"
+    }
+  },
+  "id": "sh.mschf.agentgraph.turn",
+  "lexicon": 1
+}

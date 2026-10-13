@@ -1,0 +1,311 @@
+diff --git a/lexicons/sh/mschf/ratking/attention/getPreferences.json b/lexicons/sh/mschf/ratking/attention/getPreferences.json
+new file mode 100644
+index 0000000..db498b9
+--- /dev/null
++++ b/lexicons/sh/mschf/ratking/attention/getPreferences.json
+@@ -0,0 +1,23 @@
++{
++  "defs": {
++    "main": {
++      "errors": [{ "name": "AuthRequired" }, { "name": "Forbidden" }],
++      "output": {
++        "encoding": "application/json",
++        "schema": {
++          "properties": { "prefs": { "ref": "sh.mschf.ratking.attention.prefs", "type": "ref" } },
++          "required": ["prefs"],
++          "type": "object"
++        }
++      },
++      "parameters": {
++        "properties": { "did": { "format": "did", "type": "string" } },
++        "required": ["did"],
++        "type": "params"
++      },
++      "type": "query"
++    }
++  },
++  "id": "sh.mschf.ratking.attention.getPreferences",
++  "lexicon": 1
++}
+diff --git a/lexicons/sh/mschf/ratking/attention/getStatus.json b/lexicons/sh/mschf/ratking/attention/getStatus.json
+new file mode 100644
+index 0000000..49c4fa2
+--- /dev/null
++++ b/lexicons/sh/mschf/ratking/attention/getStatus.json
+@@ -0,0 +1,23 @@
++{
++  "defs": {
++    "main": {
++      "errors": [{ "name": "AuthRequired" }, { "name": "Forbidden" }],
++      "output": {
++        "encoding": "application/json",
++        "schema": {
++          "properties": { "status": { "ref": "sh.mschf.ratking.attention.status", "type": "ref" } },
++          "required": ["status"],
++          "type": "object"
++        }
++      },
++      "parameters": {
++        "properties": { "did": { "format": "did", "type": "string" } },
++        "required": ["did"],
++        "type": "params"
++      },
++      "type": "query"
++    }
++  },
++  "id": "sh.mschf.ratking.attention.getStatus",
++  "lexicon": 1
++}
+diff --git a/lexicons/sh/mschf/ratking/attention/prefs.json b/lexicons/sh/mschf/ratking/attention/prefs.json
+new file mode 100644
+index 0000000..91bbe36
+--- /dev/null
++++ b/lexicons/sh/mschf/ratking/attention/prefs.json
+@@ -0,0 +1,56 @@
++{
++  "defs": {
++    "group": {
++      "properties": { "group": { "maxLength": 256, "minLength": 1, "type": "string" } },
++      "required": ["group"],
++      "type": "object",
++      "x-strict": true
++    },
++    "jev": {
++      "properties": {
++        "judgment": { "maxLength": 280, "minLength": 1, "type": "string" },
++        "laterBp": { "maximum": 10000, "minimum": 0, "type": "integer" },
++        "nowBp": { "maximum": 10000, "minimum": 0, "type": "integer" }
++      },
++      "required": ["judgment", "laterBp", "nowBp"],
++      "type": "object",
++      "x-strict": true
++    },
++    "main": {
++      "properties": {
++        "allow": { "items": { "ref": "#name", "type": "ref" }, "maxLength": 256, "type": "array" },
++        "forward": { "items": { "ref": "#name", "type": "ref" }, "maxLength": 256, "type": "array" },
++        "log": { "type": "boolean" },
++        "model": { "ref": "#model", "type": "ref" },
++        "mute": { "items": { "closed": true, "refs": ["#thread", "#group"], "type": "union" }, "maxLength": 256, "type": "array" },
++        "refuse": { "items": { "ref": "#name", "type": "ref" }, "maxLength": 256, "type": "array" },
++        "version": { "const": "0.1", "type": "string" }
++      },
++      "required": ["allow", "forward", "log", "model", "mute", "refuse", "version"],
++      "type": "object",
++      "x-strict": true
++    },
++    "model": {
++      "properties": {
++        "body": { "enum": ["never", "summary", "full"], "type": "string" },
++        "jev": { "ref": "#jev", "type": "ref" },
++        "kind": { "enum": ["none", "jev", "service"], "type": "string" },
++        "service": { "maxLength": 256, "minLength": 1, "type": "string", "x-pattern": "^(?:did:[a-z]+:[^\\s]+|[a-z][a-z0-9_-]*(?:/[a-z][a-z0-9_-]*)*)$" },
++        "timeoutMs": { "maximum": 600000, "minimum": 1, "type": "integer" }
++      },
++      "required": ["body", "kind", "timeoutMs"],
++      "type": "object",
++      "x-requiredWhen": { "field": "kind", "required": "jev", "value": "jev" },
++      "x-strict": true
++    },
++    "name": { "maxLength": 128, "minLength": 1, "type": "string", "x-pattern": "^[a-z][a-z0-9_-]*(?:/[a-z][a-z0-9_-]*)*$" },
++    "thread": {
++      "properties": { "thread": { "maxLength": 256, "minLength": 1, "type": "string" } },
++      "required": ["thread"],
++      "type": "object",
++      "x-strict": true
++    }
++  },
++  "id": "sh.mschf.ratking.attention.prefs",
++  "lexicon": 1
++}
+diff --git a/lexicons/sh/mschf/ratking/attention/putPreferences.json b/lexicons/sh/mschf/ratking/attention/putPreferences.json
+new file mode 100644
+index 0000000..79f5517
+--- /dev/null
++++ b/lexicons/sh/mschf/ratking/attention/putPreferences.json
+@@ -0,0 +1,31 @@
++{
++  "defs": {
++    "main": {
++      "errors": [{ "name": "AuthRequired" }, { "name": "Forbidden" }, { "name": "InvalidRequest" }],
++      "input": {
++        "encoding": "application/json",
++        "schema": {
++          "properties": {
++            "did": { "format": "did", "type": "string" },
++            "keyId": { "type": "string" },
++            "prefs": { "ref": "sh.mschf.ratking.attention.prefs", "type": "ref" },
++            "signature": { "type": "bytes" }
++          },
++          "required": ["did", "keyId", "prefs", "signature"],
++          "type": "object"
++        }
++      },
++      "output": {
++        "encoding": "application/json",
++        "schema": {
++          "properties": { "prefs": { "ref": "sh.mschf.ratking.attention.prefs", "type": "ref" } },
++          "required": ["prefs"],
++          "type": "object"
++        }
++      },
++      "type": "procedure"
++    }
++  },
++  "id": "sh.mschf.ratking.attention.putPreferences",
++  "lexicon": 1
++}
+diff --git a/lexicons/sh/mschf/ratking/attention/putStatus.json b/lexicons/sh/mschf/ratking/attention/putStatus.json
+new file mode 100644
+index 0000000..bec89a5
+--- /dev/null
++++ b/lexicons/sh/mschf/ratking/attention/putStatus.json
+@@ -0,0 +1,31 @@
++{
++  "defs": {
++    "main": {
++      "errors": [{ "name": "AuthRequired" }, { "name": "Forbidden" }, { "name": "InvalidRequest" }],
++      "input": {
++        "encoding": "application/json",
++        "schema": {
++          "properties": {
++            "did": { "format": "did", "type": "string" },
++            "keyId": { "type": "string" },
++            "signature": { "type": "bytes" },
++            "status": { "ref": "sh.mschf.ratking.attention.status", "type": "ref" }
++          },
++          "required": ["did", "keyId", "signature", "status"],
++          "type": "object"
++        }
++      },
++      "output": {
++        "encoding": "application/json",
++        "schema": {
++          "properties": { "status": { "ref": "sh.mschf.ratking.attention.status", "type": "ref" } },
++          "required": ["status"],
++          "type": "object"
++        }
++      },
++      "type": "procedure"
++    }
++  },
++  "id": "sh.mschf.ratking.attention.putStatus",
++  "lexicon": 1
++}
+diff --git a/lexicons/sh/mschf/ratking/attention/receipt.json b/lexicons/sh/mschf/ratking/attention/receipt.json
+new file mode 100644
+index 0000000..de835a8
+--- /dev/null
++++ b/lexicons/sh/mschf/ratking/attention/receipt.json
+@@ -0,0 +1,18 @@
++{
++  "defs": {
++    "main": {
++      "key": "any",
++      "record": {
++        "properties": {
++          "operation": { "enum": ["putPreferences", "putStatus"], "type": "string" },
++          "seq": { "maximum": 9007199254740991, "minimum": 1, "type": "integer" }
++        },
++        "required": ["operation", "seq"],
++        "type": "object"
++      },
++      "type": "record"
++    }
++  },
++  "id": "sh.mschf.ratking.attention.receipt",
++  "lexicon": 1
++}
+diff --git a/lexicons/sh/mschf/ratking/attention/status.json b/lexicons/sh/mschf/ratking/attention/status.json
+new file mode 100644
+index 0000000..457c00e
+--- /dev/null
++++ b/lexicons/sh/mschf/ratking/attention/status.json
+@@ -0,0 +1,20 @@
++{
++  "defs": {
++    "main": {
++      "key": "literal:self",
++      "record": {
++        "properties": {
++          "note": { "maxLength": 120, "type": "string" },
++          "state": { "enum": ["available", "busy", "dnd"], "type": "string" },
++          "until": { "format": "datetime", "type": "string" },
++          "version": { "const": "0.1", "type": "string" }
++        },
++        "required": ["state", "version"],
++        "type": "object"
++      },
++      "type": "record"
++    }
++  },
++  "id": "sh.mschf.ratking.attention.status",
++  "lexicon": 1
++}
+diff --git a/lexicons/sh/mschf/ratking/mailbox/list.json b/lexicons/sh/mschf/ratking/mailbox/list.json
+index 3ba70f6..3654620 100644
+--- a/lexicons/sh/mschf/ratking/mailbox/list.json
++++ b/lexicons/sh/mschf/ratking/mailbox/list.json
+@@ -52 +52,2 @@
+-                  "sh.mschf.ratking.defs#receiptEvent"
++                  "sh.mschf.ratking.defs#receiptEvent",
++                  "sh.mschf.ratking.attention.receipt"
+diff --git a/lexicons/sh/mschf/ratking/triage/judge.json b/lexicons/sh/mschf/ratking/triage/judge.json
+new file mode 100644
+index 0000000..7a35b8c
+--- /dev/null
++++ b/lexicons/sh/mschf/ratking/triage/judge.json
+@@ -0,0 +1,26 @@
++{
++  "defs": {
++    "main": {
++      "key": "any",
++      "record": {
++        "properties": {
++          "arrivalId": { "minLength": 1, "type": "string" },
++          "body": { "type": "string" },
++          "cc": { "items": { "ref": "sh.mschf.ratking.attention.prefs#name", "type": "ref" }, "type": "array" },
++          "from": { "ref": "sh.mschf.ratking.attention.prefs#name", "type": "ref" },
++          "intent": { "enum": ["to", "cc", "ask", "reply"], "type": "string" },
++          "kind": { "type": "string" },
++          "recordType": { "format": "nsid", "type": "string" },
++          "sentAt": { "format": "datetime", "type": "string" },
++          "thread": { "minLength": 1, "type": "string" },
++          "to": { "ref": "sh.mschf.ratking.attention.prefs#name", "type": "ref" }
++        },
++        "required": ["arrivalId", "cc", "from", "intent", "kind", "sentAt", "thread", "to"],
++        "type": "object"
++      },
++      "type": "record"
++    }
++  },
++  "id": "sh.mschf.ratking.triage.judge",
++  "lexicon": 1
++}
+diff --git a/lexicons/sh/mschf/ratking/triage/verdict.json b/lexicons/sh/mschf/ratking/triage/verdict.json
+new file mode 100644
+index 0000000..9acc031
+--- /dev/null
++++ b/lexicons/sh/mschf/ratking/triage/verdict.json
+@@ -0,0 +1,21 @@
++{
++  "defs": {
++    "main": {
++      "key": "any",
++      "record": {
++        "properties": {
++          "arrivalId": { "minLength": 1, "type": "string" },
++          "modelId": { "minLength": 1, "type": "string" },
++          "probabilityBp": { "maximum": 10000, "minimum": 0, "type": "integer" },
++          "reason": { "maxLength": 280, "type": "string" },
++          "verdict": { "enum": ["Now", "Next", "Later", "Never"], "type": "string" }
++        },
++        "required": ["arrivalId", "modelId", "probabilityBp", "reason", "verdict"],
++        "type": "object"
++      },
++      "type": "record"
++    }
++  },
++  "id": "sh.mschf.ratking.triage.verdict",
++  "lexicon": 1
++}

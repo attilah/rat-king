@@ -1,0 +1,66 @@
+{
+  "defs": {
+    "digest": {
+      "properties": {
+        "minutes": { "maximum": 1440, "minimum": 1, "type": "integer" },
+        "name": { "ref": "#name", "type": "ref" }
+      },
+      "required": ["minutes", "name"],
+      "type": "object",
+      "x-strict": true
+    },
+    "group": {
+      "properties": { "group": { "maxLength": 256, "minLength": 1, "type": "string" } },
+      "required": ["group"],
+      "type": "object",
+      "x-strict": true
+    },
+    "jev": {
+      "properties": {
+        "judgment": { "maxLength": 280, "minLength": 1, "type": "string" },
+        "laterBp": { "maximum": 10000, "minimum": 0, "type": "integer" },
+        "nowBp": { "maximum": 10000, "minimum": 0, "type": "integer" }
+      },
+      "required": ["judgment", "laterBp", "nowBp"],
+      "type": "object",
+      "x-strict": true
+    },
+    "main": {
+      "properties": {
+        "allow": { "items": { "ref": "#name", "type": "ref" }, "maxLength": 256, "type": "array" },
+        "digest": { "items": { "ref": "#digest", "type": "ref" }, "maxLength": 256, "type": "array" },
+        "forward": { "items": { "ref": "#name", "type": "ref" }, "maxLength": 256, "type": "array" },
+        "log": { "type": "boolean" },
+        "model": { "ref": "#model", "type": "ref" },
+        "mute": { "items": { "closed": true, "refs": ["#thread", "#group"], "type": "union" }, "maxLength": 256, "type": "array" },
+        "refuse": { "items": { "ref": "#name", "type": "ref" }, "maxLength": 256, "type": "array" },
+        "version": { "const": "0.1", "type": "string" }
+      },
+      "required": ["allow", "forward", "log", "model", "mute", "refuse", "version"],
+      "type": "object",
+      "x-strict": true
+    },
+    "model": {
+      "properties": {
+        "body": { "enum": ["never", "summary", "full"], "type": "string" },
+        "jev": { "ref": "#jev", "type": "ref" },
+        "kind": { "enum": ["none", "jev", "service"], "type": "string" },
+        "service": { "maxLength": 256, "minLength": 1, "type": "string", "x-pattern": "^(?:did:[a-z]+:[^\\s]+|[a-z][a-z0-9_-]*(?:/[a-z][a-z0-9_-]*)*)$" },
+        "timeoutMs": { "maximum": 600000, "minimum": 1, "type": "integer" }
+      },
+      "required": ["body", "kind", "timeoutMs"],
+      "type": "object",
+      "x-requiredWhen": { "field": "kind", "required": "jev", "value": "jev" },
+      "x-strict": true
+    },
+    "name": { "maxLength": 128, "minLength": 1, "type": "string", "x-pattern": "^[a-z][a-z0-9_-]*(?:/[a-z][a-z0-9_-]*)*$" },
+    "thread": {
+      "properties": { "thread": { "maxLength": 256, "minLength": 1, "type": "string" } },
+      "required": ["thread"],
+      "type": "object",
+      "x-strict": true
+    }
+  },
+  "id": "sh.mschf.ratking.attention.prefs",
+  "lexicon": 1
+}
