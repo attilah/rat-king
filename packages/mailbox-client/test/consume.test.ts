@@ -8,6 +8,7 @@ import {
   Effect,
   Fiber,
   Layer,
+  Logger,
   Match,
   Result,
   Schema,
@@ -231,4 +232,61 @@ it.effect.prop(
       expect(attempts).toBe(2);
       expect(released).toBe(1);
     }).pipe(Effect.scoped)
+);
+
+it.effect.prop(
+  "a refused release warns only when the outcome is unknown",
+  [Arbitrary.schema(Schema.Literals(["mismatch", "unknown"]))],
+  ([kind]) => {
+    const warned: unknown[] = [];
+
+    const capture = Logger.layer([
+      Logger.make(({ logLevel, message }) => {
+        if (logLevel === "Warn") {
+          warned.push(message);
+        }
+      }),
+    ]);
+
+    return Effect.gen(function* proof() {
+      const held = yield* Deferred.make<boolean>();
+      const now = yield* Clock.currentTimeMillis;
+      const current = lease(now);
+      let attempts = 0;
+
+      const mailbox = yield* RatKingMailbox.pipe(
+        Effect.provide(
+          Layer.mock(RatKingMailbox, {
+            lease: {
+              acquire: () => Effect.succeed(current),
+              release: () =>
+                Effect.gen(function* refuse() {
+                  attempts += 1;
+
+                  return yield* new MailboxClientError(
+                    kind === "mismatch"
+                      ? { error: "LeaseMismatch", reason: "LeaseMismatch" }
+                      : { reason: "Mailbox operation failed" }
+                  );
+                }),
+              renew: () => Effect.succeed(current),
+              resolve: () => Effect.succeed(current),
+            },
+            watch: () => Stream.never,
+          })
+        )
+      );
+
+      const fiber = yield* consume(mailbox, did, () => Effect.void, {
+        ...options,
+        onLease: () => Deferred.succeed(held, true).pipe(Effect.asVoid),
+      }).pipe(Effect.forkScoped);
+
+      yield* Deferred.await(held);
+      yield* Fiber.interrupt(fiber);
+
+      expect(attempts).toBe(1);
+      expect(warned.length).toBe(kind === "mismatch" ? 0 : 1);
+    }).pipe(Effect.provide(capture), Effect.scoped);
+  }
 );

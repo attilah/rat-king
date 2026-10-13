@@ -2841,6 +2841,7 @@ var consumerMachine = createMachine({
 });
 var expiredRefusal = (error) => error.error === "InvalidTransition" && error.reason === "Expired message";
 var settledRefusal = (error) => error.error === "InvalidTransition";
+var releasedRefusal = (error) => error.error === "LeaseMismatch";
 var consume = (mailbox, did, handler, options) => Effect18.scoped(
   Effect18.gen(function* runConsumer() {
     let [state] = initialTransition(consumerMachine);
@@ -2910,6 +2911,7 @@ var consume = (mailbox, did, handler, options) => Effect18.scoped(
           generation: current.generation,
           leaseId: current.leaseId
         }).pipe(
+          Effect18.catchIf(releasedRefusal, () => Effect18.void),
           Effect18.tapError(
             (error) => Effect18.logWarning("Mailbox lease release not confirmed", error)
           ),

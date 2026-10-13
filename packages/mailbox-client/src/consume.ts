@@ -50,6 +50,9 @@ const expiredRefusal = (error: MailboxClientError) =>
 const settledRefusal = (error: MailboxClientError) =>
   error.error === "InvalidTransition";
 
+const releasedRefusal = (error: MailboxClientError) =>
+  error.error === "LeaseMismatch";
+
 export interface Skipped {
   readonly messageId: string;
   readonly reason: "expired" | "settled" | "unopenable";
@@ -166,6 +169,7 @@ export const consume = <E, R>(
               leaseId: current.leaseId,
             })
             .pipe(
+              Effect.catchIf(releasedRefusal, () => Effect.void),
               Effect.tapError((error) =>
                 Effect.logWarning("Mailbox lease release not confirmed", error)
               ),
