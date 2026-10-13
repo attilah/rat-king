@@ -1,8 +1,10 @@
 import type { Component } from "@earendil-works/pi-tui";
 import { truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
-import { Option, Schema } from "effect";
+import { Match, Option, Schema } from "effect";
 
 import { compactRecord } from "./agentgraph.ts";
+import { formatReason, reasonTone } from "./attend.ts";
+import { DeliveryReason, storedReason } from "./delivery.ts";
 import { COPY_NOTE, Kind, RelaySource, replyHint } from "./payload.ts";
 import type { Inbound } from "./payload.ts";
 import {
@@ -30,7 +32,7 @@ const Details = Schema.Struct({
   id: Schema.String,
   kind: Kind,
   label: Schema.optional(Schema.String),
-  reason: Schema.optional(Schema.String),
+  reason: Schema.optional(Schema.Union([DeliveryReason, Schema.String])),
   relay: Schema.optional(RelaySource),
   replyTo: Schema.optional(Schema.String),
   sentBy: Schema.optional(Schema.String),
@@ -106,13 +108,28 @@ const senderLine = (
     ? theme.fg("warning", "⚠")
     : truncateToWidth(sender(theme, value, withName, labels), width, "…");
 
-const tag = (theme: Paint, value: InboundView) => {
-  const held = value.reason?.startsWith("held:") === true;
+const reasonText = (value: NonNullable<InboundView["reason"]>): string =>
+  Match.value(value).pipe(
+    Match.when(Match.string, (text) => {
+      const reason = storedReason(text);
 
-  const quiet =
-    value.cc &&
-    value.kind !== "ask" &&
-    value.reason?.startsWith("woken:") !== true;
+      return reason === undefined ? text : formatReason(reason);
+    }),
+    Match.orElse(formatReason)
+  );
+
+const copyNotice = (value: InboundView): boolean => {
+  const reason = storedReason(value.reason);
+
+  return value.cc && reason !== undefined && reasonTone(reason) !== "woken";
+};
+
+const tag = (theme: Paint, value: InboundView) => {
+  const reason = storedReason(value.reason);
+  const tone = reason === undefined ? undefined : reasonTone(reason);
+  const held = tone === "held";
+
+  const quiet = value.cc && value.kind !== "ask" && tone !== "woken";
 
   const nondefault = value.sentBy === undefined && (held || quiet);
 
@@ -233,11 +250,8 @@ const expanded = (
     ...(ccText(value, theme, labels) === undefined
       ? []
       : dim(ccText(value, theme, labels) ?? "")),
-    ...(value.reason === undefined ? [] : dim(value.reason)),
-    ...(value.cc &&
-    (value.reason === "quiet: cc" || value.reason === "held: cc digest")
-      ? dim(COPY_NOTE)
-      : []),
+    ...(value.reason === undefined ? [] : dim(reasonText(value.reason))),
+    ...(copyNotice(value) ? dim(COPY_NOTE) : []),
     ...(value.replyTo === undefined
       ? []
       : dim(`↩ in reply to ${oneLine(value.replyTo)}`)),

@@ -1,8 +1,12 @@
 import { Effect, Option, Schema } from "effect";
 
 import { PayloadJson } from "../../mailbox-client/src/payload.ts";
-import type { KindValue } from "../../mailbox-client/src/payload.ts";
+import type {
+  KindValue,
+  ReplyRefValue,
+} from "../../mailbox-client/src/payload.ts";
 import { renderRecordBody } from "./agentgraph.ts";
+import { formatReason } from "./attend.ts";
 import { deliveryReason, quietCopy } from "./delivery.ts";
 import { AgentName } from "./name.ts";
 
@@ -42,6 +46,18 @@ export type {
   PayloadValue,
 } from "../../mailbox-client/src/payload.ts";
 
+export const replyRef = (parent: string, root = parent): ReplyRefValue => ({
+  parent,
+  root,
+});
+
+export const inboundReply = (
+  inbound: Pick<Inbound, "reply" | "replyTo">
+): Option.Option<ReplyRefValue> =>
+  Option.orElse(Option.fromNullishOr(inbound.reply), () =>
+    Option.map((parent: string) => replyRef(parent))(inbound.replyTo)
+  );
+
 export const decodePayload = (body: string) =>
   Schema.decodeEffect(PayloadJson)(body).pipe(Effect.option);
 
@@ -63,6 +79,7 @@ export interface Inbound {
   readonly verified: boolean;
   readonly body: string;
   readonly kind: KindValue;
+  readonly reply?: ReplyRefValue;
   readonly replyTo: Option.Option<string>;
   readonly summary: Option.Option<string>;
   readonly cc: boolean;
@@ -147,7 +164,7 @@ export const renderInbound = (tool: string, inbound: Inbound) => {
   });
 
   return [
-    `**${heading} from ${sender}** · id ${inbound.id}${thread}${inbound.relay === undefined ? "" : ` · via ${inbound.relay.name}`} · ${deliveryReason(inbound)}`,
+    `**${heading} from ${sender}** · id ${inbound.id}${thread}${inbound.relay === undefined ? "" : ` · via ${inbound.relay.name}`} · ${formatReason(deliveryReason(inbound))}`,
     ...(inbound.askSummary === undefined
       ? []
       : [

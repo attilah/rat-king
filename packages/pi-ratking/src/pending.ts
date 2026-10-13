@@ -1,4 +1,7 @@
-import { Option, Schema } from "effect";
+import { Data, Option, Schema } from "effect";
+
+import { Verdicts } from "./attend.ts";
+import type { Verdict } from "./attend.ts";
 
 export const MAIL_MESSAGE = "ratking_message";
 
@@ -9,6 +12,37 @@ export const DEFAULT_DIGEST_MINUTES = 30;
 export type DeliverAs = "followUp" | "nextTurn" | "steer";
 
 export type Hold = DeliverAs | "digest";
+
+export type Disposition = Data.TaggedEnum<{
+  Inject: { readonly hold: Hold };
+  Settle: Record<never, never>;
+}>;
+
+export const Dispositions = Data.taggedEnum<Disposition>();
+
+export const verdictToHold = (verdict: Verdict): Disposition =>
+  Verdicts.$match(verdict, {
+    Later: () => Dispositions.Inject({ hold: "digest" }),
+    Never: () => Dispositions.Settle(),
+    Next: () => Dispositions.Inject({ hold: "nextTurn" }),
+    Now: () => Dispositions.Inject({ hold: "steer" }),
+  });
+
+export interface DeliveryHost<A> {
+  readonly inject: (hold: Hold) => A;
+  readonly settle: () => A;
+}
+
+export const applyDelivery = <A>(
+  decision: Disposition,
+  host: DeliveryHost<A>
+): A => {
+  if (Dispositions.$is("Inject")(decision)) {
+    return host.inject(decision.hold);
+  }
+
+  return host.settle();
+};
 
 export interface PendingMail {
   readonly content: string;

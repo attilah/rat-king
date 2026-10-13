@@ -1,6 +1,21 @@
+import { Option } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { deliveryMode } from "../src/extension.ts";
+import { attend } from "../src/attend.ts";
+import type { Arrival } from "../src/attend.ts";
+import { applyDelivery, verdictToHold } from "../src/pending.ts";
+import type { Hold } from "../src/pending.ts";
+
+const deliveryMode = (arrival: Arrival) =>
+  applyDelivery<Hold>(
+    verdictToHold(attend(arrival, {}, 0, undefined, Option.none())),
+    {
+      inject: (hold) => hold,
+      settle: () => {
+        throw new Error("Intent cannot settle");
+      },
+    }
+  );
 
 describe("deliveryMode", () => {
   it("steers mail addressed to this reader so a long turn sees it at the next tool batch", () => {

@@ -2731,12 +2731,17 @@ var SUMMARY_MAX = 280;
 var SUMMARY_HARD_MAX = 400;
 var SUMMARY_WIRE_MAX = SUMMARY_MAX;
 var Kind = Schema31.Literals(["message", "ask", "reply", "data"]);
+var ReplyRef = Schema31.Struct({
+  parent: Schema31.String,
+  root: Schema31.String
+});
 var Payload = Schema31.Struct({
   body: Schema31.String,
   cc: Schema31.optionalKey(Schema31.Array(AgentName)),
   from: AgentName,
   kind: Schema31.optionalKey(Kind),
   label: Schema31.optionalKey(Schema31.String.check(Schema31.isMaxLength(256))),
+  reply: Schema31.optionalKey(ReplyRef),
   replyTo: Schema31.optionalKey(Schema31.String),
   summary: Schema31.optionalKey(
     Schema31.String.check(Schema31.isMaxLength(SUMMARY_HARD_MAX))

@@ -7,6 +7,7 @@ import { HttpClient, HttpClientResponse } from "effect/http";
 import { expect } from "vitest";
 
 import { document, identity } from "../../mailbox-client/test/identity.ts";
+import { attend, formatReason } from "../src/attend.ts";
 import {
   DeliveryReason,
   DIGEST_REASON,
@@ -17,13 +18,14 @@ import {
 } from "../src/delivery.ts";
 import { Directory } from "../src/directory.ts";
 import {
-  deliveryMode,
   digestDetails,
   inboundDetails,
   renderDigest,
 } from "../src/extension.ts";
 import { Kind, renderInbound } from "../src/payload.ts";
 import type { Inbound } from "../src/payload.ts";
+import { applyDelivery, verdictToHold } from "../src/pending.ts";
+import type { Hold } from "../src/pending.ts";
 import { RatKing } from "../src/ratking.ts";
 import { runAction } from "../src/tool.ts";
 import type { ToolParamsValue } from "../src/tool.ts";
@@ -108,10 +110,21 @@ it.prop(
       });
     }
 
-    const reason = deliveryReason(inbound);
+    const tagged = deliveryReason(inbound);
+    const reason = formatReason(tagged);
 
-    expect(Schema.is(DeliveryReason)(reason)).toBe(true);
-    expect(reason.startsWith(MODE_REASON[deliveryMode(inbound)])).toBe(true);
+    const hold = applyDelivery<Hold>(
+      verdictToHold(attend(inbound, {}, 0, undefined, Option.none())),
+      {
+        inject: (mode) => mode,
+        settle: () => {
+          throw new Error("Intent cannot settle");
+        },
+      }
+    );
+
+    expect(Schema.is(DeliveryReason)(tagged)).toBe(true);
+    expect(reason.startsWith(MODE_REASON[hold])).toBe(true);
 
     if (reason.startsWith("woken")) {
       expect(reason).toBe(
@@ -129,7 +142,7 @@ it.prop(
         .split("\n")[0]
         ?.endsWith(` · ${reason}`)
     ).toBe(true);
-    expect(inboundDetails(inbound, false).reason).toBe(reason);
+    expect(inboundDetails(inbound, false).reason).toEqual(tagged);
   }
 );
 
@@ -140,10 +153,10 @@ it.prop(
     const mails = ids.map((id) => ({ content: "", details: {}, id }));
     const lines = renderDigest("intercom", mails).split("\n");
 
-    expect(lines[1]).toBe(DIGEST_REASON);
-    expect(lines.filter((line) => line.includes(DIGEST_REASON))).toHaveLength(
-      1
-    );
+    expect(lines[1]).toBe(formatReason(DIGEST_REASON));
+    expect(
+      lines.filter((line) => line.includes(formatReason(DIGEST_REASON)))
+    ).toHaveLength(1);
     expect(digestDetails(mails)).toEqual({ ids, reason: DIGEST_REASON });
   }
 );
