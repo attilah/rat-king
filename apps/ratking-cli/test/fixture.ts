@@ -120,7 +120,11 @@ const Referenced = Schema.Struct({
   message: Schema.Struct({ messageId: Schema.String }),
 });
 
-const Sent = Schema.Struct({ envelope: Defs.EncryptedEnvelope });
+const Sent = Schema.Struct({
+  envelope: Defs.EncryptedEnvelope,
+  generation: Schema.optionalKey(Schema.Int),
+  leaseId: Schema.optionalKey(Schema.String),
+});
 
 const textOf = (request: HttpClientRequest.HttpClientRequest) =>
   Predicate.isTagged(request.body, "Uint8Array")
@@ -194,11 +198,30 @@ export const fakeMailbox = (mails: readonly Mail[], held?: FakeLease) => {
       return { body: { receipt: receiptOf(entry) }, status: 200 };
     });
 
-  const admission = (text: string) =>
+  const admission = (text: string, now: number) =>
     Effect.gen(function* admit() {
       const sent = yield* Schema.decodeUnknownEffect(
         Schema.fromJsonString(Sent)
       )(text);
+
+      const live = lease !== undefined && Date.parse(lease.expiresAt) > now;
+
+      const fenced =
+        sent.leaseId !== undefined || sent.generation !== undefined;
+
+      if (
+        (live || fenced) &&
+        !(
+          live &&
+          sent.leaseId === lease?.leaseId &&
+          sent.generation === lease?.generation
+        )
+      ) {
+        return {
+          body: { error: "LeaseMismatch", message: "Send fence refused" },
+          status: 409,
+        };
+      }
 
       sends.push(sent.envelope);
 
@@ -253,7 +276,7 @@ export const fakeMailbox = (mails: readonly Mail[], held?: FakeLease) => {
       }
 
       if (nsid.endsWith(".send")) {
-        return yield* admission(text);
+        return yield* admission(text, now);
       }
 
       return { body: { error: "MailboxUnavailable" }, status: 503 };

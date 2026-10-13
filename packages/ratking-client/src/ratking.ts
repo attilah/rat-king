@@ -464,6 +464,8 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
   const self = yield* Deferred.make<Self, NotDelivered>();
   const established = yield* Ref.make(Option.none<Self>());
   const fence = yield* Ref.make(Option.none<LeaseFence>());
+  const adopting = yield* Ref.make(false);
+  const attached = yield* Ref.make(false);
   const lastLease = yield* Ref.make(Option.none<LeaseFence>());
 
   const front = yield* Ref.make(Option.none<FrontLoops>());
@@ -1368,11 +1370,39 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
           return yield* refused("NotAttempted")("Missing sealed recipient");
         }
 
+        const holderFence = (outcome: SendOutcome) =>
+          Effect.gen(function* adoptHolder() {
+            if (
+              !(
+                SendOutcomes.$is("Rejected")(outcome) &&
+                outcome.error.error === "LeaseMismatch"
+              ) ||
+              !(yield* Ref.get(adopting))
+            ) {
+              return outcome;
+            }
+
+            const resolved = yield* client
+              .resolveLease(own.did)
+              .pipe(Effect.option);
+
+            return Option.isNone(resolved)
+              ? outcome
+              : yield* client.send(envelope, {
+                  fence: {
+                    did: own.did,
+                    generation: resolved.value.generation,
+                    leaseId: resolved.value.leaseId,
+                  },
+                });
+          });
+
         const attempt = (count: number): Effect.Effect<SendOutcome> =>
           Ref.get(fence).pipe(
             Effect.flatMap((held) =>
               Option.match(held, {
-                onNone: () => client.send(envelope),
+                onNone: () =>
+                  client.send(envelope).pipe(Effect.flatMap(holderFence)),
                 onSome: (current) => client.send(envelope, { fence: current }),
               })
             ),
@@ -1757,6 +1787,8 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
     );
 
     if (facts.reads === false) {
+      yield* Ref.set(adopting, true);
+
       return yield* setState(
         ReaderState.SendOnly({
           name: own.name,
@@ -1996,6 +2028,8 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
 
     yield* Deferred.succeed(asks, journal);
     yield* Ref.set(established, Option.some(own));
+    yield* Ref.set(adopting, true);
+    yield* Ref.set(attached, true);
     yield* Deferred.succeed(self, own);
 
     return {
@@ -2239,7 +2273,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
     );
   });
 
-  const awaitLive = Ref.get(state).pipe(
+  const awaitReader = Ref.get(state).pipe(
     Effect.flatMap((reader) =>
       ReaderState.$is("Live")(reader)
         ? Effect.void
@@ -2262,6 +2296,14 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       )
     )
   );
+
+  const awaitLive = Effect.gen(function* checkReader() {
+    if (yield* Ref.get(attached)) {
+      return;
+    }
+
+    yield* awaitReader;
+  });
 
   const copyOut = (delivered: Delivered, sent: Sent) => {
     const config = settings.relays.find((relay) => relay.name === sent.from);
