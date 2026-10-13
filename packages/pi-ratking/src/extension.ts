@@ -25,6 +25,7 @@ import { FetchHttpClient } from "effect/http";
 import { Type } from "typebox";
 
 import { decodeAgentGraphBody } from "./agentgraph.ts";
+import { attend, formatReason } from "./attend.ts";
 import { NotConfigured, settingsLayer, Settings, toolName } from "./config.ts";
 import { DIGEST_REASON, deliveryReason } from "./delivery.ts";
 import { directoryLayer } from "./directory.ts";
@@ -35,8 +36,15 @@ import { messageView } from "./message-view.ts";
 import { digestView, recordView } from "./notice-view.ts";
 import { LexiconRecord, renderInbound } from "./payload.ts";
 import type { Inbound } from "./payload.ts";
-import { DIGEST_MESSAGE, inbox, MAIL_MESSAGE, shownIds } from "./pending.ts";
-import type { Hold, PendingMail } from "./pending.ts";
+import {
+  applyDelivery,
+  DIGEST_MESSAGE,
+  inbox,
+  MAIL_MESSAGE,
+  shownIds,
+  verdictToHold,
+} from "./pending.ts";
+import type { PendingMail } from "./pending.ts";
 import { NotDelivered, RatKing, ratKingLayer } from "./ratking.ts";
 import type { Deliver, SendOptions } from "./ratking.ts";
 import { recordNotice } from "./record-visibility.ts";
@@ -80,23 +88,6 @@ export const RETIRE_RESULT_EVENT = "ratking/retire:result";
 
 const RELEASE_WAIT_MS = 2000;
 
-export const deliveryMode = (inbound: {
-  readonly copy?: boolean;
-  readonly digestMinutes?: number;
-  readonly kind: string;
-  readonly relay?: unknown;
-}): Hold => {
-  if (
-    inbound.copy !== true ||
-    inbound.kind === "ask" ||
-    inbound.relay !== undefined
-  ) {
-    return "steer";
-  }
-
-  return inbound.digestMinutes === undefined ? "nextTurn" : "digest";
-};
-
 const DIGEST_LINE_MAX = 160;
 
 const DIGEST_TICK = Duration.minutes(1);
@@ -119,7 +110,7 @@ export const digestLine = (inbound: Inbound) => {
 export const renderDigest = (tool: string, mails: readonly PendingMail[]) =>
   [
     `**🐀 cc digest** · ${mails.length} cc'd since the last digest, newest first`,
-    DIGEST_REASON,
+    formatReason(DIGEST_REASON),
     "",
     ...mails.map((mail) => mail.line ?? `- id ${mail.id}`),
     "",
@@ -657,7 +648,9 @@ export const ratkingExtension = (options: ExtensionOptions) =>
     );
 
     const deliver: Deliver = (inbound, settled, ack) =>
-      Effect.sync(() => {
+      Effect.gen(function* deliverMail() {
+        const now = yield* Clock.currentTimeMillis;
+
         if (ack !== undefined) {
           acknowledgments.set(inbound.id, ack);
         }
@@ -756,16 +749,36 @@ export const ratkingExtension = (options: ExtensionOptions) =>
         }
 
         if (injects(inbound, settled)) {
-          mail.take(
-            {
-              content: renderInbound(tool, inbound),
-              details: inboundDetails(inbound, settled),
-              digestMinutes: inbound.digestMinutes,
-              id: inbound.id,
-              line: digestLine(inbound),
-            },
-            deliveryMode(inbound)
-          );
+          const verdict = attend(inbound, {}, now, undefined, Option.none());
+
+          yield* applyDelivery(verdictToHold(verdict), {
+            inject: (hold) =>
+              Effect.sync(() => {
+                mail.take(
+                  {
+                    content: renderInbound(tool, inbound),
+                    details: inboundDetails(inbound, settled),
+                    digestMinutes: inbound.digestMinutes,
+                    id: inbound.id,
+                    line: digestLine(inbound),
+                  },
+                  hold
+                );
+              }),
+            settle: () =>
+              Effect.logInfo("Rat King arrival settled without injection").pipe(
+                Effect.annotateLogs({
+                  from: inbound.from,
+                  id: inbound.id,
+                  reason: verdict.reason,
+                }),
+                Effect.andThen(
+                  Effect.sync(() => {
+                    consume(inbound.id);
+                  })
+                )
+              ),
+          });
         } else if (notice === undefined) {
           consume(inbound.id);
         }

@@ -1,6 +1,8 @@
-import { Schema } from "effect";
+import { Match, Option, Schema } from "effect";
 
 import type { KindValue } from "../../mailbox-client/src/payload.ts";
+import { attend, Reasons, Verdicts } from "./attend.ts";
+import type { Arrival, Reason } from "./attend.ts";
 
 export const WakeLevel = Schema.Literals(["wake", "quiet"]);
 
@@ -15,41 +17,45 @@ export type RecipientLevelValue = typeof RecipientLevel.Type;
 
 export const Recipients = Schema.Array(RecipientLevel);
 
-export const DeliveryReason = Schema.Literals([
-  "woken: to",
-  "woken: ask",
-  "woken: reply",
-  "quiet: cc",
-  "held: cc digest",
-]);
+export const DeliveryReason = Schema.Struct({
+  _tag: Schema.Literals(["intent", "lever", "judge", "joel"]),
+  facts: Schema.Array(
+    Schema.Literals(["to", "cc", "ask", "reply", "relay", "digest"])
+  ),
+});
 
 export type DeliveryReasonValue = typeof DeliveryReason.Type;
 
-export const DIGEST_REASON: DeliveryReasonValue = "held: cc digest";
+export const DIGEST_REASON: Reason = Reasons.intent({
+  facts: ["cc", "digest"],
+});
 
-export interface Arrival {
-  readonly copy?: boolean;
-  readonly digestMinutes?: number;
-  readonly kind: KindValue;
-  readonly relay?: unknown;
-}
+export const deliveryReason = (arrival: Arrival): Reason =>
+  attend(arrival, {}, 0, undefined, Option.none()).reason;
 
-export const quietCopy = (arrival: Arrival) =>
-  arrival.copy === true &&
-  arrival.kind !== "ask" &&
-  arrival.relay === undefined;
+export const quietCopy = (arrival: Arrival) => {
+  const verdict = attend(arrival, {}, 0, undefined, Option.none());
 
-export const deliveryReason = (arrival: Arrival): DeliveryReasonValue => {
-  if (quietCopy(arrival)) {
-    return arrival.digestMinutes === undefined ? "quiet: cc" : DIGEST_REASON;
-  }
-
-  if (arrival.kind === "ask") {
-    return "woken: ask";
-  }
-
-  return arrival.kind === "reply" ? "woken: reply" : "woken: to";
+  return Verdicts.$match(verdict, {
+    Later: () => true,
+    Never: () => false,
+    Next: () => true,
+    Now: () => false,
+  });
 };
+
+export const storedReason = (
+  reason: Reason | string | undefined
+): Reason | undefined =>
+  Match.value(reason).pipe(
+    Match.when("held: cc digest", () => DIGEST_REASON),
+    Match.when("quiet: cc", () => Reasons.intent({ facts: ["cc"] })),
+    Match.when("woken: ask", () => Reasons.intent({ facts: ["ask"] })),
+    Match.when("woken: reply", () => Reasons.intent({ facts: ["reply"] })),
+    Match.when("woken: to", () => Reasons.intent({ facts: ["to"] })),
+    Match.when(Match.string, (): Reason | undefined => undefined),
+    Match.orElse((value) => value)
+  );
 
 export const recipientLevels = (
   to: string,

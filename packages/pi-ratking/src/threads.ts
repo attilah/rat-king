@@ -1,6 +1,8 @@
 import { Context, Deferred, Effect, Layer, Option } from "effect";
 
+import type { ReplyRefValue } from "../../mailbox-client/src/payload.ts";
 import type { PendingAskValue } from "./asks.ts";
+import { inboundReply } from "./payload.ts";
 import type { Inbound } from "./payload.ts";
 
 export interface Reply {
@@ -19,6 +21,7 @@ export interface Received {
   readonly answered: boolean;
   readonly outbound?: PendingAskValue;
   readonly preview: string;
+  readonly reply?: ReplyRefValue;
   readonly ccNames?: readonly string[];
   readonly to?: string;
   readonly thread?: string;
@@ -104,7 +107,14 @@ const makeThreads = Effect.sync((): ThreadsApi => {
           Object.assign(record, { to: inbound.to });
         }
 
-        if (inbound.thread !== undefined) {
+        const reply = inboundReply(inbound);
+
+        if (Option.isSome(reply)) {
+          Object.assign(record, {
+            reply: reply.value,
+            thread: reply.value.root,
+          });
+        } else if (inbound.thread !== undefined) {
           Object.assign(record, { thread: inbound.thread });
         }
 
@@ -120,15 +130,18 @@ const makeThreads = Effect.sync((): ThreadsApi => {
       }),
     settle: (inbound) =>
       Effect.gen(function* settleReply() {
-        const waiter = Option.flatMapNullishOr(inbound.replyTo, (id) =>
-          waiters.get(id)
+        const parent = Option.map(
+          inboundReply(inbound),
+          (reply) => reply.parent
         );
+
+        const waiter = Option.flatMapNullishOr(parent, (id) => waiters.get(id));
 
         if (Option.isNone(waiter) || waiter.value.did !== inbound.did) {
           return false;
         }
 
-        yield* Option.match(inbound.replyTo, {
+        yield* Option.match(parent, {
           onNone: () => Effect.void,
           onSome: (id) => Effect.sync(() => waiters.delete(id)),
         });

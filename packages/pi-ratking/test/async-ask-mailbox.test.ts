@@ -20,14 +20,29 @@ import { expect } from "vitest";
 
 import { WebSocketPort } from "../../mailbox-client/src/watch.ts";
 import { document, identity } from "../../mailbox-client/test/identity.ts";
+import { attend, formatReason } from "../src/attend.ts";
+import type { Arrival } from "../src/attend.ts";
 import { Directory } from "../src/directory.ts";
 import type { Resolved } from "../src/directory.ts";
-import { deliveryMode, injects, inboundDetails } from "../src/extension.ts";
+import { injects, inboundDetails } from "../src/extension.ts";
 import { PayloadJson, renderInbound } from "../src/payload.ts";
 import type { Inbound } from "../src/payload.ts";
+import { applyDelivery, verdictToHold } from "../src/pending.ts";
+import type { Hold } from "../src/pending.ts";
 import { RatKing, ReaderState } from "../src/ratking.ts";
 import { runAction } from "../src/tool.ts";
 import { harness } from "./harness.ts";
+
+const deliveryMode = (arrival: Arrival) =>
+  applyDelivery<Hold>(
+    verdictToHold(attend(arrival, {}, 0, undefined, Option.none())),
+    {
+      inject: (hold) => hold,
+      settle: () => {
+        throw new Error("Intent cannot settle");
+      },
+    }
+  );
 
 const endpoint = "https://mailbox.example.invalid";
 
@@ -43,8 +58,8 @@ const facts = {
 
 it.live.prop(
   "fake mailbox: async receipt precedes reply, restart lists it, overdue nudge is quiet once and ack closes the late reply",
-  [Schema.String, Schema.Boolean],
-  ([summary, blocking]) =>
+  [Schema.String, Schema.Boolean, Schema.Boolean],
+  ([summary, blocking, modern]) =>
     Effect.gen(function* mailboxProof() {
       const fs = yield* FileSystem.FileSystem;
       const state = yield* fs.makeTempDirectoryScoped();
@@ -288,7 +303,7 @@ it.live.prop(
             expect(settled).toBe(waiting);
             expect(injects(inbound, settled)).toBe(!waiting);
             expect(deliveryMode(inbound)).toBe("steer");
-            expect(inboundDetails(inbound, settled).reason).toBe(
+            expect(formatReason(inboundDetails(inbound, settled).reason)).toBe(
               "woken: reply"
             );
             expect(renderInbound("ratking", inbound)).toContain(
@@ -320,15 +335,24 @@ it.live.prop(
         const answer = Effect.gen(function* answerAsk() {
           const envelope = yield* client.seal(
             receiverDocument.id,
-            () =>
-              Schema.encodeSync(PayloadJson)({
+            () => {
+              const payload = {
                 body: "answer",
                 from: "peer",
-                kind: "reply",
-                replyTo: askId,
+                kind: "reply" as const,
+                replyTo: modern ? "ignored-legacy-parent" : askId,
                 thread: askId,
                 to: "tester",
-              }),
+              };
+
+              if (modern) {
+                Object.assign(payload, {
+                  reply: { parent: askId, root: askId },
+                });
+              }
+
+              return Schema.encodeSync(PayloadJson)(payload);
+            },
             { encrypt: false }
           );
 

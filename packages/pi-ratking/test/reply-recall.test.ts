@@ -3,7 +3,7 @@ import { NodeServices } from "@effect/platform-node";
 import { it } from "@effect/vitest";
 import * as Defs from "@rat-king/lexicon/defs";
 import { layer, RatKingMailbox } from "@rat-king/mailbox-client";
-import { Effect, FileSystem, Option, Predicate, Schema } from "effect";
+import { Effect, FileSystem, Layer, Option, Predicate, Schema } from "effect";
 import { HttpClient, HttpClientResponse } from "effect/http";
 import { expect } from "vitest";
 
@@ -11,6 +11,7 @@ import { document, identity } from "../../mailbox-client/test/identity.ts";
 import { Directory } from "../src/directory.ts";
 import { PayloadJson } from "../src/payload.ts";
 import { RatKing } from "../src/ratking.ts";
+import { Threads, threadsLayer } from "../src/threads.ts";
 import { harness } from "./harness.ts";
 
 it.live.prop(
@@ -109,20 +110,18 @@ it.live.prop(
         expect(envelope.aad.messageId).toBe(delivered.id);
         expect(envelope.aad.recipientDid).toBe(asker.did);
 
+        const mailboxLayer = layer({
+          documents: yield* Schema.decodeUnknownEffect(
+            Schema.Array(Schema.toType(Defs.DidDocument))
+          )(yield* directory.documents),
+          endpoint: "https://mailbox.example.invalid",
+          identity: asker,
+          serviceDid: "did:web:mailbox.example.invalid",
+        });
+
         const opened = yield* RatKingMailbox.use((mailbox) =>
           mailbox.open(envelope)
-        ).pipe(
-          Effect.provide(
-            layer({
-              documents: yield* Schema.decodeUnknownEffect(
-                Schema.Array(Schema.toType(Defs.DidDocument))
-              )(yield* directory.documents),
-              endpoint: "https://mailbox.example.invalid",
-              identity: asker,
-              serviceDid: "did:web:mailbox.example.invalid",
-            })
-          )
-        );
+        ).pipe(Effect.provide(mailboxLayer));
 
         expect(opened.replyTo).toEqual({
           messageId: original,
@@ -135,10 +134,72 @@ it.live.prop(
           body,
           from: "tester",
           kind: "reply",
+          reply: { parent: original, root: original },
           thread: original,
           to: "alice",
         });
-      }).pipe(Effect.provide(harness(state, http)));
+
+        const threads = yield* Threads;
+        const parent = "3m7x2ka4xv22b";
+
+        yield* threads.remember({
+          body,
+          cc: false,
+          did: asker.did,
+          from: "alice",
+          id: parent,
+          kind: "reply",
+          label: Option.none(),
+          reply: { parent: original, root: original },
+          replyTo: Option.some(original),
+          summary: Option.none(),
+          thread: "ignored-legacy-thread",
+          verified: true,
+        });
+
+        yield* ratking.send("alice", body, {
+          encrypt,
+          replyTo: { messageId: parent, senderDid: asker.did },
+        });
+
+        const [, sentEnvelope] = envelopes;
+
+        if (sentEnvelope === undefined) {
+          throw new Error("Missing send reply envelope");
+        }
+
+        const sent = yield* RatKingMailbox.use((mailbox) =>
+          mailbox.open(sentEnvelope)
+        ).pipe(Effect.provide(mailboxLayer));
+
+        const sentPayload = yield* Schema.decodeEffect(PayloadJson)(sent.body);
+
+        expect(sentPayload.reply).toEqual({ parent, root: original });
+        expect(sentPayload.replyTo).toBe(parent);
+
+        yield* ratking.reply(parent, body, { encrypt });
+
+        const replyEnvelope = envelopes.at(2);
+
+        if (replyEnvelope === undefined) {
+          throw new Error("Missing nested reply envelope");
+        }
+
+        const nested = yield* RatKingMailbox.use((mailbox) =>
+          mailbox.open(replyEnvelope)
+        ).pipe(Effect.provide(mailboxLayer));
+
+        const nestedPayload = yield* Schema.decodeEffect(PayloadJson)(
+          nested.body
+        );
+
+        expect(nestedPayload.reply).toEqual({ parent, root: original });
+        expect(nestedPayload.thread).toBe(original);
+      }).pipe(
+        Effect.provide(
+          harness(state, http).pipe(Layer.provideMerge(threadsLayer))
+        )
+      );
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   { arbitrary: { runs: 4 }, timeout: 30_000 }
 );

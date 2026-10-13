@@ -26,6 +26,7 @@ it.effect.prop(
             "from",
             "kind",
             "label",
+            "reply",
             "replyTo",
             "summary",
             "thread",

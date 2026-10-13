@@ -14,12 +14,20 @@ export const Kind = Schema.Literals(["message", "ask", "reply", "data"]);
 
 export type KindValue = typeof Kind.Type;
 
+export const ReplyRef = Schema.Struct({
+  parent: Schema.String,
+  root: Schema.String,
+});
+
+export type ReplyRefValue = typeof ReplyRef.Type;
+
 export const Payload = Schema.Struct({
   body: Schema.String,
   cc: Schema.optionalKey(Schema.Array(AgentName)),
   from: AgentName,
   kind: Schema.optionalKey(Kind),
   label: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(256))),
+  reply: Schema.optionalKey(ReplyRef),
   replyTo: Schema.optionalKey(Schema.String),
   summary: Schema.optionalKey(
     Schema.String.check(Schema.isMaxLength(SUMMARY_HARD_MAX))

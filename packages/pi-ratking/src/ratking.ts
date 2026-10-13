@@ -69,6 +69,7 @@ import {
   decodeRecord,
   PayloadJson,
   RecordJson,
+  replyRef,
   SUMMARY_MAX,
 } from "./payload.ts";
 import type {
@@ -322,6 +323,25 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
   const store = yield* SecretStore;
   const issuer = yield* Issuer;
   const threads = yield* Threads;
+
+  const replyFor = Effect.fn("RatKing.replyRef")(function* replyFor(
+    parent: SendOptions["replyTo"]
+  ) {
+    if (parent === undefined) {
+      return Option.none();
+    }
+
+    const stored = yield* threads.lookup(parent.messageId);
+
+    return Option.some(
+      Option.match(stored, {
+        onNone: () => replyRef(parent.messageId),
+        onSome: (record) =>
+          replyRef(parent.messageId, record.reply?.root ?? record.thread),
+      })
+    );
+  });
+
   const asks = yield* Deferred.make<AsksApi<NotDelivered>>();
 
   const state = yield* Ref.make<ReaderState>(
@@ -619,7 +639,10 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
             ),
             label: Option.flatMapNullishOr(payload, (value) => value.label),
             replyTo: Option.orElse(
-              Option.flatMapNullishOr(payload, (value) => value.replyTo),
+              Option.flatMapNullishOr(
+                payload,
+                (value) => value.reply?.parent ?? value.replyTo
+              ),
               () => Option.fromNullishOr(message.replyTo?.messageId)
             ),
             summary: Option.flatMapNullishOr(payload, (value) => value.summary),
@@ -627,6 +650,10 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
           };
 
           if (Option.isSome(payload)) {
+            if (payload.value.reply !== undefined) {
+              Object.assign(inbound, { reply: payload.value.reply });
+            }
+
             if (payload.value.cc !== undefined) {
               Object.assign(inbound, { ccNames: payload.value.cc });
             }
@@ -1077,6 +1104,8 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
               options.replyTo
             );
 
+      const reply = Option.getOrUndefined(yield* replyFor(options.replyTo));
+
       let json = yield* Match.value(body).pipe(
         Match.when(Match.string, () => Effect.succeed(Option.none<string>())),
         Match.orElse((record) =>
@@ -1110,8 +1139,12 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
           Object.assign(payload, { kind: options.kind });
         }
 
-        if (options.replyTo !== undefined) {
-          Object.assign(payload, { replyTo: options.replyTo.messageId });
+        if (reply !== undefined) {
+          Object.assign(payload, {
+            reply,
+            replyTo: reply.parent,
+            thread: reply.root,
+          });
         }
 
         const summary = oneLineSummary(options.summary ?? "");
@@ -1254,7 +1287,10 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
         kind: options.kind ?? "message",
         replyTo: options.replyTo?.messageId ?? null,
         summary: Option.isSome(textBody) && summary !== "" ? summary : null,
-        thread: options.thread ?? first.aad.messageId,
+        thread: Option.match(Option.fromNullishOr(reply), {
+          onNone: () => options.thread ?? first.aad.messageId,
+          onSome: (ref) => ref.root,
+        }),
         to: primary.name,
       };
 
