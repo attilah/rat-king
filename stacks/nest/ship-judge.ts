@@ -100,13 +100,17 @@ export const Refused = Schema.TaggedStruct("Refused", {
   reason: Schema.NullOr(Schema.String),
 });
 
-export const shipWindows = (shippedAt: number, windowMinutes: number) => {
+export const shipWindows = (
+  shippedAt: number,
+  windowMinutes: number,
+  baselineEnd = shippedAt
+) => {
   const span = windowMinutes * 60_000;
   const after = shippedAt + ShipLimits.restartSkipMs;
 
   return {
     after: { end: after + span, start: after },
-    baseline: { end: shippedAt, start: shippedAt - span },
+    baseline: { end: baselineEnd, start: baselineEnd - span },
   } satisfies Record<string, WindowBounds>;
 };
 
@@ -372,7 +376,7 @@ export const gitIn = Effect.fn("ShipJudge.gitIn")(function* gitIn(
 });
 
 const usageText =
-  "Usage: ship-judge --sha <40hex> --shipped-at <ISO> --input <traffic.jsonl> [--window-minutes 10] [--health <health.json>] | ship-judge --revertible <base>..<sha> [--repo <dir>]";
+  "Usage: ship-judge --sha <40hex> --shipped-at <ISO> --input <traffic.jsonl> [--window-minutes 10] [--baseline-end <ISO>] [--health <health.json>] | ship-judge --revertible <base>..<sha> [--repo <dir>]";
 
 const parseFlags = (args: readonly string[], known: readonly string[]) => {
   const flags = new Map<string, string>();
@@ -415,18 +419,33 @@ const judgeVerdict = Effect.fn("ShipJudge.verdict")(function* judgeVerdict(
     flags.get("--shipped-at")
   );
 
+  const baselineEnd = yield* Schema.decodeUnknownEffect(Instant)(
+    flags.get("--baseline-end") ?? shipped
+  );
+
   const input = flags.get("--input");
   const shippedAt = Date.parse(shipped);
+  const incidentBaseline = Date.parse(baselineEnd);
 
   const minutes = yield* Schema.decodeEffect(WindowMinutes)(
     flags.get("--window-minutes") ?? `${ShipLimits.windowMinutes}`
   );
 
-  if (input === undefined || !Number.isFinite(shippedAt)) {
+  if (
+    input === undefined ||
+    !Number.isFinite(shippedAt) ||
+    !Number.isFinite(incidentBaseline)
+  ) {
     return yield* new JudgeError({ reason: usageText });
   }
 
-  const windows = shipWindows(shippedAt, minutes);
+  if (incidentBaseline > shippedAt) {
+    return yield* new JudgeError({
+      reason: "Baseline must end at or before the ship",
+    });
+  }
+
+  const windows = shipWindows(shippedAt, minutes, incidentBaseline);
 
   if ((yield* Clock.currentTimeMillis) < windows.after.end) {
     return yield* new JudgeError({ reason: "After window is still open" });
@@ -488,6 +507,7 @@ export const shipJudgeCommand = (args: readonly string[]) =>
     const flags = parseFlags(args, [
       "--sha",
       "--shipped-at",
+      "--baseline-end",
       "--input",
       "--window-minutes",
       "--health",

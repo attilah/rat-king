@@ -401,6 +401,7 @@ it.effect.prop(
       "unknownFlag",
       "badRange",
       "zeroWindow",
+      "lateBaseline",
     ]),
   ],
   ([mutation]) =>
@@ -446,6 +447,10 @@ it.effect.prop(
           mutation === "badTime" ? "2026-10-13 20:00" : iso(shippedAt),
         ],
       ]);
+
+      if (mutation === "lateBaseline") {
+        flags.set("--baseline-end", iso(shippedAt + 1000));
+      }
 
       if (mutation === "zeroWindow") {
         flags.set("--window-minutes", "0");
@@ -702,4 +707,71 @@ it.effect.prop(
       );
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   { arbitrary: { runs: 6 } }
+);
+
+it.effect.prop(
+  "a wrong revert judged against the incident baseline still fails, while its own recent baseline hides the drop",
+  [Schema.Int.check(Schema.isBetween({ maximum: 60, minimum: 24 }))],
+  ([perMinute]) =>
+    Effect.gen(function* wrongRevert() {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const directory = yield* fs.makeTempDirectoryScoped();
+      const traffic = path.join(directory, "traffic.jsonl");
+      const health = path.join(directory, "health.json");
+      const incident = shippedAt;
+      const revert = incident + 5 * 60_000;
+      const gap = Math.floor(60_000 / perMinute);
+
+      const lines = Array.from({ length: 12 * perMinute }, (_, index) => {
+        const at = incident - 3 * 60_000 + index * gap;
+        const id = `m-${index}`;
+        const dropped = at >= incident && index % 3 === 2;
+
+        return [
+          event(id, "accepted", at),
+          event(id, "delivered", at + 20),
+          ...(dropped ? [] : [event(id, "acked", at + 40)]),
+        ];
+      }).flat();
+
+      yield* fs.writeFileString(
+        traffic,
+        lines.map((line) => JSON.stringify(line)).join("\n")
+      );
+
+      yield* fs.writeFileString(health, JSON.stringify(okHealth));
+      yield* TestClock.setTime(revert + 10 * 60_000);
+
+      const judge = (extra: readonly string[]) =>
+        runCommand([
+          "--sha",
+          "f".repeat(40),
+          "--shipped-at",
+          iso(revert),
+          "--window-minutes",
+          "3",
+          "--input",
+          traffic,
+          "--health",
+          health,
+          ...extra,
+        ]);
+
+      const anchored = yield* judge(["--baseline-end", iso(incident)]);
+      const recent = yield* judge([]);
+
+      const decode = Schema.decodeEffect(Schema.fromJsonString(ShipVerdict));
+      const failed = yield* decode(anchored.output.join(""));
+      const hidden = yield* decode(recent.output.join(""));
+
+      expect(anchored.code).toBe(1);
+      expect(failed.reasons.map((reason) => reason._tag)).toEqual([
+        "AckRateDrop",
+      ]);
+      expect(hidden.reasons.map((reason) => reason._tag)).not.toContain(
+        "AckRateDrop"
+      );
+    }).pipe(Effect.provide(NodeServices.layer)),
+  { arbitrary: { runs: 15 } }
 );
