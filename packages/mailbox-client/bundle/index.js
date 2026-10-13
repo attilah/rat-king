@@ -799,6 +799,26 @@ import { Effect as Effect6, Schema as Schema10 } from "effect";
 
 // packages/lexicon/src/attention.prefs.ts
 import { Schema as Schema8 } from "effect";
+var Name = lexString({
+  maxLength: 128,
+  minLength: 1,
+  type: "string"
+}).check(Schema8.isPattern(/^[a-z][a-z0-9_-]*(?:\/[a-z][a-z0-9_-]*)*$/u));
+var Digest = Schema8.StructWithRest(
+  Schema8.Struct({
+    minutes: Schema8.Int.check(
+      Schema8.isGreaterThanOrEqualTo(1),
+      Schema8.isLessThanOrEqualTo(1440)
+    ),
+    name: Name
+  }),
+  [Schema8.Record(Schema8.String, Data)]
+).check(
+  Schema8.makeFilter(
+    (value) => Object.keys(value).every((key) => ["minutes", "name"].includes(key)),
+    { expected: "only allowed keys: minutes, name" }
+  )
+);
 var Group = Schema8.StructWithRest(
   Schema8.Struct({
     group: lexString({ maxLength: 256, minLength: 1, type: "string" })
@@ -835,11 +855,6 @@ var Jev = Schema8.StructWithRest(
     { expected: "only allowed keys: judgment, laterBp, nowBp" }
   )
 );
-var Name = lexString({
-  maxLength: 128,
-  minLength: 1,
-  type: "string"
-}).check(Schema8.isPattern(/^[a-z][a-z0-9_-]*(?:\/[a-z][a-z0-9_-]*)*$/u));
 var Model = Schema8.StructWithRest(
   Schema8.Struct({
     body: lexString({
@@ -882,6 +897,9 @@ var Main = Schema8.StructWithRest(
     allow: Schema8.Array(Name).check(
       Schema8.isMinLength(0),
       Schema8.isMaxLength(256)
+    ),
+    digest: Schema8.optionalKey(
+      Schema8.Array(Digest).check(Schema8.isMinLength(0), Schema8.isMaxLength(256))
     ),
     forward: Schema8.Array(Name).check(
       Schema8.isMinLength(0),
@@ -943,6 +961,7 @@ var Main = Schema8.StructWithRest(
     (value) => Object.keys(value).every(
       (key) => [
         "allow",
+        "digest",
         "forward",
         "log",
         "model",
@@ -952,7 +971,7 @@ var Main = Schema8.StructWithRest(
       ].includes(key)
     ),
     {
-      expected: "only allowed keys: allow, forward, log, model, mute, refuse, version"
+      expected: "only allowed keys: allow, digest, forward, log, model, mute, refuse, version"
     }
   )
 );

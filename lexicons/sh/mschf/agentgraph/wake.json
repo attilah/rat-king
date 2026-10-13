@@ -1,0 +1,106 @@
+{
+  "defs": {
+    "main": {
+      "key": "tid",
+      "record": {
+        "properties": {
+          "code": {
+            "maxLength": 256,
+            "type": "string"
+          },
+          "failure": {
+            "maxLength": 1024,
+            "type": "string"
+          },
+          "finishedAt": {
+            "format": "datetime",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "agent_state",
+              "pane_output",
+              "ping"
+            ],
+            "type": "string"
+          },
+          "label": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "pane": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "result": {
+            "maxLength": 2048,
+            "type": "string",
+            "x-pattern": "^[^\\n]*(?:\\n[^\\n]*){0,11}$(?![\\s\\S])"
+          },
+          "source": {
+            "enum": [
+              "herdr_watch",
+              "herdr_ping_wait"
+            ],
+            "type": "string"
+          },
+          "startedAt": {
+            "format": "datetime",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "matched",
+              "timedOut",
+              "targetGone",
+              "failed",
+              "cancelled"
+            ],
+            "type": "string"
+          },
+          "target": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "targetPaneId": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "targetTerminalId": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 8192,
+            "type": "string"
+          },
+          "watch": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "watch",
+          "source",
+          "kind",
+          "label",
+          "status",
+          "startedAt",
+          "finishedAt",
+          "text"
+        ],
+        "type": "object",
+        "x-strict": true
+      },
+      "type": "record"
+    }
+  },
+  "id": "sh.mschf.agentgraph.wake",
+  "lexicon": 1
+}

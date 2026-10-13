@@ -6,6 +6,7 @@ import type { KindValue } from "../../mailbox-client/src/payload.ts";
 
 export interface Arrival {
   readonly copy?: boolean;
+  readonly wakeStatus?: "matched" | "timedOut" | "targetGone" | "failed";
   readonly digestMinutes?: number;
   readonly from?: string;
   readonly group?: string;
@@ -78,6 +79,12 @@ const leverVerdict = (
     return undefined;
   }
 
+  const digest = prefs.digest?.find((entry) => entry.name === sender);
+
+  if (digest !== undefined) {
+    return Verdicts.Later({ reason, window: digest.minutes * 60_000 });
+  }
+
   const until =
     status?.until === undefined ? undefined : Date.parse(status.until);
 
@@ -134,6 +141,12 @@ const intent = (arrival: Arrival): Verdict => {
 
   const reason = Reasons.intent({ facts });
 
+  if (arrival.wakeStatus !== undefined) {
+    return arrival.wakeStatus === "matched" || arrival.wakeStatus === "timedOut"
+      ? Verdicts.Next({ reason })
+      : Verdicts.Now({ reason });
+  }
+
   return quiet ? Verdicts.Next({ reason }) : Verdicts.Now({ reason });
 };
 
@@ -142,8 +155,8 @@ const ownerVerdict = (arrival: Arrival, levers: Levers): Verdict | undefined =>
   levers.owner !== undefined &&
   arrival.copy !== true &&
   arrival.verified === true &&
-  arrival.sender === levers.owner
-    ? intent(arrival)
+  senderOf(arrival) === levers.owner
+    ? Verdicts.Now({ reason: intent(arrival).reason })
     : undefined;
 
 export const attend = (

@@ -1,5 +1,14 @@
 {
   "defs": {
+    "digest": {
+      "properties": {
+        "minutes": { "maximum": 1440, "minimum": 1, "type": "integer" },
+        "name": { "ref": "#name", "type": "ref" }
+      },
+      "required": ["minutes", "name"],
+      "type": "object",
+      "x-strict": true
+    },
     "group": {
       "properties": { "group": { "maxLength": 256, "minLength": 1, "type": "string" } },
       "required": ["group"],
@@ -19,6 +28,7 @@
     "main": {
       "properties": {
         "allow": { "items": { "ref": "#name", "type": "ref" }, "maxLength": 256, "type": "array" },
+        "digest": { "items": { "ref": "#digest", "type": "ref" }, "maxLength": 256, "type": "array" },
         "forward": { "items": { "ref": "#name", "type": "ref" }, "maxLength": 256, "type": "array" },
         "log": { "type": "boolean" },
         "model": { "ref": "#model", "type": "ref" },

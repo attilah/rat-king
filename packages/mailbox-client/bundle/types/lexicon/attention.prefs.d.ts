@@ -1,5 +1,12 @@
 import { Schema } from "effect";
 import * as Runtime from "./runtime.js";
+export declare const Name: Schema.String;
+export type NameValue = typeof Name.Type;
+export declare const Digest: Schema.StructWithRest<Schema.Struct<{
+    readonly minutes: Schema.Int;
+    readonly name: Schema.String;
+}>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
+export type DigestValue = typeof Digest.Type;
 export declare const Group: Schema.StructWithRest<Schema.Struct<{
     readonly group: Schema.String;
 }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
@@ -10,8 +17,6 @@ export declare const Jev: Schema.StructWithRest<Schema.Struct<{
     readonly nowBp: Schema.Int;
 }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
 export type JevValue = typeof Jev.Type;
-export declare const Name: Schema.String;
-export type NameValue = typeof Name.Type;
 export declare const Model: Schema.StructWithRest<Schema.Struct<{
     readonly body: Schema.compose<Schema.Literals<readonly ["never", "summary", "full"]>, Schema.String>;
     readonly jev: Schema.optionalKey<Schema.StructWithRest<Schema.Struct<{
@@ -26,6 +31,10 @@ export declare const Model: Schema.StructWithRest<Schema.Struct<{
 export type ModelValue = typeof Model.Type;
 export declare const Main: Schema.StructWithRest<Schema.Struct<{
     readonly allow: Schema.$Array<Schema.String>;
+    readonly digest: Schema.optionalKey<Schema.$Array<Schema.StructWithRest<Schema.Struct<{
+        readonly minutes: Schema.Int;
+        readonly name: Schema.String;
+    }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>>>;
     readonly forward: Schema.$Array<Schema.String>;
     readonly log: Schema.Boolean;
     readonly model: Schema.StructWithRest<Schema.Struct<{

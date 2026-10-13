@@ -9,6 +9,10 @@ export type InputValue = typeof Input.Type;
 export declare const Output: Schema.StructWithRest<Schema.Struct<{
     readonly prefs: Schema.StructWithRest<Schema.Struct<{
         readonly allow: Schema.$Array<Schema.String>;
+        readonly digest: Schema.optionalKey<Schema.$Array<Schema.StructWithRest<Schema.Struct<{
+            readonly minutes: Schema.Int;
+            readonly name: Schema.String;
+        }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>>>;
         readonly forward: Schema.$Array<Schema.String>;
         readonly log: Schema.Boolean;
         readonly model: Schema.StructWithRest<Schema.Struct<{
@@ -68,6 +72,10 @@ export declare const Method: {
     readonly output: Schema.StructWithRest<Schema.Struct<{
         readonly prefs: Schema.StructWithRest<Schema.Struct<{
             readonly allow: Schema.$Array<Schema.String>;
+            readonly digest: Schema.optionalKey<Schema.$Array<Schema.StructWithRest<Schema.Struct<{
+                readonly minutes: Schema.Int;
+                readonly name: Schema.String;
+            }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>>>;
             readonly forward: Schema.$Array<Schema.String>;
             readonly log: Schema.Boolean;
             readonly model: Schema.StructWithRest<Schema.Struct<{
