@@ -103,9 +103,9 @@ An apply needs separate startup approval. After an approved recovery apply, requ
 
 - `--name` defaults to `rka31013` and must be a valid instance name. Names starting with `rat-king`, `ratking`, `mischief` or `mischiefrb` are refused.
 - `--ports` defaults to `28020-28029`. A range must be exactly ten ports and must not overlap the default mailbox, Mischief or `mischiefrb` ports. Every listener binds `127.0.0.1`.
-- `--state` holds Alchemy state, the guarded-unit baseline and the minted operator, sender and recipient identities under `<state>/home`. It must stay outside the repository. `--data-root` defaults to `<state>/data`.
+- `--state` holds Alchemy state, the guarded-unit baseline and the minted operator, sender and two recipient identities under `<state>/home`. It must stay outside the repository. `--data-root` defaults to `<state>/data`.
 - `up` needs `RAT_KING_START_APPROVED=true`. Before the first deploy it requires absent instance directories and free ports, and records the MainPIDs of the `rat-king` and `mischief` celld and SeaweedFS units. Every later `up` and `verify-gone` refuses if those PIDs changed. The worker is the mailbox-only build of the checkout the command runs from, with the three public documents as static `DID_DOCUMENTS`. `--plant <value>` sets `SHIP_WATCH_PLANT` in this stage only.
-- `drive --count N --interval-ms M` sends N sealed messages from the sender to the recipient, who delivers and acks each one under its own lease. It prints only counts.
+- `drive --count N --interval-ms M` sends N sealed messages from the sender, alternating between two recipients. Each recipient delivers and acks under its own lease, so a server-side delivery break strands mail for both. It prints only counts.
 - `traffic --out <file>` writes the operator's metadata-only traffic export as JSONL, the input `ship-judge` reads. `health` prints `{status, listeners}` in the shape `ship-judge --health` reads.
 - `down` needs `RAT_KING_DESTROY_APPROVED=true` after `destroy-plan`. Run `verify-gone` afterwards; it prints one `PASS` or `FAIL` line per check and exits non-zero on any leftover.
 

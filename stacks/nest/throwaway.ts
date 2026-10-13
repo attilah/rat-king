@@ -80,6 +80,7 @@ export const guardedUnits = [
 export const throwawayDids = (name: string) => ({
   alpha: `did:web:alpha.${name}.throwaway.invalid`,
   bravo: `did:web:bravo.${name}.throwaway.invalid`,
+  charlie: `did:web:charlie.${name}.throwaway.invalid`,
   operator: `did:web:operator.${name}.throwaway.invalid`,
   service: `did:web:${name}.throwaway.invalid`,
 });
@@ -219,7 +220,7 @@ export const throwawayProgram = (
     });
   });
 
-const agents = ["operator", "alpha", "bravo"] as const;
+const agents = ["operator", "alpha", "bravo", "charlie"] as const;
 
 const identities = Effect.fn("Throwaway.identities")(function* identities(
   target: ThrowawayTarget
@@ -597,16 +598,17 @@ export const runThrowaway = Effect.fn("Throwaway.run")(function* runThrowaway(
 
   if (action === "drive") {
     const alpha = yield* readIdentity(home, "alpha");
-    const bravo = yield* readIdentity(home, "bravo");
-
     const sessionId = `throwaway-${yield* Clock.currentTimeMillis}`;
 
-    const leaseFor = (held?: { generation: number; leaseId: string }) =>
+    const leaseFor = (
+      recipient: { did: string; identity: IdentityValue },
+      held?: { generation: number; leaseId: string }
+    ) =>
       Effect.gen(function* acquireLease() {
         const now = yield* Clock.currentTimeMillis;
 
         return yield* (yield* RatKingMailbox).lease.acquire({
-          did: dids.bravo,
+          did: recipient.did,
           expiresAt: DateTime.formatIso(DateTime.makeUnsafe(now + 240_000)),
           harness: {
             $type: "sh.mschf.ratking.runtime.lease#pi",
@@ -614,21 +616,39 @@ export const runThrowaway = Effect.fn("Throwaway.run")(function* runThrowaway(
           },
           ...held,
         });
-      }).pipe(Effect.provide(client(target, bravo, documents)));
+      }).pipe(Effect.provide(client(target, recipient.identity, documents)));
 
-    const lease = yield* leaseFor().pipe(
-      Effect.retry(
-        Schedule.spaced("5 seconds").pipe(Schedule.upTo({ times: 60 }))
-      )
-    );
+    const recipientFor = (agent: "bravo" | "charlie") =>
+      Effect.gen(function* recipient() {
+        const identity = yield* readIdentity(home, agent);
+        const did = dids[agent];
 
-    const session = { lease, leasedAt: yield* Clock.currentTimeMillis };
+        const lease = yield* leaseFor({ did, identity }).pipe(
+          Effect.retry(
+            Schedule.spaced("5 seconds").pipe(Schedule.upTo({ times: 60 }))
+          )
+        );
+
+        return {
+          did,
+          identity,
+          session: { lease, leasedAt: yield* Clock.currentTimeMillis },
+        };
+      });
+
+    const bravo = yield* recipientFor("bravo");
+    const charlie = yield* recipientFor("charlie");
+    const recipientAt = (index: number) => (index % 2 === 0 ? bravo : charlie);
+
     const tally = { acked: 0, failed: 0, sent: 0 };
 
     const step = (index: number) =>
       Effect.gen(function* exchange() {
+        const recipient = recipientAt(index);
+        const { session } = recipient;
+
         if ((yield* Clock.currentTimeMillis) - session.leasedAt > 120_000) {
-          session.lease = yield* leaseFor({
+          session.lease = yield* leaseFor(recipient, {
             generation: session.lease.generation,
             leaseId: session.lease.leaseId,
           });
@@ -637,7 +657,7 @@ export const runThrowaway = Effect.fn("Throwaway.run")(function* runThrowaway(
 
         const sent = yield* Effect.gen(function* send() {
           return yield* (yield* RatKingMailbox).send(
-            dids.bravo,
+            recipient.did,
             `throwaway ${index}`
           );
         }).pipe(Effect.provide(client(target, alpha, documents)));
@@ -654,7 +674,7 @@ export const runThrowaway = Effect.fn("Throwaway.run")(function* runThrowaway(
           const mailbox = yield* RatKingMailbox;
           yield* mailbox.deliver(fenced);
           yield* mailbox.ack(fenced);
-        }).pipe(Effect.provide(client(target, bravo, documents)));
+        }).pipe(Effect.provide(client(target, recipient.identity, documents)));
 
         tally.acked += 1;
       });
@@ -667,7 +687,7 @@ export const runThrowaway = Effect.fn("Throwaway.run")(function* runThrowaway(
 
           if (Result.isFailure(outcome)) {
             tally.failed += 1;
-            session.leasedAt = 0;
+            recipientAt(index).session.leasedAt = 0;
           }
 
           yield* Effect.sleep(Duration.millis(options.intervalMs));
