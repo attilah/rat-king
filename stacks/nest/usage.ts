@@ -156,11 +156,15 @@ const senderName = (did: string) => {
     : `${match.groups.project}/${match.groups.row}`;
 };
 
-export const usageDigest = Effect.fn("Usage.digest")(function* usageDigest<
-  E,
-  R,
->(day: string, events: Stream.Stream<TrafficEvent, E, R>, restarts = 0) {
-  const { start, end } = yield* dayBounds(day);
+export interface WindowBounds {
+  readonly end: number;
+  readonly start: number;
+}
+
+const foldTraffic = Effect.fn("Usage.foldTraffic")(function* foldTraffic<E, R>(
+  { start, end }: WindowBounds,
+  events: Stream.Stream<TrafficEvent, E, R>
+) {
   const pairs = new Map<string, Pair>();
   const senders = new Map<string, number>();
   let sent = 0;
@@ -240,6 +244,43 @@ export const usageDigest = Effect.fn("Usage.digest")(function* usageDigest<
       p95: percentile(latencies, 0.95),
     },
     acked,
+    delivered,
+    replays,
+    senders,
+    sent,
+    undelivered,
+  };
+});
+
+export const usageWindow = Effect.fn("Usage.window")(function* usageWindow<
+  E,
+  R,
+>(bounds: WindowBounds, events: Stream.Stream<TrafficEvent, E, R>) {
+  const { ackLatency, acked, delivered, replays, sent, undelivered } =
+    yield* foldTraffic(bounds, events);
+
+  return {
+    ackLatency,
+    acked,
+    delivered,
+    end: DateTime.formatIso(DateTime.makeUnsafe(bounds.end)),
+    replays,
+    sent,
+    start: DateTime.formatIso(DateTime.makeUnsafe(bounds.start)),
+    undelivered,
+  };
+});
+
+export const usageDigest = Effect.fn("Usage.digest")(function* usageDigest<
+  E,
+  R,
+>(day: string, events: Stream.Stream<TrafficEvent, E, R>, restarts = 0) {
+  const { ackLatency, acked, delivered, replays, senders, sent, undelivered } =
+    yield* foldTraffic(yield* dayBounds(day), events);
+
+  return {
+    ackLatency,
+    acked,
     ccRatio: Unavailable.make({
       source: "traffic export gives each cc copy its own messageId",
     }),
@@ -266,7 +307,7 @@ export const usageDigest = Effect.fn("Usage.digest")(function* usageDigest<
   };
 });
 
-const fileLines = (fs: FileSystem.FileSystem, path: string) =>
+export const fileLines = (fs: FileSystem.FileSystem, path: string) =>
   fs.stream(path).pipe(
     Stream.mapError(
       () => new UsageError({ reason: "Cannot read usage input" })
