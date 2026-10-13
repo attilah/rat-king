@@ -15,14 +15,9 @@ export const shellQuote = (value: string): string =>
 
 const argvText = (argv: readonly string[]) => argv.map(shellQuote).join(" ");
 
-export interface ShellTransport {
-  readonly transport: "ssh" | "local";
-}
-
 export const layer = (
   node: Node,
-  props: InstanceProps & { readonly dataRoot?: string } = {},
-  options?: ShellTransport
+  props: InstanceProps & { readonly dataRoot?: string } = {}
 ) =>
   Layer.effect(
     HostShell,
@@ -41,29 +36,6 @@ export const layer = (
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
 
       const permits = yield* Semaphore.make(4);
-      const transport = options?.transport ?? "ssh";
-
-      if (transport === "local") {
-        const hostname = yield* spawner
-          .string(ChildProcess.make("hostname", ["-s"], { stdin: "ignore" }))
-          .pipe(
-            Effect.mapError(
-              () =>
-                new HostError({
-                  operation: "connect",
-                  reason: "Cannot read the local hostname.",
-                })
-            )
-          );
-
-        if (hostname.trim() !== validated.ssh.split("@").at(-1)) {
-          return yield* new HostError({
-            operation: "connect",
-            reason:
-              "Local transport requires the inventory node to be this host.",
-          });
-        }
-      }
 
       const run = Effect.fn("HostShell.ssh")(
         function* run(
@@ -74,26 +46,22 @@ export const layer = (
           const errorChunks: Uint8Array[] = [];
           let errorBytes = 0;
 
-          const stdin = bytes === undefined ? "ignore" : Stream.succeed(bytes);
-
           const handle = yield* spawner.spawn(
-            transport === "local"
-              ? ChildProcess.make("sh", ["-c", script], { stdin })
-              : ChildProcess.make(
-                  "ssh",
-                  [
-                    "-o",
-                    "BatchMode=yes",
-                    "-o",
-                    "StrictHostKeyChecking=yes",
-                    "-o",
-                    "ConnectTimeout=10",
-                    "--",
-                    validated.ssh,
-                    `sh -c ${shellQuote(script)}`,
-                  ],
-                  { stdin }
-                )
+            ChildProcess.make(
+              "ssh",
+              [
+                "-o",
+                "BatchMode=yes",
+                "-o",
+                "StrictHostKeyChecking=yes",
+                "-o",
+                "ConnectTimeout=10",
+                "--",
+                validated.ssh,
+                `sh -c ${shellQuote(script)}`,
+              ],
+              { stdin: bytes === undefined ? "ignore" : Stream.succeed(bytes) }
+            )
           );
 
           const result = yield* Effect.all(
@@ -113,7 +81,7 @@ export const layer = (
             { concurrency: "unbounded" }
           );
 
-          if (transport === "ssh" && result.code === 255) {
+          if (result.code === 255) {
             return yield* new HostError({
               operation: "ssh",
               reason: "SSH transport failed; values redacted.",
