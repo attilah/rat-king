@@ -11,11 +11,15 @@ import {
   oneLine,
   paragraphs,
   party,
-  ratKingTitle,
   short,
   terminalStyles,
 } from "./tui.ts";
 import type { Labels, Paint } from "./tui.ts";
+import { BRAND } from "./ui/brand.ts";
+import { Fault } from "./ui/fault.ts";
+import { Preview } from "./ui/fold.ts";
+import { Header } from "./ui/header.ts";
+import { Receipt, headed } from "./ui/receipt.ts";
 
 export interface CallArgs {
   readonly action?: string | undefined;
@@ -72,7 +76,12 @@ export const callLines = (
   const dot = theme.fg("dim", " · ");
 
   const head = [
-    ratKingTitle(theme, action, ACTION_COLOURS.get(action) ?? "accent"),
+    Header({
+      colour: ACTION_COLOURS.get(action) ?? "accent",
+      theme,
+      variant: "call",
+      verb: action,
+    }),
     ...(call.to === undefined
       ? []
       : [
@@ -188,11 +197,6 @@ const failed = (input: ResultInput) =>
   input.isError ||
   Schema.is(Schema.Struct({ error: Schema.Literal(true) }))(input.details);
 
-const headed = (mark: string, text: string, width: number) =>
-  wrapTextWithAnsi(text, Math.max(1, width - 2)).map(
-    (line, index) => `${index === 0 ? mark : " "} ${line}`
-  );
-
 const receiptParty = (text: string, theme: Paint, labels: Labels) =>
   text.replaceAll(
     /(?<=[Dd]elivered to |confirmed to |Reply from |status: )(?<recipient>[^\n]+?)(?= over Rat King| \(id| \(did:)|^(?<copy>[^:]+)(?=: (?:woken|quiet))/gmu,
@@ -290,19 +294,18 @@ export const resultLines = (
   const [first = "", ...rest] = clean(input.text).trim().split("\n");
 
   const head = receiptParty(first.replaceAll("**", ""), theme, labels).replace(
-    /^🐀 status: /u,
+    new RegExp(`^${BRAND} status: `, "u"),
     ""
   );
 
   if (failed(input)) {
-    return [
-      ...headed(theme.fg("error", "✗"), theme.fg("error", head), width),
-      ...(input.expanded
-        ? paragraphs(rest.join("\n"), width - 2).map(
-            (line) => `  ${theme.fg("dim", line)}`
-          )
-        : []),
-    ];
+    return Fault({
+      diagnostics: rest.join("\n"),
+      expanded: input.expanded,
+      reason: head,
+      theme,
+      width,
+    });
   }
 
   const compact = input.expanded
@@ -311,9 +314,7 @@ export const resultLines = (
 
   if (compact !== undefined) {
     return [
-      ...compact.flatMap((line) =>
-        headed(theme.fg("success", "✓"), line, width)
-      ),
+      ...Receipt({ lines: compact, theme, width }),
       ...(input.action === "ask"
         ? clip(
             theme,
@@ -339,7 +340,13 @@ export const resultLines = (
 
     return [
       ...headed(theme.fg("success", "↩"), theme.fg("accent", head), width),
-      ...(input.expanded ? body : clip(theme, body, PREVIEW_LINES, width)),
+      ...Preview({
+        expanded: input.expanded,
+        lines: body,
+        room: PREVIEW_LINES,
+        theme,
+        width,
+      }),
     ];
   }
 
@@ -379,7 +386,13 @@ export const resultLines = (
 
   return [
     ...headed(theme.fg("success", "✓"), theme.fg("text", head), width),
-    ...(input.expanded ? tail : clip(theme, tail, PREVIEW_LINES, width)),
+    ...Preview({
+      expanded: input.expanded,
+      lines: tail,
+      room: PREVIEW_LINES,
+      theme,
+      width,
+    }),
   ];
 };
 

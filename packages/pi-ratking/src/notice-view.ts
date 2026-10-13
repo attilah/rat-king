@@ -10,12 +10,14 @@ import {
   oneLine,
   paragraphs,
   party,
-  ratKingTitle,
   recordType,
   short,
   terminalStyles,
 } from "./tui.ts";
 import type { Labels, Paint } from "./tui.ts";
+import { Box } from "./ui/box.ts";
+import { Fold } from "./ui/fold.ts";
+import { Header } from "./ui/header.ts";
 
 const PartyDetails = Schema.Struct({
   body: Schema.optional(Schema.String),
@@ -100,11 +102,18 @@ export const digestView = (input: NoticeInput): Component =>
       onSome: ({ messages }) => messages.length,
     });
 
-    const header = `${ratKingTitle(input.theme, "cc digest")}${input.theme.fg("dim", ` · ${count}`)}`;
+    const header = Header({
+      facts: [String(count)],
+      theme: input.theme,
+      variant: "digest",
+      verb: "cc digest",
+    });
 
-    const body = input.expanded
-      ? [...entries, ...hints]
-      : clip(input.theme, entries, 2, width);
+    const body = Fold({
+      collapsed: () => clip(input.theme, entries, 2, width),
+      expanded: input.expanded,
+      full: () => [...entries, ...hints],
+    });
 
     return [header, ...body];
   });
@@ -120,7 +129,7 @@ export const recordView = (input: NoticeInput): Component =>
         ` from ${party(input.theme, details.from, details.label ?? labels(details.from))}`,
     });
 
-    const header = `${ratKingTitle(input.theme, `record ${recordType(input.content)}`)}${sender}`;
+    const header = `${Header({ theme: input.theme, variant: "record", verb: `record ${recordType(input.content)}` })}${sender}`;
     const box = frame(input.theme, width, "borderMuted");
     const inner = width < FRAME_MIN ? width : box.inner;
 
@@ -139,14 +148,15 @@ export const recordView = (input: NoticeInput): Component =>
 
     return width < FRAME_MIN
       ? [header, ...body]
-      : [
-          box.top(header),
-          ...body.map(box.row),
-          box.bottom(
-            input.theme.fg(
-              "dim",
-              `${id}${input.expanded ? "" : "ctrl+o expands"}`
-            )
+      : Box({
+          body,
+          border: "borderMuted",
+          footer: input.theme.fg(
+            "dim",
+            `${id}${input.expanded ? "" : "ctrl+o expands"}`
           ),
-        ];
+          header,
+          theme: input.theme,
+          width,
+        });
   });
