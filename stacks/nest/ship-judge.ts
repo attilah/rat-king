@@ -113,12 +113,17 @@ export const shipWindows = (shippedAt: number, windowMinutes: number) => {
 const trafficReasons = (baseline: WindowFacts, after: WindowFacts) => {
   const reasons: Reason[] = [];
 
-  const drop =
-    (baseline.acked / baseline.sent - after.acked / after.sent) * 100;
+  const lostPoints =
+    100 * (baseline.acked * after.sent - after.acked * baseline.sent);
 
-  if (drop > ShipLimits.ackRateDropPoints) {
+  const scale = baseline.sent * after.sent;
+
+  if (lostPoints > ShipLimits.ackRateDropPoints * scale) {
     reasons.push(
-      AckRateDrop.make({ limit: ShipLimits.ackRateDropPoints, value: drop })
+      AckRateDrop.make({
+        limit: ShipLimits.ackRateDropPoints,
+        value: lostPoints / scale,
+      })
     );
   }
 
@@ -316,10 +321,18 @@ export const revertibility = Effect.fn("ShipJudge.revertibility")(
   }
 );
 
+export const repositoryEnvironment = (
+  environment: Readonly<Record<string, string | undefined>>
+) =>
+  Object.fromEntries(
+    Object.entries(environment).filter(([key]) => !key.startsWith("GIT_"))
+  );
+
 export const gitIn = Effect.fn("ShipJudge.gitIn")(function* gitIn(
   directory: string
 ) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  const env = repositoryEnvironment(process.env);
 
   return {
     run: (args) =>
@@ -328,6 +341,8 @@ export const gitIn = Effect.fn("ShipJudge.gitIn")(function* gitIn(
           Effect.gen(function* spawnGit() {
             const handle = yield* spawner.spawn(
               ChildProcess.make("git", ["-C", directory, ...args], {
+                env,
+                extendEnv: false,
                 stdin: "ignore",
               })
             );

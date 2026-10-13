@@ -157,24 +157,23 @@ it.effect.prop(
       const latencyEdge =
         ShipLimits.latencyFactor * sample.p95 + ShipLimits.latencySlackMs;
 
-      const lost = Math.max(
-        0,
-        Math.min(
-          acked,
-          Math.floor(
-            (sample.sent * (ShipLimits.ackRateDropPoints + delta / 10)) / 100
-          )
-        )
-      );
-
       const changed = Match.value(kind).pipe(
-        Match.when("AckRateDrop", () => ({
-          after: facts({ ...sample, acked: acked - lost }),
-          crossed: (lost / sample.sent) * 100 > ShipLimits.ackRateDropPoints,
-          health: okHealth,
-        })),
+        Match.when("AckRateDrop", () => {
+          const sent = 50 * Math.ceil(sample.sent / 50);
+          const edge = (ShipLimits.ackRateDropPoints * sent) / 100;
+          const lost = edge + (Math.abs(delta) % 3) - 1;
+          const full = facts({ ...sample, acked: sent, sent });
+
+          return {
+            after: facts({ ...sample, acked: sent - lost, sent }),
+            baseline: full,
+            crossed: lost > edge,
+            health: okHealth,
+          };
+        }),
         Match.when("LatencyRegression", () => ({
           after: facts({ ...sample, acked, p95: latencyEdge + delta }),
+          baseline,
           crossed: delta > 0,
           health: okHealth,
         })),
@@ -186,6 +185,7 @@ it.effect.prop(
 
           return {
             after: facts({ ...sample, acked, undelivered }),
+            baseline,
             crossed:
               undelivered > sample.undelivered + ShipLimits.undeliveredSlack,
             health: okHealth,
@@ -193,6 +193,7 @@ it.effect.prop(
         }),
         Match.when("ListenersMissing", () => ({
           after: baseline,
+          baseline,
           crossed: delta > 0,
           health: {
             ...okHealth,
@@ -201,6 +202,7 @@ it.effect.prop(
         })),
         Match.when("HealthStatus", () => ({
           after: baseline,
+          baseline,
           crossed: delta !== 0,
           health: {
             ...okHealth,
@@ -212,7 +214,7 @@ it.effect.prop(
 
       const verdict = judgeShip({
         after: changed.after,
-        baseline,
+        baseline: changed.baseline,
         health: changed.health,
         sha,
       });
@@ -617,4 +619,87 @@ it.effect.prop(
       }
     }).pipe(Effect.provide(NodeServices.layer)),
   { arbitrary: { runs: 12 } }
+);
+
+const hookVariables = [
+  "GIT_DIR",
+  "GIT_INDEX_FILE",
+  "GIT_WORK_TREE",
+  "GIT_AUTHOR_NAME",
+] as const;
+
+it.effect.prop(
+  "revertible git calls ignore hook GIT_* variables and leave the hook's repository untouched",
+  [Schema.Array(Schema.Literals(hookVariables)).check(Schema.isMinLength(1))],
+  ([exported]) =>
+    Effect.gen(function* decoyRepository() {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const decoy = yield* fs.makeTempDirectoryScoped();
+      const fixture = yield* fs.makeTempDirectoryScoped();
+      const decoyGit = yield* gitIn(decoy);
+
+      const inDecoy = (args: readonly string[]) =>
+        decoyGit.run([...gitConfig, ...args]);
+
+      yield* inDecoy(["init", "-q", "-b", "main"]);
+      yield* fs.writeFileString(path.join(decoy, "decoy.ts"), "decoy\n");
+      yield* inDecoy(["add", "decoy.ts"]);
+      yield* inDecoy(["commit", "-q", "-m", "decoy"]);
+
+      const decoyHead = (yield* inDecoy(["rev-parse", "HEAD"])).trim();
+      const decoyIndex = yield* fs.readFile(path.join(decoy, ".git/index"));
+
+      const hookEnvironment = {
+        GIT_AUTHOR_NAME: "hook",
+        GIT_DIR: path.join(decoy, ".git"),
+        GIT_INDEX_FILE: path.join(decoy, ".git/index"),
+        GIT_WORK_TREE: decoy,
+      };
+
+      const saved = hookVariables.map((name) => [name, process.env[name]]);
+
+      yield* Effect.acquireRelease(
+        Effect.sync(() => {
+          for (const name of exported) {
+            process.env[name] = hookEnvironment[name];
+          }
+        }),
+        () =>
+          Effect.sync(() => {
+            for (const [name = "", value] of saved) {
+              if (value === undefined) {
+                Reflect.deleteProperty(process.env, name);
+              } else {
+                process.env[name] = value;
+              }
+            }
+          })
+      );
+
+      const git = yield* gitIn(fixture);
+      const run = (args: readonly string[]) => git.run([...gitConfig, ...args]);
+
+      yield* run(["init", "-q", "-b", "main"]);
+      yield* fs.writeFileString(path.join(fixture, "seed.ts"), "0\n");
+      yield* run(["add", "seed.ts"]);
+      yield* run(["commit", "-q", "-m", "seed"]);
+      const base = (yield* run(["rev-parse", "HEAD"])).trim();
+      yield* run(["checkout", "-q", "-b", "lane"]);
+      yield* fs.writeFileString(path.join(fixture, "change.ts"), "1\n");
+      yield* run(["add", "change.ts"]);
+      yield* run(["commit", "-q", "-m", "change"]);
+      yield* run(["checkout", "-q", "main"]);
+      yield* run(["merge", "-q", "--no-ff", "-m", "merge", "lane"]);
+      const sha = (yield* run(["rev-parse", "HEAD"])).trim();
+
+      const answer = yield* revertibility(git, `${base}..${sha}`);
+
+      expect(answer).toEqual(Revertible.make({}));
+      expect((yield* inDecoy(["rev-parse", "HEAD"])).trim()).toBe(decoyHead);
+      expect(yield* fs.readFile(path.join(decoy, ".git/index"))).toStrictEqual(
+        decoyIndex
+      );
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  { arbitrary: { runs: 6 } }
 );
