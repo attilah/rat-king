@@ -648,7 +648,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
     let turns: TurnReporter | undefined;
 
     const reportTurn = async (
-      effect: Effect.Effect<void, never, RatKing> | undefined
+      effect: Effect.Effect<void, never, RatKing | Settings> | undefined
     ) => {
       if (effect !== undefined && Option.isSome(runtime)) {
         await runtime.value.runPromiseExit(effect);

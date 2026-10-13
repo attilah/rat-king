@@ -2,6 +2,7 @@ import type { TurnValue } from "@rat-king/lexicon/turns";
 import { Turn } from "@rat-king/lexicon/turns";
 import { Clock, DateTime, Effect, Option, Schema } from "effect";
 
+import { Settings } from "./config.ts";
 import type { SessionFacts } from "./identity.ts";
 import { LexiconRecord } from "./payload.ts";
 import { RatKing } from "./ratking.ts";
@@ -42,6 +43,12 @@ export const turnReporter = (
       turnNumber: number,
       detail?: { readonly reason?: string; readonly stopReason?: StopReason }
     ) {
+      const settings = yield* Settings;
+
+      if (settings.turnRecords !== true) {
+        return;
+      }
+
       const owner = facts.owner ?? Option.none<string>();
 
       if (Option.isNone(owner)) {

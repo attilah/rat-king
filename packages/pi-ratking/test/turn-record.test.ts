@@ -6,6 +6,7 @@ import type { TurnValue } from "@rat-king/lexicon/turns";
 import {
   Arbitrary,
   Clock,
+  ConfigProvider,
   Deferred,
   Effect,
   FileSystem,
@@ -18,9 +19,11 @@ import { asyncModelRun } from "fast-check";
 import type { AsyncCommand } from "fast-check";
 import { expect } from "vitest";
 
-import { ratkingExtension } from "../src/extension.ts";
+import { resolveTurnRecords } from "../src/config.ts";
+import { ratkingExtension, RECORD_EVENT } from "../src/extension.ts";
 import type { PiHost, SessionStart } from "../src/extension.ts";
 import { RatKing, ReaderState } from "../src/ratking.ts";
+import type { Deliver } from "../src/ratking.ts";
 import { harness } from "./harness.ts";
 
 const Case = Schema.Struct({
@@ -29,9 +32,12 @@ const Case = Schema.Struct({
   initial: Schema.Int.check(Schema.isBetween({ maximum: 10, minimum: 0 })),
   owned: Schema.Boolean,
   reason: Schema.Literals(["stop", "aborted", "error", "length"]),
+  turnRecords: Schema.optionalKey(Schema.Boolean),
 });
 
 const noop = async () => {};
+
+const ignoreDelivery: Deliver = () => Effect.void;
 
 interface TurnModel {
   readonly states: string[];
@@ -61,21 +67,31 @@ it.effect.prop(
       let approval: () => Promise<void> = noop;
 
       const records: Submission[] = [];
+      const emitting = sample.owned && sample.turnRecords === true;
       const remembered: number[] = [];
+      const received: unknown[] = [];
+      let deliver = ignoreDelivery;
 
       const idle = yield* Deferred.make<boolean>();
       const clock = yield* Clock.Clock;
       const fs = yield* FileSystem.FileSystem;
       const state = yield* fs.makeTempDirectoryScoped();
 
+      const turnRecords = yield* resolveTurnRecords(sample).pipe(
+        Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({})))
+      );
+
       const layer = Layer.mergeAll(
         harness(
           state,
-          HttpClient.make(() => Effect.die("Unexpected HTTP"))
+          HttpClient.make(() => Effect.die("Unexpected HTTP")),
+          [],
+          { turnRecords }
         ),
         Layer.mock(RatKing, {
-          run: (facts) =>
+          run: (facts, handler) =>
             Effect.sync(() => {
+              deliver = handler;
               facts.onState?.(
                 ReaderState.Live({
                   did: "did:web:worker.invalid",
@@ -131,7 +147,14 @@ it.effect.prop(
       );
 
       const pi: PiHost = {
-        events: { emit: () => {}, on: () => () => {} },
+        events: {
+          emit: (name, data) => {
+            if (name === RECORD_EVENT) {
+              received.push(data);
+            }
+          },
+          on: () => () => {},
+        },
         onAgentEnd: (handler) => {
           done = handler;
         },
@@ -180,9 +203,49 @@ it.effect.prop(
         });
       });
 
-      if (sample.owned) {
+      if (emitting) {
         yield* Deferred.await(idle);
       }
+
+      for (const record of [
+        {
+          $type: "sh.mschf.agentgraph.turn",
+          agent: "peer",
+          at: "2030-01-01T00:00:00Z",
+          session: "peer-session",
+          state: "working",
+          turnId: "peer-session:1",
+          version: "0.1",
+        },
+        {
+          $type: "sh.mschf.agentgraph.friction",
+          at: "2030-01-01T00:00:00Z",
+          graph: "sample",
+          kind: "manual",
+          project: "sample",
+          slice: "f0",
+          version: "0.1",
+          what: "sample friction",
+        },
+      ]) {
+        const acked = yield* Deferred.make<boolean>();
+
+        yield* deliver(
+          {
+            did: "did:web:peer.invalid",
+            from: "peer",
+            id: record.$type,
+            record,
+            replyTo: Option.none(),
+            verified: true,
+          },
+          false,
+          Deferred.succeed(acked, true).pipe(Effect.asVoid)
+        );
+        yield* Deferred.await(acked);
+      }
+
+      expect(received).toHaveLength(2);
 
       const finish = async () => {
         await done([{ role: "assistant", stopReason: sample.reason }]);
@@ -198,7 +261,7 @@ it.effect.prop(
           run: async (model, real) => {
             await real[event]();
 
-            if (sample.owned) {
+            if (emitting) {
               model.states.push(event === "approval" ? "blocked" : event);
 
               if (event === "done" && sample.asks) {
@@ -214,7 +277,7 @@ it.effect.prop(
         }));
 
       const setup = () => ({
-        model: { states: sample.owned ? ["idle"] : [] },
+        model: { states: emitting ? ["idle"] : [] },
         real: { approval, done: finish, records, working },
       });
 
@@ -226,7 +289,7 @@ it.effect.prop(
 
       expect(remembered).toEqual([1, 2, 3].map((n) => sample.initial + n));
 
-      if (!sample.owned) {
+      if (!emitting) {
         expect(records).toEqual([]);
 
         return;

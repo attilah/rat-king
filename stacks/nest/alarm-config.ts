@@ -75,6 +75,7 @@ export const AlarmSettings = Schema.Struct({
       receipt: Schema.NonEmptyString,
     })
   ),
+  turnRecords: Schema.optionalKey(Schema.Boolean),
 });
 
 export type AlarmSettingsValue = typeof AlarmSettings.Type;

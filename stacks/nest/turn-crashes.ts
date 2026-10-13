@@ -145,9 +145,14 @@ const prepareCrash = Effect.fn("Alarm.prepareCrash")(function* prepareCrash(
   };
 }, Effect.scoped);
 
+export const readerCrashSources = (config: Pick<StageConfigValue, "alarm">) =>
+  config.alarm?.turnRecords === true
+    ? config.alarm.readerHeartbeats
+    : undefined;
+
 export const watchReaderCrashes = Effect.fn("Alarm.watchReaderCrashes")(
   function* watchReaderCrashes(config: StageConfigValue, directory: string) {
-    const sources = config.alarm?.readerHeartbeats;
+    const sources = readerCrashSources(config);
 
     if (sources === undefined) {
       return yield* Effect.void;

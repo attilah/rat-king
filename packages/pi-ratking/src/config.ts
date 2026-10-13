@@ -79,6 +79,7 @@ export const PiConfig = Schema.Struct({
   serviceDid: Did,
   state: Schema.optionalKey(Schema.String),
   toolName: Schema.optionalKey(ToolName),
+  turnRecords: Schema.optionalKey(Schema.Boolean),
 });
 
 export type PiConfigValue = typeof PiConfig.Type;
@@ -98,6 +99,7 @@ export interface SettingsValue {
   readonly secretsCommand: string;
   readonly serviceDid: string;
   readonly state: string;
+  readonly turnRecords?: boolean;
 }
 
 export class Settings extends Context.Service<Settings, SettingsValue>()(
@@ -154,11 +156,27 @@ export const toolName = Effect.gen(function* resolveToolName() {
   );
 }).pipe(Effect.orElseSucceed(() => "ratking"));
 
+export const resolveTurnRecords = Effect.fn("RatKing.resolveTurnRecords")(
+  function* resolveTurnRecords(config: Pick<PiConfigValue, "turnRecords">) {
+    const override = yield* Config.option(
+      Config.schema(Schema.Literals(["0", "1"]), "RATKING_TURN_RECORDS")
+    ).pipe(
+      Effect.mapError(notConfigured("RATKING_TURN_RECORDS must be 1 or 0"))
+    );
+
+    return Option.match(override, {
+      onNone: () => config.turnRecords ?? false,
+      onSome: (value) => value === "1",
+    });
+  }
+);
+
 export const loadSettings = Effect.fn("RatKing.loadSettings")(
   function* loadSettings() {
     const path = yield* Path.Path;
     const { config, home } = yield* readConfig();
     const state = config.state ?? path.join(home, ".local/state/rat-king/pi");
+    const turnRecords = yield* resolveTurnRecords(config);
 
     const settings = Settings.of({
       askTimeoutMs: config.askTimeoutMs ?? 600_000,
@@ -174,6 +192,7 @@ export const loadSettings = Effect.fn("RatKing.loadSettings")(
       secretsCommand: config.secretsCommand ?? "secrets",
       serviceDid: config.serviceDid,
       state,
+      turnRecords,
     });
 
     if (config.ccDigestMinutes !== undefined) {
