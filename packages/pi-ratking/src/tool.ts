@@ -10,7 +10,6 @@ import { ccRefusalPrompt } from "./cc-lint.ts";
 import type { NotConfigured } from "./config.ts";
 import { recipientLines } from "./delivery.ts";
 import type { RecipientLevelValue } from "./delivery.ts";
-import { SUMMARY_MAX } from "./payload.ts";
 import { RatKing, ReaderState } from "./ratking.ts";
 import type {
   Delivered,
@@ -18,6 +17,7 @@ import type {
   SendOptions,
   Status,
 } from "./ratking.ts";
+import { clampSummary, withSummaryLead } from "./summary.ts";
 
 export const Action = Schema.Literals([
   "list",
@@ -130,7 +130,7 @@ Address agents by Rat King name (for example switchboard, or project/row).
 
 send and ask accept cc: ["name", ...]. to: is for whoever must act, and wakes them. cc: is for whoever should know: a quiet copy that does not wake. A send whose message or summary addresses a cc'd name (@name, or an "ask for name" line) is refused; pass ccOnPurpose: true if the cc is deliberate. reply defaults to reply-all; replyAll: false answers only the sender. To answer a message that arrived before this Pi's reader last started, add to: the asker's name. handled with replyTo confirms a relayed original to its desk without replying to the sender.
 
-Give every send, ask and reply a summary: one line (at most 280 characters) that leads with the point or the ask. Phones and compact views show it first; the message holds the detail.
+Give every send, ask and reply a summary: one line, at most 280 characters; longer is trimmed and the full text leads the message. Lead with the point or the ask. Phones and compact views show it first; the message holds the detail.
 
 Usage:
   ${tool}({ action: "send", to: "name", summary: "...", message: "..." }) → Deliver a message
@@ -200,11 +200,16 @@ const withAttachments = (params: ToolParamsValue) =>
         ].join("\n\n")
   );
 
-const needMessage = (params: ToolParamsValue) =>
-  Option.match(withAttachments(params), {
-    onNone: () => Effect.fail(loud("Missing 'message' parameter")),
-    onSome: Effect.succeed,
-  });
+const needMessage = (params: ToolParamsValue, lead?: string) =>
+  Option.match(
+    Option.fromNullishOr(
+      withSummaryLead(lead, Option.getOrUndefined(withAttachments(params)))
+    ),
+    {
+      onNone: () => Effect.fail(loud("Missing 'message' parameter")),
+      onSome: Effect.succeed,
+    }
+  );
 
 const needTo = (params: ToolParamsValue) =>
   params.to === undefined || params.to.trim() === ""
@@ -226,6 +231,9 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
 
   const encryption: SendOptions = {};
 
+  const clamp =
+    params.summary === undefined ? undefined : clampSummary(params.summary);
+
   if (params.encrypt !== undefined) {
     Object.assign(encryption, { encrypt: params.encrypt });
   }
@@ -235,16 +243,10 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
   }
 
   if (params.summary !== undefined) {
-    const { length } = params.summary.replaceAll(/\s+/gu, " ").trim();
-
-    if (length > SUMMARY_MAX) {
-      return loud(
-        `NOT SENT: summary is ${length} characters; the limit is ${SUMMARY_MAX}. Keep summary to one short line and put the detail in message.`
-      );
-    }
-
-    Object.assign(encryption, { summary: params.summary });
+    Object.assign(encryption, { summary: clamp?.summary ?? params.summary });
   }
+
+  const lead = params.action === "record" ? undefined : clamp?.full;
 
   if (params.openProjectPaneIfMissing === true) {
     return loud(
@@ -330,7 +332,7 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
     ),
     Match.when("reply", () =>
       Effect.gen(function* reply() {
-        const message = yield* needMessage(params);
+        const message = yield* needMessage(params, lead);
         const pending = yield* ratking.pending;
 
         const target =
@@ -386,7 +388,7 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
     Match.when("send", () =>
       Effect.gen(function* send() {
         const to = yield* needTo(params);
-        const message = yield* needMessage(params);
+        const message = yield* needMessage(params, lead);
 
         const delivered = yield* ratking.send(to, message, {
           ...encryption,
@@ -408,7 +410,7 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
     Match.when("ask", () =>
       Effect.gen(function* ask() {
         const to = yield* needTo(params);
-        const message = yield* needMessage(params);
+        const message = yield* needMessage(params, lead);
 
         const { delivered, reply } = yield* ratking.ask(
           to,
@@ -452,6 +454,11 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
       })
     ),
     Match.exhaustive,
+    Effect.map((result) =>
+      clamp === undefined || result.isError
+        ? result
+        : { ...result, text: `${result.text}\n${clamp.note}` }
+    ),
     Effect.catchTags({
       AskFailed: (error) =>
         Effect.succeed(

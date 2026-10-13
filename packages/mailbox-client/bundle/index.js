@@ -2728,6 +2728,8 @@ var AgentName = Schema31.String.check(
   Schema31.isPattern(/^(?:[a-z0-9]+(?:-[a-z0-9]+)*\/)?[a-z][a-z0-9_-]{0,31}$/u)
 );
 var SUMMARY_MAX = 280;
+var SUMMARY_HARD_MAX = 400;
+var SUMMARY_WIRE_MAX = SUMMARY_MAX;
 var Kind = Schema31.Literals(["message", "ask", "reply", "data"]);
 var Payload = Schema31.Struct({
   body: Schema31.String,
@@ -2737,7 +2739,7 @@ var Payload = Schema31.Struct({
   label: Schema31.optionalKey(Schema31.String.check(Schema31.isMaxLength(256))),
   replyTo: Schema31.optionalKey(Schema31.String),
   summary: Schema31.optionalKey(
-    Schema31.String.check(Schema31.isMaxLength(SUMMARY_MAX))
+    Schema31.String.check(Schema31.isMaxLength(SUMMARY_HARD_MAX))
   ),
   thread: Schema31.optionalKey(Schema31.String),
   to: Schema31.optionalKey(AgentName)
@@ -3380,7 +3382,9 @@ export {
   PrivateJwk,
   RatKingMailbox,
   ReplayAuthority,
+  SUMMARY_HARD_MAX,
   SUMMARY_MAX,
+  SUMMARY_WIRE_MAX,
   SendOutcomes,
   WebSocketPort,
   authenticateClaims,

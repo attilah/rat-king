@@ -9,7 +9,7 @@ import { runAction } from "../src/tool.ts";
 const Action = Schema.Literals(["send", "ask", "reply", "record"]);
 
 it.effect.prop(
-  "an oversized summary is refused before anything is sent, and a summary at the limit goes out whole",
+  "an oversized summary is trimmed and sent, and a summary at the limit goes out whole",
   [Action, Schema.Int.check(Schema.isBetween({ maximum: 400, minimum: 1 }))],
   ([action, length]) =>
     Effect.gen(function* summaryLimit() {
@@ -70,13 +70,16 @@ it.effect.prop(
         type: "sh.mschf.agentgraph.checkin",
       }).pipe(Effect.provideService(RatKing, service));
 
-      if (length > SUMMARY_MAX) {
-        expect(result.isError).toBe(true);
-        expect(result.text).toBe(
-          `NOT SENT: summary is ${length} characters; the limit is ${SUMMARY_MAX}. Keep summary to one short line and put the detail in message.`
-        );
+      if (action === "record") {
         expect(sent).toEqual([]);
-      } else if (action !== "record") {
+      } else if (length > SUMMARY_MAX) {
+        expect(result.isError).toBe(false);
+        expect(sent).toHaveLength(1);
+        expect(sent[0]).toHaveProperty(
+          ["options", "summary"],
+          `${"s".repeat(SUMMARY_MAX - 1)}…`
+        );
+      } else {
         expect(sent).toHaveLength(1);
         expect(sent[0]).toHaveProperty(["options", "summary"], summary);
       }
