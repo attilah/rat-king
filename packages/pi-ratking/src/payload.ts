@@ -3,6 +3,7 @@ import { Effect, Option, Schema } from "effect";
 import { PayloadJson } from "../../mailbox-client/src/payload.ts";
 import type { KindValue } from "../../mailbox-client/src/payload.ts";
 import { renderRecordBody } from "./agentgraph.ts";
+import { deliveryReason, quietCopy } from "./delivery.ts";
 import { AgentName } from "./name.ts";
 
 export const LexiconRecord = Schema.StructWithRest(
@@ -105,11 +106,6 @@ export const COPY_BODY_MAX = 500;
 export const COPY_NOTE =
   "You are cc'd, so this did not wake you. No action is expected unless it names you; the sender uses to: for whoever must act.";
 
-const quietCopy = (inbound: Inbound) =>
-  inbound.copy === true &&
-  inbound.kind !== "ask" &&
-  inbound.relay === undefined;
-
 const copyBody = (inbound: Inbound) => {
   if (Option.isSome(inbound.summary)) {
     return "(Full text kept in the session view.)";
@@ -142,7 +138,7 @@ export const renderInbound = (tool: string, inbound: Inbound) => {
   });
 
   return [
-    `**${label} from ${sender}** · id ${inbound.id}${thread}${inbound.relay === undefined ? "" : ` · via ${inbound.relay.name}`}`,
+    `**${label} from ${sender}** · id ${inbound.id}${thread}${inbound.relay === undefined ? "" : ` · via ${inbound.relay.name}`} · ${deliveryReason(inbound)}`,
     ...((inbound.ccNames?.length ?? 0) > 0
       ? [`cc: ${(inbound.ccNames ?? []).join(", ")}`]
       : []),
