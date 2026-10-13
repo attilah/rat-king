@@ -1,6 +1,8 @@
 import * as CheckIn from "@rat-king/lexicon/agentgraph.checkin";
+import * as Friction from "@rat-king/lexicon/agentgraph.friction";
 import * as Outcome from "@rat-king/lexicon/agentgraph.outcome";
 import * as Plan from "@rat-king/lexicon/agentgraph.plan";
+import { Turn } from "@rat-king/lexicon/turns";
 import { Effect, Option, Result, Schema } from "effect";
 
 export const AgentGraphRecord = Schema.Union([
@@ -9,7 +11,9 @@ export const AgentGraphRecord = Schema.Union([
   Outcome.Main,
 ]);
 
-export type AgentGraphRecordValue = typeof AgentGraphRecord.Type;
+const OutboundRecord = Schema.Union([AgentGraphRecord, Friction.Main, Turn]);
+
+export type AgentGraphRecordValue = typeof OutboundRecord.Type;
 
 export class InvalidRecord extends Schema.TaggedError<InvalidRecord>()(
   "InvalidRecord",
@@ -22,6 +26,8 @@ const allowedKeys = new Map([
   ["sh.mschf.agentgraph.checkin", Object.keys(CheckIn.Main.schema.fields)],
   ["sh.mschf.agentgraph.plan", Object.keys(Plan.Main.schema.fields)],
   ["sh.mschf.agentgraph.outcome", Object.keys(Outcome.Main.schema.fields)],
+  ["sh.mschf.agentgraph.turn", Object.keys(Turn.schema.fields)],
+  ["sh.mschf.agentgraph.friction", Object.keys(Friction.Main.schema.fields)],
 ]);
 
 export const invalidRecordText = (error: InvalidRecord) =>
@@ -34,8 +40,7 @@ export const validateRecord = Effect.fn("RatKing.validateRecord")(
   ) {
     if (type === undefined || !allowedKeys.has(type)) {
       return yield* new InvalidRecord({
-        reason:
-          "$type: choose sh.mschf.agentgraph.checkin, sh.mschf.agentgraph.plan or sh.mschf.agentgraph.outcome",
+        reason: `$type: choose ${[...allowedKeys.keys()].toSorted().join(", ")}`,
       });
     }
 
@@ -73,7 +78,7 @@ export const validateRecord = Effect.fn("RatKing.validateRecord")(
       });
     }
 
-    return yield* Schema.decodeUnknownEffect(AgentGraphRecord)({
+    return yield* Schema.decodeUnknownEffect(OutboundRecord)({
       $type: type,
       ...object.success,
     }).pipe(
@@ -93,6 +98,14 @@ export const recordSummary = (record: AgentGraphRecordValue) => {
 
     case "sh.mschf.agentgraph.plan": {
       return `plan: ${record.verdict} · ${record.packets.length} packets`;
+    }
+
+    case "sh.mschf.agentgraph.friction": {
+      return `friction: ${record.kind} · ${record.what}`.slice(0, 280);
+    }
+
+    case "sh.mschf.agentgraph.turn": {
+      return `turn: ${record.agent} ${record.state}`;
     }
 
     case "sh.mschf.agentgraph.outcome": {

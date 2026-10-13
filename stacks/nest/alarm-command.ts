@@ -16,6 +16,7 @@ import type { HealthDigest } from "./health.ts";
 import { execute, runnerDrift } from "./ship-command.ts";
 import { FleetError } from "./stage-config.ts";
 import type { StageConfigValue } from "./stage-config.ts";
+import { watchReaderCrashes } from "./turn-crashes.ts";
 
 const xml = (text: string) =>
   text
@@ -98,6 +99,8 @@ export const alarmWorker = Effect.fn("Alarm.worker")(
         reason: "Alarm state directory must be private",
       });
     }
+
+    yield* watchReaderCrashes(config, directory);
 
     const journal = `${directory}/alarms.jsonl`;
     let encoded = "";
@@ -213,6 +216,7 @@ export const alarmWorker = Effect.fn("Alarm.worker")(
       yield* Effect.sleep(Math.max(0, 60_000 - elapsed));
     }
   },
+  Effect.scoped,
   (effect) =>
     effect.pipe(Effect.provide([FetchHttpClient.layer, secretStoreLayer({})]))
 );

@@ -1,0 +1,27 @@
+{
+  "defs": {
+    "main": {
+      "key": "tid",
+      "record": {
+        "properties": {
+          "at": { "format": "datetime", "type": "string" },
+          "graph": { "type": "string", "x-maxCodeUnits": 128 },
+          "id": { "type": "string", "x-maxCodeUnits": 64 },
+          "kind": { "enum": ["manual", "retry", "refusal", "surprise", "cleanup"], "type": "string" },
+          "minutes": { "minimum": 0, "type": "integer" },
+          "project": { "type": "string", "x-maxCodeUnits": 128 },
+          "ref": { "type": "string", "x-maxCodeUnits": 512 },
+          "slice": { "type": "string", "x-maxCodeUnits": 128 },
+          "version": { "enum": ["0.1"], "type": "string" },
+          "what": { "type": "string", "x-maxCodeUnits": 280 }
+        },
+        "required": ["at", "graph", "kind", "project", "slice", "version", "what"],
+        "type": "object",
+        "x-strict": true
+      },
+      "type": "record"
+    }
+  },
+  "id": "sh.mschf.agentgraph.friction",
+  "lexicon": 1
+}
