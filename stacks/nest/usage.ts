@@ -133,6 +133,7 @@ interface Pair {
   delivered: number | undefined;
   deliveriesToday: number;
   ackedToday: number | undefined;
+  recipient: string;
 }
 
 const percentile = (sorted: readonly number[], percent: number) =>
@@ -189,6 +190,7 @@ const foldTraffic = Effect.fn("Usage.foldTraffic")(function* foldTraffic<E, R>(
           ackedToday: undefined,
           delivered: undefined,
           deliveriesToday: 0,
+          recipient: event.recipientDid,
         };
         pairs.set(key, pair);
       }
@@ -216,11 +218,23 @@ const foldTraffic = Effect.fn("Usage.foldTraffic")(function* foldTraffic<E, R>(
   );
   let undelivered = 0;
   let replays = 0;
+  const stranded = new Map<string, number>();
   const latencies: number[] = [];
+  const deliveries: number[] = [];
 
   for (const pair of pairs.values()) {
     if (pair.acceptedToday && pair.delivered === undefined) {
       undelivered += 1;
+      stranded.set(pair.recipient, (stranded.get(pair.recipient) ?? 0) + 1);
+    }
+
+    if (
+      pair.acceptedToday &&
+      pair.accepted !== undefined &&
+      pair.delivered !== undefined &&
+      pair.delivered >= pair.accepted
+    ) {
+      deliveries.push(pair.delivered - pair.accepted);
     }
 
     replays +=
@@ -237,6 +251,7 @@ const foldTraffic = Effect.fn("Usage.foldTraffic")(function* foldTraffic<E, R>(
   }
 
   latencies.sort((a, b) => a - b);
+  deliveries.sort((a, b) => a - b);
 
   return {
     ackLatency: {
@@ -245,9 +260,14 @@ const foldTraffic = Effect.fn("Usage.foldTraffic")(function* foldTraffic<E, R>(
     },
     acked,
     delivered,
+    deliveryLatency: {
+      p50: percentile(deliveries, 0.5),
+      p95: percentile(deliveries, 0.95),
+    },
     replays,
     senders,
     sent,
+    stranded,
     undelivered,
   };
 });
@@ -256,18 +276,32 @@ export const usageWindow = Effect.fn("Usage.window")(function* usageWindow<
   E,
   R,
 >(bounds: WindowBounds, events: Stream.Stream<TrafficEvent, E, R>) {
-  const { ackLatency, acked, delivered, replays, sent, undelivered } =
-    yield* foldTraffic(bounds, events);
+  const {
+    ackLatency,
+    acked,
+    delivered,
+    deliveryLatency,
+    replays,
+    sent,
+    stranded,
+    undelivered,
+  } = yield* foldTraffic(bounds, events);
 
   return {
     ackLatency,
     acked,
     delivered,
+    deliveryLatency,
     end: DateTime.formatIso(DateTime.makeUnsafe(bounds.end)),
     replays,
     sent,
     start: DateTime.formatIso(DateTime.makeUnsafe(bounds.start)),
     undelivered,
+    undeliveredRecipients: [...stranded]
+      .map(([did, count]) => ({ count, did }))
+      .toSorted(
+        (a, b) => b.count - a.count || a.did.localeCompare(b.did, "en")
+      ),
   };
 });
 

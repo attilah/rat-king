@@ -24,6 +24,7 @@ import {
   ShipLimits,
   ShipVerdict,
   shipWindows,
+  SingleRecipient,
 } from "../../../stacks/nest/ship-judge.ts";
 import type {
   JudgeHealth,
@@ -37,13 +38,17 @@ const Small = (maximum: number) =>
 
 const iso = (ms: number) => DateTime.formatIso(DateTime.makeUnsafe(ms));
 
+const recipientDid = (index: number) =>
+  `did:web:fixture.recipient${index % 2}.pi.fleet.invalid`;
+
 const event = (
   messageId: string,
   state: TrafficEvent["state"],
-  time: number
+  time: number,
+  recipient = recipientDid(0)
 ): TrafficEvent => ({
   messageId,
-  recipientDid: "did:web:fixture.recipient.pi.fleet.invalid",
+  recipientDid: recipient,
   recipientSeq: 1,
   senderDid: "did:web:fixture.sender.pi.fleet.invalid",
   seq: 1,
@@ -97,18 +102,30 @@ it.effect.prop(
 const facts = (input: {
   readonly acked: number;
   readonly p95: number | null;
+  readonly recipients?: number;
   readonly sent: number;
   readonly undelivered: number;
-}): WindowFacts => ({
-  ackLatency: { p50: input.p95, p95: input.p95 },
-  acked: input.acked,
-  delivered: Math.max(0, input.sent - input.undelivered),
-  end: "",
-  replays: 0,
-  sent: input.sent,
-  start: "",
-  undelivered: input.undelivered,
-});
+}): WindowFacts => {
+  const spread = Math.min(input.recipients ?? 2, input.undelivered);
+
+  return {
+    ackLatency: { p50: null, p95: null },
+    acked: input.acked,
+    delivered: Math.max(0, input.sent - input.undelivered),
+    deliveryLatency: { p50: input.p95, p95: input.p95 },
+    end: "",
+    replays: 0,
+    sent: input.sent,
+    start: "",
+    undelivered: input.undelivered,
+    undeliveredRecipients: Array.from({ length: spread }, (_, index) => ({
+      count:
+        Math.floor(input.undelivered / spread) +
+        (index < input.undelivered % spread ? 1 : 0),
+      did: recipientDid(index),
+    })),
+  };
+};
 
 const Baseline = Schema.Struct({
   acked: Small(200),
@@ -120,9 +137,8 @@ const Baseline = Schema.Struct({
 const Degradation = Schema.Struct({
   delta: Schema.Int.check(Schema.isBetween({ maximum: 30, minimum: -30 })),
   kind: Schema.Literals([
-    "AckRateDrop",
-    "LatencyRegression",
-    "Undelivered",
+    "DeliveryRateDrop",
+    "DeliveryLatencyRegression",
     "ListenersMissing",
     "HealthStatus",
   ]),
@@ -158,39 +174,25 @@ it.effect.prop(
         ShipLimits.latencyFactor * sample.p95 + ShipLimits.latencySlackMs;
 
       const changed = Match.value(kind).pipe(
-        Match.when("AckRateDrop", () => {
-          const sent = 50 * Math.ceil(sample.sent / 50);
-          const edge = (ShipLimits.ackRateDropPoints * sent) / 100;
+        Match.when("DeliveryRateDrop", () => {
+          const sent = 200 * Math.ceil(sample.sent / 100);
+          const edge = (ShipLimits.deliveryRateDropPoints * sent) / 100;
           const lost = edge + (Math.abs(delta) % 3) - 1;
-          const full = facts({ ...sample, acked: sent, sent });
+          const clean = facts({ ...sample, acked, sent, undelivered: 0 });
 
           return {
-            after: facts({ ...sample, acked: sent - lost, sent }),
-            baseline: full,
+            after: facts({ ...sample, acked, sent, undelivered: lost }),
+            baseline: clean,
             crossed: lost > edge,
             health: okHealth,
           };
         }),
-        Match.when("LatencyRegression", () => ({
+        Match.when("DeliveryLatencyRegression", () => ({
           after: facts({ ...sample, acked, p95: latencyEdge + delta }),
           baseline,
           crossed: delta > 0,
           health: okHealth,
         })),
-        Match.when("Undelivered", () => {
-          const undelivered = Math.max(
-            0,
-            sample.undelivered + ShipLimits.undeliveredSlack + delta
-          );
-
-          return {
-            after: facts({ ...sample, acked, undelivered }),
-            baseline,
-            crossed:
-              undelivered > sample.undelivered + ShipLimits.undeliveredSlack,
-            health: okHealth,
-          };
-        }),
         Match.when("ListenersMissing", () => ({
           after: baseline,
           baseline,
@@ -223,6 +225,105 @@ it.effect.prop(
       expect(verdict.reasons.map((reason) => reason._tag)).toEqual(
         changed.crossed ? [kind] : []
       );
+    })
+);
+
+it.effect(
+  "the land-watch incident passes: unacked mail that was delivered is recipient attention, not mailbox health",
+  () =>
+    Effect.sync(() => {
+      const verdict = judgeShip({
+        after: facts({ acked: 70, p95: 100, sent: 77, undelivered: 0 }),
+        baseline: facts({ acked: 70, p95: 100, sent: 73, undelivered: 1 }),
+        health: okHealth,
+        sha: "d".repeat(40),
+      });
+
+      expect(verdict._tag).toBe("Pass");
+      expect(verdict.reasons).toEqual([]);
+    })
+);
+
+const Attention = Schema.Struct({
+  afterAcked: Small(200),
+  baselineAcked: Small(200),
+  sent: Schema.Int.check(Schema.isBetween({ maximum: 200, minimum: 20 })),
+});
+
+it.effect.prop(
+  "acks never decide a verdict when delivery is unchanged",
+  [Attention],
+  ([{ afterAcked, baselineAcked, sent }]) =>
+    Effect.sync(() => {
+      const verdict = judgeShip({
+        after: facts({
+          acked: Math.min(afterAcked, sent),
+          p95: 100,
+          sent,
+          undelivered: 0,
+        }),
+        baseline: facts({
+          acked: Math.min(baselineAcked, sent),
+          p95: 100,
+          sent,
+          undelivered: 0,
+        }),
+        health: okHealth,
+        sha: "d".repeat(40),
+      });
+
+      expect(verdict._tag).toBe("Pass");
+    })
+);
+
+const Stranded = Schema.Struct({
+  excess: Schema.Int.check(Schema.isBetween({ maximum: 10, minimum: 1 })),
+  recipients: Schema.Int.check(Schema.isBetween({ maximum: 3, minimum: 1 })),
+  sent: Schema.Int.check(Schema.isBetween({ maximum: 40, minimum: 20 })),
+});
+
+it.effect.prop(
+  "a delivery drop over the limit fails only with enough undelivered mail across enough recipients, otherwise it is Unknown",
+  [Stranded],
+  ([{ excess, recipients, sent }]) =>
+    Effect.sync(() => {
+      const spread = Math.min(recipients, excess);
+
+      const verdict = judgeShip({
+        after: facts({
+          acked: 0,
+          p95: 100,
+          recipients: spread,
+          sent,
+          undelivered: excess,
+        }),
+        baseline: facts({ acked: sent, p95: 100, sent, undelivered: 0 }),
+        health: okHealth,
+        sha: "e".repeat(40),
+      });
+
+      const expected = Match.value({ excess, spread }).pipe(
+        Match.when(
+          ({ excess: count }) => count < ShipLimits.evidenceFloor,
+          () => ({ tag: "Unknown", why: "ThinEvidence" })
+        ),
+        Match.when(
+          ({ spread: count }) => count < ShipLimits.distinctRecipients,
+          () => ({ tag: "Unknown", why: "SingleRecipient" })
+        ),
+        Match.orElse(() => ({ tag: "Fail", why: "DeliveryRateDrop" }))
+      );
+
+      expect(verdict._tag).toBe(expected.tag);
+      expect(verdict.reasons.map((reason) => reason._tag)).toEqual([
+        expected.why,
+      ]);
+
+      if (expected.why === "SingleRecipient") {
+        expect(verdict.reasons).toEqual([
+          SingleRecipient.make({ count: excess, did: recipientDid(0) }),
+        ]);
+      }
     })
 );
 
@@ -279,7 +380,7 @@ it.effect.prop(
 const shippedAt = Date.parse("2026-10-13T20:00:00.000Z");
 
 const trafficFor = (
-  mode: "good" | "dropThirdAck" | "slowDelivery",
+  mode: "good" | "dropThirdAck" | "dropThirdDelivery" | "slowDelivery",
   perWindow: number
 ) => {
   const windows = shipWindows(shippedAt, ShipLimits.windowMinutes);
@@ -293,12 +394,15 @@ const trafficFor = (
       const id = `${tag}-${index}`;
       const at = start + index * gap;
       const delay = bad && mode === "slowDelivery" ? 1000 : 0;
-      const dropped = bad && mode === "dropThirdAck" && index % 3 === 2;
+      const third = bad && index % 3 === 2;
+      const stranded = third && mode === "dropThirdDelivery";
+      const unacked = stranded || (third && mode === "dropThirdAck");
+      const to = recipientDid(index);
 
       return [
-        event(id, "accepted", at),
-        event(id, "delivered", at + 20 + delay),
-        ...(dropped ? [] : [event(id, "acked", at + 40 + delay)]),
+        event(id, "accepted", at, to),
+        ...(stranded ? [] : [event(id, "delivered", at + 20 + delay, to)]),
+        ...(unacked ? [] : [event(id, "acked", at + 40 + delay, to)]),
       ];
     }).flat()
   );
@@ -324,9 +428,14 @@ const runCommand = (args: readonly string[]) =>
   });
 
 it.effect.prop(
-  "planted bad builds fail with their own tag and a good ship passes through the CLI contract",
+  "planted delivery breaks fail with their own tag, while a good ship and an ack-only break pass through the CLI contract",
   [
-    Schema.Literals(["good", "dropThirdAck", "slowDelivery"]),
+    Schema.Literals([
+      "good",
+      "dropThirdAck",
+      "dropThirdDelivery",
+      "slowDelivery",
+    ]),
     Schema.Int.check(Schema.isBetween({ maximum: 80, minimum: 20 })),
   ],
   ([mode, perWindow]) =>
@@ -369,10 +478,14 @@ it.effect.prop(
 
       const expected = Match.value(mode).pipe(
         Match.when("good", () => ({ code: 0, tags: noTags })),
-        Match.when("dropThirdAck", () => ({ code: 1, tags: ["AckRateDrop"] })),
+        Match.when("dropThirdAck", () => ({ code: 0, tags: noTags })),
+        Match.when("dropThirdDelivery", () => ({
+          code: 1,
+          tags: ["DeliveryRateDrop"],
+        })),
         Match.when("slowDelivery", () => ({
           code: 1,
-          tags: ["LatencyRegression"],
+          tags: ["DeliveryLatencyRegression"],
         })),
         Match.exhaustive
       );
@@ -401,6 +514,7 @@ it.effect.prop(
       "unknownFlag",
       "badRange",
       "zeroWindow",
+      "lateBaseline",
     ]),
   ],
   ([mutation]) =>
@@ -446,6 +560,10 @@ it.effect.prop(
           mutation === "badTime" ? "2026-10-13 20:00" : iso(shippedAt),
         ],
       ]);
+
+      if (mutation === "lateBaseline") {
+        flags.set("--baseline-end", iso(shippedAt + 1000));
+      }
 
       if (mutation === "zeroWindow") {
         flags.set("--window-minutes", "0");
@@ -702,4 +820,75 @@ it.effect.prop(
       );
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   { arbitrary: { runs: 6 } }
+);
+
+it.effect.prop(
+  "a wrong revert judged against the incident baseline still fails, while its own recent baseline hides the drop",
+  [Schema.Int.check(Schema.isBetween({ maximum: 60, minimum: 24 }))],
+  ([perMinute]) =>
+    Effect.gen(function* wrongRevert() {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const directory = yield* fs.makeTempDirectoryScoped();
+      const traffic = path.join(directory, "traffic.jsonl");
+      const health = path.join(directory, "health.json");
+      const incident = shippedAt;
+      const revert = incident + 5 * 60_000;
+      const gap = Math.floor(60_000 / perMinute);
+
+      const lines = Array.from({ length: 12 * perMinute }, (_, index) => {
+        const at = incident - 3 * 60_000 + index * gap;
+        const id = `m-${index}`;
+        const dropped = at >= incident && index % 3 === 2;
+
+        return [
+          event(id, "accepted", at, recipientDid(index)),
+          ...(dropped
+            ? []
+            : [
+                event(id, "delivered", at + 20, recipientDid(index)),
+                event(id, "acked", at + 40, recipientDid(index)),
+              ]),
+        ];
+      }).flat();
+
+      yield* fs.writeFileString(
+        traffic,
+        lines.map((line) => JSON.stringify(line)).join("\n")
+      );
+
+      yield* fs.writeFileString(health, JSON.stringify(okHealth));
+      yield* TestClock.setTime(revert + 10 * 60_000);
+
+      const judge = (extra: readonly string[]) =>
+        runCommand([
+          "--sha",
+          "f".repeat(40),
+          "--shipped-at",
+          iso(revert),
+          "--window-minutes",
+          "3",
+          "--input",
+          traffic,
+          "--health",
+          health,
+          ...extra,
+        ]);
+
+      const anchored = yield* judge(["--baseline-end", iso(incident)]);
+      const recent = yield* judge([]);
+
+      const decode = Schema.decodeEffect(Schema.fromJsonString(ShipVerdict));
+      const failed = yield* decode(anchored.output.join(""));
+      const hidden = yield* decode(recent.output.join(""));
+
+      expect(anchored.code).toBe(1);
+      expect(failed.reasons.map((reason) => reason._tag)).toEqual([
+        "DeliveryRateDrop",
+      ]);
+      expect(hidden.reasons.map((reason) => reason._tag)).not.toContain(
+        "DeliveryRateDrop"
+      );
+    }).pipe(Effect.provide(NodeServices.layer)),
+  { arbitrary: { runs: 15 } }
 );
