@@ -3,7 +3,7 @@ import { truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { Option, Schema } from "effect";
 
 import { compactRecord } from "./agentgraph.ts";
-import { Kind, RelaySource, replyHint } from "./payload.ts";
+import { COPY_NOTE, Kind, RelaySource, replyHint } from "./payload.ts";
 import type { Inbound } from "./payload.ts";
 import {
   FRAME_MIN,
@@ -12,11 +12,13 @@ import {
   frame,
   oneLine,
   paragraphs,
-  roleColour,
-  roleOf,
+  party,
+  ratKingTitle,
+  noLabels,
   short,
+  terminalStyles,
 } from "./tui.ts";
-import type { Paint } from "./tui.ts";
+import type { Labels, Paint } from "./tui.ts";
 
 const Details = Schema.Struct({
   body: Schema.String,
@@ -27,6 +29,7 @@ const Details = Schema.Struct({
   id: Schema.String,
   kind: Kind,
   label: Schema.optional(Schema.String),
+  reason: Schema.optional(Schema.String),
   relay: Schema.optional(RelaySource),
   replyTo: Schema.optional(Schema.String),
   sentBy: Schema.optional(Schema.String),
@@ -48,35 +51,38 @@ const border = (value: InboundView) => {
   return value.sentBy === undefined ? "borderMuted" : "dim";
 };
 
-const sender = (theme: Paint, value: InboundView, withName: boolean) => {
+const sender = (
+  theme: Paint,
+  value: InboundView,
+  _withName: boolean,
+  labels: Labels = noLabels
+) => {
   const mark = value.verified
     ? theme.fg("success", "✓")
     : theme.fg("warning", "⚠");
 
-  const colour = value.verified
-    ? roleColour(roleOf(value.from, value.label))
-    : "warning";
-
-  const title =
-    value.sentBy === undefined
-      ? theme.fg(colour, theme.bold(oneLine(value.label ?? value.from)))
-      : theme.fg("muted", `📤 to ${oneLine(value.to ?? "unknown")}`);
-
   const name =
-    withName && value.label !== undefined && value.sentBy === undefined
-      ? theme.fg("dim", ` ${oneLine(value.from)}`)
-      : "";
+    value.sentBy === undefined ? value.from : (value.to ?? "unknown");
 
-  return `${mark} ${title}${name}`;
+  const label =
+    value.sentBy === undefined ? (value.label ?? labels(name)) : labels(name);
+
+  const title = `${value.sentBy === undefined ? "" : "📤 to "}${party(theme, name, label)}`;
+  const action = value.sentBy === undefined ? value.kind : "sent";
+
+  return `${mark} ${ratKingTitle(theme, action)} ${title}`;
 };
 
 const senderLine = (
   theme: Paint,
   value: InboundView,
   withName: boolean,
-  width: number
+  width: number,
+  labels: Labels = noLabels
 ) => {
-  const [mark = "", ...rest] = sender(theme, value, withName).split(" ");
+  const [mark = "", ...rest] = sender(theme, value, withName, labels).split(
+    " "
+  );
 
   return width < 3
     ? mark
@@ -89,7 +95,16 @@ const tag = (theme: Paint, value: InboundView) => {
   }
 
   const parts = [
-    ...(value.cc ? [theme.fg("muted", "cc")] : []),
+    ...(value.cc
+      ? [
+          theme.fg(
+            "dim",
+            value.reason?.startsWith("woken:") === true
+              ? "cc · woken"
+              : "cc · quiet"
+          ),
+        ]
+      : []),
     ...(value.kind === "ask" ? [theme.fg("warning", "ask")] : []),
     ...(value.kind === "reply" ? [theme.fg("muted", "reply")] : []),
   ];
@@ -97,23 +112,32 @@ const tag = (theme: Paint, value: InboundView) => {
   return parts.length === 0 ? undefined : parts.join(theme.fg("dim", " · "));
 };
 
-const ccText = (value: InboundView) =>
+const ccText = (value: InboundView, theme: Paint, labels: Labels) =>
   (value.ccNames?.length ?? 0) > 0
-    ? `cc ${(value.ccNames ?? []).map(oneLine).join(", ")}`
+    ? `cc ${(value.ccNames ?? []).map((name) => party(theme, name, labels(name))).join(", ")}`
     : undefined;
 
-const meta = (theme: Paint, value: InboundView, hint: string | undefined) =>
+const meta = (
+  theme: Paint,
+  value: InboundView,
+  hint: string | undefined,
+  labels: Labels
+) =>
   [
     ...(value.verified ? [] : [theme.fg("warning", "unverified")]),
     ...(value.sentBy === undefined
       ? []
-      : [theme.fg("muted", `sent by ${oneLine(value.sentBy)}`)]),
+      : [
+          `${theme.fg("muted", "sent by")} ${party(theme, value.sentBy, labels(value.sentBy))}`,
+        ]),
     ...(value.relay === undefined
       ? []
-      : [theme.fg("muted", `via ${oneLine(value.relay.name)}`)]),
-    ...(ccText(value) === undefined
+      : [
+          `${theme.fg("muted", "via")} ${party(theme, value.relay.name, labels(value.relay.name))}`,
+        ]),
+    ...(ccText(value, theme, labels) === undefined
       ? []
-      : [theme.fg("muted", ccText(value) ?? "")]),
+      : [ccText(value, theme, labels) ?? ""]),
     ...(value.replyTo === undefined
       ? []
       : [theme.fg("muted", `↩ ${short(value.replyTo)}`)]),
@@ -142,10 +166,15 @@ const preview = (theme: Paint, value: InboundView, width: number) => [
     .map((line) => theme.fg("customMessageText", line)),
 ];
 
-const collapsed = (theme: Paint, value: InboundView, width: number) => {
+const collapsed = (
+  theme: Paint,
+  value: InboundView,
+  width: number,
+  labels: Labels
+) => {
   if (width < FRAME_MIN) {
     return [
-      senderLine(theme, value, false, width),
+      senderLine(theme, value, false, width, labels),
       ...clip(theme, preview(theme, value, width), COMPACT_LINES - 1, width),
     ].map((line) => truncateToWidth(line, width, "…"));
   }
@@ -156,9 +185,9 @@ const collapsed = (theme: Paint, value: InboundView, width: number) => {
   const room = COMPACT_LINES - 2;
 
   return [
-    box.top(sender(theme, value, false), tag(theme, value)),
+    box.top(sender(theme, value, false, labels), tag(theme, value)),
     ...clip(theme, lines, room, box.inner).map(box.row),
-    box.bottom(meta(theme, value, "ctrl+o expands")),
+    box.bottom(meta(theme, value, "ctrl+o expands", labels)),
   ];
 };
 
@@ -166,7 +195,8 @@ const expanded = (
   theme: Paint,
   tool: string,
   value: InboundView,
-  width: number
+  width: number,
+  labels: Labels
 ) => {
   const box = frame(theme, width, border(value));
 
@@ -185,15 +215,22 @@ const expanded = (
     ...(value.relay === undefined
       ? []
       : dim(
-          `via ${oneLine(value.relay.name)}${value.relay.encrypted ? " · encrypted" : ""}`
+          `via ${party(theme, value.relay.name, labels(value.relay.name))}${value.relay.encrypted ? " · encrypted" : ""}`
         )),
     ...(value.sentBy === undefined
       ? []
-      : dim(`sent by ${oneLine(value.sentBy)}`)),
+      : dim(`sent by ${party(theme, value.sentBy, labels(value.sentBy))}`)),
     ...(value.to === undefined || value.sentBy !== undefined
       ? []
-      : dim(`to ${oneLine(value.to)}`)),
-    ...(ccText(value) === undefined ? [] : dim(ccText(value) ?? "")),
+      : dim(`to ${party(theme, value.to, labels(value.to))}`)),
+    ...(ccText(value, theme, labels) === undefined
+      ? []
+      : dim(ccText(value, theme, labels) ?? "")),
+    ...(value.reason === undefined ? [] : dim(value.reason)),
+    ...(value.cc &&
+    (value.reason === "quiet: cc" || value.reason === "held: cc digest")
+      ? dim(COPY_NOTE)
+      : []),
     ...(value.replyTo === undefined
       ? []
       : dim(`↩ in reply to ${oneLine(value.replyTo)}`)),
@@ -247,7 +284,7 @@ const expanded = (
 
   if (width < FRAME_MIN) {
     return [
-      senderLine(theme, value, true, width),
+      senderLine(theme, value, true, width, labels),
       ...summary,
       ...body,
       "",
@@ -257,7 +294,7 @@ const expanded = (
   }
 
   return [
-    box.top(sender(theme, value, true), tag(theme, value)),
+    box.top(sender(theme, value, true, labels), tag(theme, value)),
     ...[...summary, ...body, "", ...details].map(box.row),
     box.rule(),
     ...hints.map(box.row),
@@ -267,6 +304,7 @@ const expanded = (
 
 export const inboundLines = (input: {
   readonly expanded: boolean;
+  readonly labels?: Labels;
   readonly theme: Paint;
   readonly tool: string;
   readonly value: InboundView;
@@ -277,13 +315,25 @@ export const inboundLines = (input: {
   }
 
   return input.expanded
-    ? expanded(input.theme, input.tool, input.value, input.width)
-    : collapsed(input.theme, input.value, input.width);
+    ? expanded(
+        input.theme,
+        input.tool,
+        input.value,
+        input.width,
+        input.labels ?? noLabels
+      )
+    : collapsed(
+        input.theme,
+        input.value,
+        input.width,
+        input.labels ?? noLabels
+      );
 };
 
 export const messageView = (input: {
   readonly details: unknown;
   readonly expanded: boolean;
+  readonly labels?: Labels;
   readonly theme: Paint;
   readonly tool: string;
 }): Component | undefined =>
@@ -298,7 +348,9 @@ export const messageView = (input: {
         render(width: number) {
           if (cache?.width !== width) {
             cache = {
-              lines: [...inboundLines({ ...input, value, width })],
+              lines: inboundLines({ ...input, value, width }).map(
+                terminalStyles
+              ),
               width,
             };
           }

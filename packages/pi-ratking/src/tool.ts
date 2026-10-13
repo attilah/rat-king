@@ -117,7 +117,7 @@ export const notDeliveredText = (error: NotDelivered) =>
     Match.when("Partial", () => `PARTIAL DELIVERY: ${error.reason}`),
     Match.orElse(
       () =>
-        `NOT DELIVERED: ${error.code}. ${error.reason}. No intercom fallback; nothing reached the recipient.`
+        `NOT DELIVERED: ${error.code}. ${error.reason}. No fallback; nothing reached the recipient.`
     )
   );
 
@@ -164,7 +164,7 @@ export const readerFooter = (reader: ReaderState) =>
     ? undefined
     : `Rat King reader ${readerText(reader)}`;
 
-export const statusText = (tool: string, status: Status) => {
+export const statusText = (_tool: string, status: Status) => {
   const self = Option.match(status.self, {
     onNone: () => "no identity yet",
     onSome: ({ did, name }) => `${name} (${did})`,
@@ -184,7 +184,7 @@ export const statusText = (tool: string, status: Status) => {
           }
         )}`;
 
-  return `Rat King (${tool}): ${self} · reader ${reader}${quarantine} · mailbox ${status.endpoint}`;
+  return `🐀 Rat King status: ${self} · reader ${reader}${quarantine} · mailbox ${status.endpoint}`;
 };
 
 const withAttachments = (params: ToolParamsValue) =>

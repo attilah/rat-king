@@ -438,7 +438,7 @@ it.live.prop(
 
         expect(refused.code).toBe("Retired");
         expect(notDeliveredText(refused)).toBe(
-          `NOT DELIVERED: Retired. ${line}. No intercom fallback; nothing reached the recipient.`
+          `NOT DELIVERED: Retired. ${line}. No fallback; nothing reached the recipient.`
         );
         expect(sends).toBe(1);
       }).pipe(Effect.provide(harness(state, http)));

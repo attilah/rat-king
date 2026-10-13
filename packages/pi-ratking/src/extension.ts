@@ -32,6 +32,7 @@ import { paneLabel } from "./herdr.ts";
 import type { SessionFacts } from "./identity.ts";
 import { issuerLayer } from "./issuer.ts";
 import { messageView } from "./message-view.ts";
+import { digestView, recordView } from "./notice-view.ts";
 import { LexiconRecord, renderInbound } from "./payload.ts";
 import type { Inbound } from "./payload.ts";
 import { DIGEST_MESSAGE, inbox, MAIL_MESSAGE, shownIds } from "./pending.ts";
@@ -51,6 +52,7 @@ import {
   ToolParams,
 } from "./tool.ts";
 import type { ToolText } from "./tool.ts";
+import type { Labels } from "./tui.ts";
 
 export const SEND_EVENT = "ratking/send";
 
@@ -106,7 +108,12 @@ export const digestLine = (inbound: Inbound) => {
       : inbound.body
   );
 
-  return `- ${inbound.from} · id ${inbound.id} · ${gist.replaceAll("\n", " ")}`;
+  const sender = Option.match(inbound.label, {
+    onNone: () => inbound.from,
+    onSome: (label) => `${label} (${inbound.from})`,
+  });
+
+  return `- ${sender} · id ${inbound.id} · ${gist.replaceAll("\n", " ")}`;
 };
 
 export const renderDigest = (tool: string, mails: readonly PendingMail[]) =>
@@ -522,14 +529,55 @@ export const ratkingExtension = (options: ExtensionOptions) =>
   async function piRatking(pi: PiHost) {
     const tool = await Effect.runPromise(options.tool);
 
+    const knownLabels = new Map<string, string>();
+    let ownName: string | undefined;
+    let ownLabel: () => Option.Option<string> = Option.none;
+
+    const labels: Labels = (name) =>
+      name === ownName
+        ? Option.getOrUndefined(ownLabel())
+        : knownLabels.get(name);
+
     pi.registerMessageRenderer(
       "ratking_message",
       (message, renderOptions, theme) =>
         messageView({
           details: message.details,
           expanded: renderOptions.expanded,
+          labels,
           theme,
           tool,
+        })
+    );
+
+    pi.registerMessageRenderer(
+      DIGEST_MESSAGE,
+      (message, renderOptions, theme) =>
+        digestView({
+          content: Schema.is(Schema.String)(message.content)
+            ? message.content
+            : message.content
+                .flatMap((part) => (part.type === "text" ? [part.text] : []))
+                .join("\n"),
+          details: message.details,
+          expanded: renderOptions.expanded,
+          labels,
+          theme,
+        })
+    );
+    pi.registerMessageRenderer(
+      "ratking_record_notice",
+      (message, renderOptions, theme) =>
+        recordView({
+          content: Schema.is(Schema.String)(message.content)
+            ? message.content
+            : message.content
+                .flatMap((part) => (part.type === "text" ? [part.text] : []))
+                .join("\n"),
+          details: message.details,
+          expanded: renderOptions.expanded,
+          labels,
+          theme,
         })
     );
 
@@ -542,7 +590,10 @@ export const ratkingExtension = (options: ExtensionOptions) =>
           {
             content: renderDigest(tool, mails),
             customType: DIGEST_MESSAGE,
-            details: digestDetails(mails),
+            details: {
+              ...digestDetails(mails),
+              messages: mails.map((held) => held.details),
+            },
             display: true,
           },
           { deliverAs: "followUp", triggerTurn: true }
@@ -589,6 +640,14 @@ export const ratkingExtension = (options: ExtensionOptions) =>
           acknowledgments.set(inbound.id, ack);
         }
 
+        if (
+          !("record" in inbound) &&
+          inbound.verified &&
+          Option.isSome(inbound.label)
+        ) {
+          knownLabels.set(inbound.from, inbound.label.value);
+        }
+
         if ("record" in inbound) {
           pi.events.emit(RECORD_EVENT, {
             did: inbound.did,
@@ -630,7 +689,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
                 {
                   content: notice,
                   customType: "ratking_record_notice",
-                  details: { id: inbound.id },
+                  details: { from: inbound.from, id: inbound.id },
                   display: true,
                 },
                 { deliverAs: "followUp", triggerTurn: false }
@@ -665,7 +724,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
             {
               content: notice,
               customType: "ratking_record_notice",
-              details: { id: inbound.id },
+              details: inboundDetails(inbound, settled),
               display: true,
             },
             { deliverAs: "followUp", triggerTurn: false }
@@ -741,6 +800,10 @@ export const ratkingExtension = (options: ExtensionOptions) =>
               yield* Schema.decodeUnknownEffect(ToolParams)(params);
 
             const settings = yield* Settings;
+            const status = yield* RatKing.use((ratking) => ratking.status);
+            ownName = Option.getOrUndefined(
+              status.self.pipe(Option.map((self) => self.name))
+            );
 
             return yield* runAction(tool, settings.askTimeoutMs, decoded);
           }).pipe(
@@ -772,7 +835,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
       name: tool,
       parameters,
       promptSnippet: promptSnippet(tool),
-      renderCall: (args, theme) => callView(tool, args, theme),
+      renderCall: (args, theme) => callView(tool, args, theme, labels),
       renderResult: (result, { expanded, isPartial }, theme, context) =>
         resultView(
           {
@@ -785,7 +848,8 @@ export const ratkingExtension = (options: ExtensionOptions) =>
               .flatMap((part) => (part.type === "text" ? [part.text] : []))
               .join("\n"),
           },
-          theme
+          theme,
+          labels
         ),
     });
 
@@ -908,6 +972,10 @@ export const ratkingExtension = (options: ExtensionOptions) =>
       const collected = await Effect.runPromise(
         options.facts(start.session, start.sessionName, start.interactive)
       );
+
+      knownLabels.clear();
+      ownName = undefined;
+      ownLabel = collected.label ?? (() => collected.pane);
 
       const facts: SessionFacts = {
         ...collected,
