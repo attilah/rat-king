@@ -86,7 +86,7 @@ export const replyHint = (tool: string, inbound: Inbound) =>
 
 const renderSent = (inbound: Inbound, by: string) =>
   [
-    `**Rat King message sent by ${by}** · to ${inbound.to ?? "unknown"} · id ${inbound.id}${Option.match(
+    `**🐀 sent by ${by}** · to ${inbound.to ?? "unknown"} · id ${inbound.id}${Option.match(
       inbound.replyTo,
       { onNone: () => "", onSome: (id) => ` · in reply to ${id}` }
     )}`,
@@ -132,7 +132,7 @@ export const renderInbound = (tool: string, inbound: Inbound) => {
     onSome: (label) => `${label} (${name})`,
   });
 
-  const label = inbound.cc ? "Rat King CC" : "Rat King message";
+  const label = inbound.cc ? "🐀 cc" : "🐀";
 
   const thread = Option.match(inbound.replyTo, {
     onNone: () => "",

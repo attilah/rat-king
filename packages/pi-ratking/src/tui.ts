@@ -81,7 +81,7 @@ export const ratKingTitle = (
   action: string,
   colour: ThemeColor = "accent"
 ) =>
-  `${theme.fg("toolTitle", theme.bold("🐀 Rat King"))} ${theme.fg(colour, oneLine(action))}`;
+  `${theme.fg("toolTitle", theme.bold("🐀"))} ${theme.fg(colour, oneLine(action))}`;
 
 export const short = (id: string) => oneLine(id).slice(0, 8);
 

@@ -118,7 +118,7 @@ export const digestLine = (inbound: Inbound) => {
 
 export const renderDigest = (tool: string, mails: readonly PendingMail[]) =>
   [
-    `**Rat King cc digest** · ${mails.length} cc'd since the last digest, newest first`,
+    `**🐀 cc digest** · ${mails.length} cc'd since the last digest, newest first`,
     DIGEST_REASON,
     "",
     ...mails.map((mail) => mail.line ?? `- id ${mail.id}`),
@@ -612,15 +612,18 @@ export const ratkingExtension = (options: ExtensionOptions) =>
       },
     });
 
-    pi.onMessageShown?.((id) => {
-      mail.shown(id);
-
+    const consume = (id: string) => {
       const ack = acknowledgments.get(id);
 
       if (Option.isSome(runtime) && ack !== undefined) {
         acknowledgments.delete(id);
         void runtime.value.runPromiseExit(ack);
       }
+    };
+
+    pi.onMessageShown?.((id) => {
+      mail.shown(id);
+      consume(id);
     });
 
     const digestTicks = Clock.currentTimeMillis.pipe(
@@ -684,7 +687,9 @@ export const ratkingExtension = (options: ExtensionOptions) =>
           } else {
             const notice = recordNotice({ ...inbound, body }, settled);
 
-            if (notice !== undefined) {
+            if (notice === undefined) {
+              consume(inbound.id);
+            } else {
               pi.sendMessage(
                 {
                   content: notice,
@@ -742,6 +747,8 @@ export const ratkingExtension = (options: ExtensionOptions) =>
             },
             deliveryMode(inbound)
           );
+        } else if (notice === undefined) {
+          consume(inbound.id);
         }
       });
 
@@ -831,7 +838,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
 
         return result;
       },
-      label: "Rat King",
+      label: "🐀",
       name: tool,
       parameters,
       promptSnippet: promptSnippet(tool),

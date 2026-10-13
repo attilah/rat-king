@@ -299,6 +299,8 @@ export const openRelay = <E>(config: RelaySettingValue, ports: RelayPorts<E>) =>
             }
           })
         ),
+      closed: (id: string) =>
+        Effect.sync(() => entries.get(id)?.state === "handled"),
       failed: (id: string) =>
         mutex.withPermit(
           Effect.gen(function* failed() {
