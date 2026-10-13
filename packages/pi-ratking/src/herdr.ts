@@ -1,6 +1,5 @@
+import { runCommand } from "@rat-king/ratking-client/process";
 import { Effect, Option, Schema } from "effect";
-
-import { runCommand } from "./process.ts";
 
 const PaneInfo = Schema.Struct({
   result: Schema.Struct({ pane: Schema.Struct({ label: Schema.String }) }),

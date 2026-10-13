@@ -1,4 +1,6 @@
 import { it } from "@effect/vitest";
+import { attentionReader } from "@rat-king/ratking-client/attention";
+import { resolveAttentionLevers } from "@rat-king/ratking-client/config";
 import { ConfigProvider, Effect, Result, Schema } from "effect";
 import { expect } from "vitest";
 
@@ -6,8 +8,6 @@ import {
   defaultPreferences,
   defaultStatus,
 } from "../../mailbox-client/src/attention.ts";
-import { attentionReader } from "../src/attention.ts";
-import { resolveAttentionLevers } from "../src/config.ts";
 import { inbox } from "../src/pending.ts";
 
 const Points = Schema.Int.check(Schema.isBetween({ maximum: 999, minimum: 1 }));

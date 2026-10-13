@@ -2,12 +2,7 @@
 import { NodeServices } from "@effect/platform-node";
 import { it } from "@effect/vitest";
 import * as Defs from "@rat-king/lexicon/defs";
-import { Effect, FileSystem, Option, Predicate, Schema } from "effect";
-import { HttpClient, HttpClientResponse } from "effect/http";
-import { expect } from "vitest";
-
-import { document, identity } from "../../mailbox-client/test/identity.ts";
-import { attend, formatReason } from "../src/attend.ts";
+import { attend, formatReason } from "@rat-king/ratking-client/attend";
 import {
   DeliveryReason,
   DIGEST_REASON,
@@ -15,18 +10,23 @@ import {
   Recipients,
   recipientLevels,
   recipientLines,
-} from "../src/delivery.ts";
-import { Directory } from "../src/directory.ts";
+} from "@rat-king/ratking-client/delivery";
+import { Directory } from "@rat-king/ratking-client/directory";
+import { Kind, renderInbound } from "@rat-king/ratking-client/payload";
+import type { Inbound } from "@rat-king/ratking-client/payload";
+import { RatKing } from "@rat-king/ratking-client/ratking";
+import { Effect, FileSystem, Option, Predicate, Schema } from "effect";
+import { HttpClient, HttpClientResponse } from "effect/http";
+import { expect } from "vitest";
+
+import { document, identity } from "../../mailbox-client/test/identity.ts";
 import {
   digestDetails,
   inboundDetails,
   renderDigest,
 } from "../src/extension.ts";
-import { Kind, renderInbound } from "../src/payload.ts";
-import type { Inbound } from "../src/payload.ts";
 import { applyDelivery, verdictToHold } from "../src/pending.ts";
 import type { Hold } from "../src/pending.ts";
-import { RatKing } from "../src/ratking.ts";
 import { runAction } from "../src/tool.ts";
 import type { ToolParamsValue } from "../src/tool.ts";
 import { harness } from "./harness.ts";

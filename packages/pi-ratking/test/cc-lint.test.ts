@@ -1,8 +1,8 @@
 import { it } from "@effect/vitest";
+import { ccLint, ccRefusalPrompt } from "@rat-king/ratking-client/cc-lint";
 import { Effect, Option, Schema } from "effect";
 import { expect } from "vitest";
 
-import { ccLint, ccRefusalPrompt } from "../src/cc-lint.ts";
 import { toolCall, ToolParams } from "../src/tool.ts";
 
 const Segment = Schema.String.check(Schema.isPattern(/^[a-z][a-z0-9]{1,7}$/u));

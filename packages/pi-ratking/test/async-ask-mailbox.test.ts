@@ -3,6 +3,13 @@ import { it } from "@effect/vitest";
 import * as Defs from "@rat-king/lexicon/defs";
 import * as List from "@rat-king/lexicon/mailbox.list";
 import { ownIdentity, prepare } from "@rat-king/mailbox-client";
+import { attend, formatReason } from "@rat-king/ratking-client/attend";
+import type { Arrival } from "@rat-king/ratking-client/attend";
+import { Directory } from "@rat-king/ratking-client/directory";
+import type { Resolved } from "@rat-king/ratking-client/directory";
+import { PayloadJson, renderInbound } from "@rat-king/ratking-client/payload";
+import type { Inbound } from "@rat-king/ratking-client/payload";
+import { RatKing, ReaderState } from "@rat-king/ratking-client/ratking";
 import {
   Clock,
   DateTime,
@@ -20,16 +27,9 @@ import { expect } from "vitest";
 
 import { WebSocketPort } from "../../mailbox-client/src/watch.ts";
 import { document, identity } from "../../mailbox-client/test/identity.ts";
-import { attend, formatReason } from "../src/attend.ts";
-import type { Arrival } from "../src/attend.ts";
-import { Directory } from "../src/directory.ts";
-import type { Resolved } from "../src/directory.ts";
 import { injects, inboundDetails } from "../src/extension.ts";
-import { PayloadJson, renderInbound } from "../src/payload.ts";
-import type { Inbound } from "../src/payload.ts";
 import { applyDelivery, verdictToHold } from "../src/pending.ts";
 import type { Hold } from "../src/pending.ts";
-import { RatKing, ReaderState } from "../src/ratking.ts";
 import { runAction } from "../src/tool.ts";
 import { harness } from "./harness.ts";
 

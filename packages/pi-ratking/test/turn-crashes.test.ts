@@ -1,4 +1,5 @@
 import { it } from "@effect/vitest";
+import type { ReaderHeartbeatValue } from "@rat-king/ratking-client/reader-health";
 import { Arbitrary, DateTime, Effect, Schema } from "effect";
 import { expect } from "vitest";
 
@@ -9,7 +10,6 @@ import type {
   CrashJournalValue,
   CrashPorts,
 } from "../../../stacks/nest/turn-crashes.ts";
-import type { ReaderHeartbeatValue } from "../src/reader-health.ts";
 
 const Case = Schema.Struct({
   acquiring: Schema.Boolean,

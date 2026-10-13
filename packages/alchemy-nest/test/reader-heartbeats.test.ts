@@ -5,7 +5,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { expect } from "vitest";
 
 import { readHeartbeats } from "../../../stacks/nest/alarm-collector.ts";
-import { HeartbeatJson } from "../../pi-ratking/src/reader-health.ts";
+import { HeartbeatJson } from "../../ratking-client/src/reader-health.ts";
 
 const Reader = Schema.Struct({
   alive: Schema.Boolean,

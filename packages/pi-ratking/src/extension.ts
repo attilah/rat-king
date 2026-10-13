@@ -6,6 +6,37 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { NodeServices } from "@effect/platform-node";
 import { signedTurn } from "@rat-king/lexicon/turns";
+import { decodeAgentGraphBody } from "@rat-king/ratking-client/agentgraph";
+import { attend, formatReason } from "@rat-king/ratking-client/attend";
+import {
+  NotConfigured,
+  resolveTurnOwner,
+  settingsLayer,
+  Settings,
+  toolName,
+} from "@rat-king/ratking-client/config";
+import {
+  DIGEST_REASON,
+  deliveryReason,
+  injects,
+} from "@rat-king/ratking-client/delivery";
+import { directoryLayer } from "@rat-king/ratking-client/directory";
+import type { SessionFacts } from "@rat-king/ratking-client/identity";
+import { issuerLayer } from "@rat-king/ratking-client/issuer";
+import {
+  COPY_NOTE,
+  LexiconRecord,
+  renderInbound,
+} from "@rat-king/ratking-client/payload";
+import type { Inbound } from "@rat-king/ratking-client/payload";
+import {
+  NotDelivered,
+  RatKing,
+  ratKingLayer,
+} from "@rat-king/ratking-client/ratking";
+import type { Deliver, SendOptions } from "@rat-king/ratking-client/ratking";
+import { recordNotice } from "@rat-king/ratking-client/record-visibility";
+import { secretStoreLayer } from "@rat-king/ratking-client/secrets";
 import {
   Cause,
   Clock,
@@ -26,24 +57,9 @@ import {
 import { FetchHttpClient } from "effect/http";
 import { Type } from "typebox";
 
-import { decodeAgentGraphBody } from "./agentgraph.ts";
-import { attend, formatReason } from "./attend.ts";
-import {
-  NotConfigured,
-  resolveTurnOwner,
-  settingsLayer,
-  Settings,
-  toolName,
-} from "./config.ts";
-import { DIGEST_REASON, deliveryReason, injects } from "./delivery.ts";
-import { directoryLayer } from "./directory.ts";
 import { paneLabel } from "./herdr.ts";
-import type { SessionFacts } from "./identity.ts";
-import { issuerLayer } from "./issuer.ts";
 import { messageView } from "./message-view.ts";
 import { digestView, recordView } from "./notice-view.ts";
-import { COPY_NOTE, LexiconRecord, renderInbound } from "./payload.ts";
-import type { Inbound } from "./payload.ts";
 import {
   applyDelivery,
   DIGEST_MESSAGE,
@@ -53,10 +69,6 @@ import {
   verdictToHold,
 } from "./pending.ts";
 import type { DigestVariant, PendingMail } from "./pending.ts";
-import { NotDelivered, RatKing, ratKingLayer } from "./ratking.ts";
-import type { Deliver, SendOptions } from "./ratking.ts";
-import { recordNotice } from "./record-visibility.ts";
-import { secretStoreLayer } from "./secrets.ts";
 import { callView, resultView } from "./tool-view.ts";
 import {
   description,
@@ -162,7 +174,7 @@ export const digestDetails = (
   return variant === "wake" ? { ...details, variant } : details;
 };
 
-export { injects } from "./delivery.ts";
+export { injects } from "@rat-king/ratking-client/delivery";
 
 const sendFields = {
   cc: Schema.optionalKey(Schema.Array(Schema.String)),

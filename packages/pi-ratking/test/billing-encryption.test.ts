@@ -1,4 +1,8 @@
 import { expect, it } from "@effect/vitest";
+import { Settings } from "@rat-king/ratking-client/config";
+import { Directory } from "@rat-king/ratking-client/directory";
+import { didFor } from "@rat-king/ratking-client/name";
+import { SecretStore } from "@rat-king/ratking-client/secrets";
 import { Effect, Layer, Option, Redacted, Result, Schema } from "effect";
 import { HttpClient } from "effect/http";
 
@@ -11,10 +15,6 @@ import {
 import { parseSend, render, scriptSend } from "../../../stacks/nest/send.ts";
 import { plaintext } from "../../envelope/src/canonical.ts";
 import { document, identity } from "../../mailbox-client/test/identity.ts";
-import { Settings } from "../src/config.ts";
-import { Directory } from "../src/directory.ts";
-import { didFor } from "../src/name.ts";
-import { SecretStore } from "../src/secrets.ts";
 
 it.effect.prop(
   "encrypted script sends seal E2E and refuse recipients without agreement keys",

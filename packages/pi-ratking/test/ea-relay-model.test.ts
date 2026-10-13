@@ -1,14 +1,14 @@
 /* oxlint-disable typescript/promise-function-async -- fast-check model command Promise boundary. */
 import { it } from "@effect/vitest";
+import { renderInbound } from "@rat-king/ratking-client/payload";
+import type { Inbound } from "@rat-king/ratking-client/payload";
+import { deliverRelay } from "@rat-king/ratking-client/relay";
 import { Effect, Option, Schema } from "effect";
 import { asyncModelRun } from "fast-check";
 import type { AsyncCommand } from "fast-check";
 import { expect } from "vitest";
 
 import { inboundLines } from "../src/message-view.ts";
-import { renderInbound } from "../src/payload.ts";
-import type { Inbound } from "../src/payload.ts";
-import { deliverRelay } from "../src/relay.ts";
 
 const Step = Schema.Struct({
   body: Schema.String,

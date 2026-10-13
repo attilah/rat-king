@@ -1,13 +1,17 @@
 import { it } from "@effect/vitest";
 import { Turn } from "@rat-king/lexicon/turns";
 import type { TurnValue } from "@rat-king/lexicon/turns";
+import { openAsks } from "@rat-king/ratking-client/asks";
+import { Settings } from "@rat-king/ratking-client/config";
+import {
+  AskFailed,
+  RatKing,
+  ReaderState,
+} from "@rat-king/ratking-client/ratking";
 import { Arbitrary, Clock, Effect, Layer, Option, Schema } from "effect";
 import { expect } from "vitest";
 
-import { openAsks } from "../src/asks.ts";
-import { Settings } from "../src/config.ts";
 import { withTurnWait } from "../src/extension.ts";
-import { AskFailed, RatKing, ReaderState } from "../src/ratking.ts";
 import { turnReporter } from "../src/turn-record.ts";
 
 const Case = Schema.Struct({

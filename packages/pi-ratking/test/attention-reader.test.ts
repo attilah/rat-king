@@ -6,6 +6,10 @@ import * as Defs from "@rat-king/lexicon/defs";
 import * as List from "@rat-king/lexicon/mailbox.list";
 import type { LexMap } from "@rat-king/lexicon/runtime";
 import { ownIdentity, prepare } from "@rat-king/mailbox-client";
+import { Directory } from "@rat-king/ratking-client/directory";
+import { PayloadJson } from "@rat-king/ratking-client/payload";
+import type { Inbound } from "@rat-king/ratking-client/payload";
+import { RatKing } from "@rat-king/ratking-client/ratking";
 import {
   Clock,
   DateTime,
@@ -26,10 +30,6 @@ import {
 } from "../../mailbox-client/src/attention.ts";
 import { WebSocketPort } from "../../mailbox-client/src/watch.ts";
 import { document, identity } from "../../mailbox-client/test/identity.ts";
-import { Directory } from "../src/directory.ts";
-import { PayloadJson } from "../src/payload.ts";
-import type { Inbound } from "../src/payload.ts";
-import { RatKing } from "../src/ratking.ts";
 import { harness } from "./harness.ts";
 
 const TaggedMessageEvent = Schema.Struct({

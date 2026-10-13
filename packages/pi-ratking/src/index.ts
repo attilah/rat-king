@@ -1,8 +1,21 @@
-export { Settings, NotConfigured, PiConfig, settingsLayer } from "./config.ts";
+export {
+  Settings,
+  NotConfigured,
+  PiConfig,
+  settingsLayer,
+} from "@rat-king/ratking-client/config";
 
-export { Directory, UnknownName, directoryLayer } from "./directory.ts";
+export {
+  Directory,
+  UnknownName,
+  directoryLayer,
+} from "@rat-king/ratking-client/directory";
 
-export { Issuer, IssuerError, issuerLayer } from "./issuer.ts";
+export {
+  Issuer,
+  IssuerError,
+  issuerLayer,
+} from "@rat-king/ratking-client/issuer";
 
 export {
   AgentName,
@@ -12,18 +25,26 @@ export {
   labelSlug,
   secretName,
   sessionName,
-} from "./name.ts";
+} from "@rat-king/ratking-client/name";
 
-export { LexiconRecord, Payload, PayloadJson } from "./payload.ts";
+export {
+  LexiconRecord,
+  Payload,
+  PayloadJson,
+} from "@rat-king/ratking-client/payload";
 
-export { RelayRecord, RelayHandled, relayedInbound } from "./relay.ts";
+export {
+  RelayRecord,
+  RelayHandled,
+  relayedInbound,
+} from "@rat-king/ratking-client/relay";
 
 export type {
   Inbound,
   InboundRecord,
   LexiconRecordValue,
   PayloadValue,
-} from "./payload.ts";
+} from "@rat-king/ratking-client/payload";
 
 export {
   AskFailed,
@@ -31,18 +52,26 @@ export {
   RatKing,
   ReaderState,
   ratKingLayer,
-} from "./ratking.ts";
+} from "@rat-king/ratking-client/ratking";
 
-export type { Delivered, Deliver, SendOptions, Status } from "./ratking.ts";
+export type {
+  Delivered,
+  Deliver,
+  SendOptions,
+  Status,
+} from "@rat-king/ratking-client/ratking";
 
 export {
   HeartbeatJson,
   READER_STUCK_MS,
   ReaderHeartbeat,
   readerVerdict,
-} from "./reader-health.ts";
+} from "@rat-king/ratking-client/reader-health";
 
-export type { ReaderHeartbeatValue, ReaderVerdict } from "./reader-health.ts";
+export type {
+  ReaderHeartbeatValue,
+  ReaderVerdict,
+} from "@rat-king/ratking-client/reader-health";
 
 export {
   MESSAGE_EVENT,

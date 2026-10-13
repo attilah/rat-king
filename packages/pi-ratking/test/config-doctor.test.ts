@@ -1,9 +1,8 @@
 import { it } from "@effect/vitest";
+import type { PiConfigValue } from "@rat-king/ratking-client/config";
+import { inspectConfig } from "@rat-king/ratking-client/config-doctor";
 import { Effect, Schema } from "effect";
 import { expect } from "vitest";
-
-import { inspectConfig } from "../src/config-doctor.ts";
-import type { PiConfigValue } from "../src/config.ts";
 
 it.effect.prop(
   "every missing document, script or service identity makes the doctor fail without revealing references",

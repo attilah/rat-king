@@ -2,6 +2,12 @@
 /* oxlint-disable typescript/promise-function-async, promise/prefer-await-to-callbacks -- fast-check commands are Promise boundaries; the HttpClient adapter takes a callback. */
 import { NodeServices } from "@effect/platform-node";
 import { it } from "@effect/vitest";
+import { RatKing, ReaderState } from "@rat-king/ratking-client/ratking";
+import {
+  HeartbeatJson,
+  READER_STUCK_MS,
+} from "@rat-king/ratking-client/reader-health";
+import type { ReaderHeartbeatValue } from "@rat-king/ratking-client/reader-health";
 import { Clock, Effect, FileSystem, Option, Predicate, Schema } from "effect";
 import { HttpClient, HttpClientResponse } from "effect/http";
 import { TestClock } from "effect/testing";
@@ -16,9 +22,6 @@ import {
   sightReaders,
 } from "../../../stacks/nest/alarm-sources.ts";
 import { WebSocketPort } from "../../mailbox-client/src/watch.ts";
-import { RatKing, ReaderState } from "../src/ratking.ts";
-import { HeartbeatJson, READER_STUCK_MS } from "../src/reader-health.ts";
-import type { ReaderHeartbeatValue } from "../src/reader-health.ts";
 import { readerFooter } from "../src/tool.ts";
 import { harness } from "./harness.ts";
 

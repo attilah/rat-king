@@ -4,6 +4,13 @@ import * as CheckIn from "@rat-king/lexicon/agentgraph.checkin";
 import * as Outcome from "@rat-king/lexicon/agentgraph.outcome";
 import * as Plan from "@rat-king/lexicon/agentgraph.plan";
 import {
+  compactRecord,
+  invalidRecordText,
+  renderRecordBody,
+  validateRecord,
+} from "@rat-king/ratking-client/agentgraph";
+import { RatKing } from "@rat-king/ratking-client/ratking";
+import {
   Arbitrary,
   Effect,
   FileSystem,
@@ -21,13 +28,6 @@ import {
   resolveSendRecord,
   Verdicts,
 } from "../../../stacks/nest/send.ts";
-import {
-  compactRecord,
-  invalidRecordText,
-  renderRecordBody,
-  validateRecord,
-} from "../src/agentgraph.ts";
-import { RatKing } from "../src/ratking.ts";
 import { runAction } from "../src/tool.ts";
 import pinned from "./fixtures/agentgraph.json" with { type: "json" };
 

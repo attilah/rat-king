@@ -29,32 +29,32 @@ import type { SendOutcome } from "../../packages/mailbox-client/src/index.ts";
 import {
   recordSummary,
   validateRecord,
-} from "../../packages/pi-ratking/src/agentgraph.ts";
+} from "../../packages/ratking-client/src/agentgraph.ts";
 import {
   loadSettings,
   Settings,
-} from "../../packages/pi-ratking/src/config.ts";
+} from "../../packages/ratking-client/src/config.ts";
 import {
   Directory,
   directoryLayer,
-} from "../../packages/pi-ratking/src/directory.ts";
-import type { Resolved } from "../../packages/pi-ratking/src/directory.ts";
-import { reasonOf } from "../../packages/pi-ratking/src/errors.ts";
+} from "../../packages/ratking-client/src/directory.ts";
+import type { Resolved } from "../../packages/ratking-client/src/directory.ts";
+import { reasonOf } from "../../packages/ratking-client/src/errors.ts";
 import {
   AgentName,
   canonicalName,
   didFor,
   nameFor,
-} from "../../packages/pi-ratking/src/name.ts";
+} from "../../packages/ratking-client/src/name.ts";
 import {
   PayloadJson,
   SUMMARY_MAX,
-} from "../../packages/pi-ratking/src/payload.ts";
-import type { PayloadValue } from "../../packages/pi-ratking/src/payload.ts";
+} from "../../packages/ratking-client/src/payload.ts";
+import type { PayloadValue } from "../../packages/ratking-client/src/payload.ts";
 import {
   SecretStore,
   secretStoreLayer,
-} from "../../packages/pi-ratking/src/secrets.ts";
+} from "../../packages/ratking-client/src/secrets.ts";
 
 export const SEND_TRIES = 10;
 

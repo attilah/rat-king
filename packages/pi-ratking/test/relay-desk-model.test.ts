@@ -9,6 +9,16 @@ import {
   prepare,
   RatKingMailbox,
 } from "@rat-king/mailbox-client";
+import { Directory } from "@rat-king/ratking-client/directory";
+import { PayloadJson } from "@rat-king/ratking-client/payload";
+import type { Inbound, InboundRecord } from "@rat-king/ratking-client/payload";
+import { RatKing } from "@rat-king/ratking-client/ratking";
+import {
+  RelayJournal,
+  RelayOutbound,
+  RelayRecord,
+} from "@rat-king/ratking-client/relay";
+import { SecretStore } from "@rat-king/ratking-client/secrets";
 import {
   Clock,
   DateTime,
@@ -32,12 +42,6 @@ import { expect } from "vitest";
 
 import { WebSocketPort } from "../../mailbox-client/src/watch.ts";
 import { document, identity } from "../../mailbox-client/test/identity.ts";
-import { Directory } from "../src/directory.ts";
-import { PayloadJson } from "../src/payload.ts";
-import type { Inbound, InboundRecord } from "../src/payload.ts";
-import { RatKing } from "../src/ratking.ts";
-import { RelayJournal, RelayOutbound, RelayRecord } from "../src/relay.ts";
-import { SecretStore } from "../src/secrets.ts";
 import { harness } from "./harness.ts";
 
 const Name = Schema.Literals(["person", "carol", "dave", "ea"]);

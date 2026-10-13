@@ -1,26 +1,28 @@
-import { Clock, DateTime, Effect, Match, Option, Schema } from "effect";
-import type { Duration } from "effect";
-
 import {
   invalidRecordText,
   recordSummary,
   validateRecord,
-} from "./agentgraph.ts";
-import { askAge } from "./asks.ts";
-import { decimalPreferences } from "./attention.ts";
-import { ccRefusalPrompt } from "./cc-lint.ts";
-import type { NotConfigured } from "./config.ts";
-import { recipientLines } from "./delivery.ts";
-import type { RecipientLevelValue } from "./delivery.ts";
-import { RatKing, ReaderState } from "./ratking.ts";
+} from "@rat-king/ratking-client/agentgraph";
+import { askAge } from "@rat-king/ratking-client/asks";
+import { decimalPreferences } from "@rat-king/ratking-client/attention";
+import { ccRefusalPrompt } from "@rat-king/ratking-client/cc-lint";
+import type { NotConfigured } from "@rat-king/ratking-client/config";
+import { recipientLines } from "@rat-king/ratking-client/delivery";
+import type { RecipientLevelValue } from "@rat-king/ratking-client/delivery";
+import { RatKing, ReaderState } from "@rat-king/ratking-client/ratking";
 import type {
   AskOptions,
   Delivered,
   NotDelivered,
   SendOptions,
   Status,
-} from "./ratking.ts";
-import { clampSummary, withSummaryLead } from "./summary.ts";
+} from "@rat-king/ratking-client/ratking";
+import {
+  clampSummary,
+  withSummaryLead,
+} from "@rat-king/ratking-client/summary";
+import { Clock, DateTime, Effect, Match, Option, Schema } from "effect";
+import type { Duration } from "effect";
 
 export const Action = Schema.Literals([
   "attention",

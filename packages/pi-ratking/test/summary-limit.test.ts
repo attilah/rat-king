@@ -1,9 +1,9 @@
 import { it } from "@effect/vitest";
+import { SUMMARY_MAX } from "@rat-king/ratking-client/payload";
+import { RatKing } from "@rat-king/ratking-client/ratking";
 import { Effect, Schema } from "effect";
 import { expect } from "vitest";
 
-import { SUMMARY_MAX } from "../src/payload.ts";
-import { RatKing } from "../src/ratking.ts";
 import { runAction } from "../src/tool.ts";
 
 const Action = Schema.Literals(["send", "ask", "reply", "record"]);

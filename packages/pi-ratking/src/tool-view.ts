@@ -1,9 +1,9 @@
 import type { ThemeColor } from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
 import { truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { Recipients } from "@rat-king/ratking-client/delivery";
 import { Schema } from "effect";
 
-import { Recipients } from "./delivery.ts";
 import {
   clean,
   clip,

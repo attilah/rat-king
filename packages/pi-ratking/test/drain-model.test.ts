@@ -2,6 +2,7 @@ import { NodeServices } from "@effect/platform-node";
 // @effect-diagnostics asyncFunction:off -- fast-check asyncModelRun drives Effect programs.
 /* oxlint-disable typescript/promise-function-async, promise/prefer-await-to-callbacks -- fast-check asyncModelRun is the model boundary. */
 import { it } from "@effect/vitest";
+import { presenceLine } from "@rat-king/ratking-client/presence";
 import {
   JsonSchema,
   SchemaRepresentation,
@@ -37,7 +38,6 @@ import * as Defs from "../../lexicon/src/defs.ts";
 import * as Lease from "../../lexicon/src/runtime.lease.ts";
 import type { Batch } from "../../mailbox-client/src/index.ts";
 import { MailboxClientError } from "../../mailbox-client/src/index.ts";
-import { presenceLine } from "../src/presence.ts";
 import pinned from "./fixtures/mischief-reply.json" with { type: "json" };
 
 const DID = "did:web:acme.intake.agents.example.invalid";

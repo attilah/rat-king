@@ -3,6 +3,9 @@ import { NodeServices } from "@effect/platform-node";
 import { it } from "@effect/vitest";
 import { plaintextBody } from "@rat-king/envelope/signed";
 import * as Send from "@rat-king/lexicon/mailbox.send";
+import { Directory } from "@rat-king/ratking-client/directory";
+import { decodePayload, renderInbound } from "@rat-king/ratking-client/payload";
+import { RatKing } from "@rat-king/ratking-client/ratking";
 import {
   Arbitrary,
   Effect,
@@ -15,9 +18,6 @@ import { HttpClient, HttpClientResponse } from "effect/http";
 import { expect } from "vitest";
 
 import { document, identity } from "../../mailbox-client/test/identity.ts";
-import { Directory } from "../src/directory.ts";
-import { decodePayload, renderInbound } from "../src/payload.ts";
-import { RatKing } from "../src/ratking.ts";
 import { harness } from "./harness.ts";
 
 const CallSign = Schema.UndefinedOr(

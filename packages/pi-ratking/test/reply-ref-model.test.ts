@@ -1,13 +1,16 @@
 /* oxlint-disable typescript/promise-function-async -- fast-check model command Promise boundary. */
 import { it } from "@effect/vitest";
+import {
+  Payload,
+  PayloadJson,
+  replyRef,
+} from "@rat-king/ratking-client/payload";
+import { Threads, threadsLayer } from "@rat-king/ratking-client/threads";
+import type { Received } from "@rat-king/ratking-client/threads";
 import { Effect, Option, Schema } from "effect";
 import { asyncModelRun } from "fast-check";
 import type { AsyncCommand } from "fast-check";
 import { expect } from "vitest";
-
-import { Payload, PayloadJson, replyRef } from "../src/payload.ts";
-import { Threads, threadsLayer } from "../src/threads.ts";
-import type { Received } from "../src/threads.ts";
 
 const Id = Schema.String.check(Schema.isPattern(/^[a-z]{1,12}$/u));
 

@@ -1,6 +1,8 @@
 /* oxlint-disable promise/prefer-await-to-callbacks -- Effect HttpClient test adapter. */
 import { NodeServices } from "@effect/platform-node";
 import { it } from "@effect/vitest";
+import { Directory } from "@rat-king/ratking-client/directory";
+import { ADMISSION_TRIES, RatKing } from "@rat-king/ratking-client/ratking";
 import {
   Arbitrary,
   Effect,
@@ -13,8 +15,6 @@ import { HttpClient, HttpClientResponse } from "effect/http";
 import { expect } from "vitest";
 
 import { document, identity } from "../../mailbox-client/test/identity.ts";
-import { Directory } from "../src/directory.ts";
-import { ADMISSION_TRIES, RatKing } from "../src/ratking.ts";
 import { harness } from "./harness.ts";
 
 const Status = Schema.Literals([400, 403, 409, 500, 503]);

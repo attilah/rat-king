@@ -12,7 +12,7 @@ import { expect } from "vitest";
 import {
   AgentName as PiAgentName,
   didFor,
-} from "../../../packages/pi-ratking/src/name.ts";
+} from "../../../packages/ratking-client/src/name.ts";
 import { Caller } from "../src/caller.ts";
 import {
   AgentName,

@@ -1,4 +1,5 @@
 import { it } from "@effect/vitest";
+import { attend } from "@rat-king/ratking-client/attend";
 import { Option, Schema } from "effect";
 import { expect } from "vitest";
 
@@ -6,7 +7,6 @@ import {
   defaultPreferences,
   defaultStatus,
 } from "../../mailbox-client/src/attention.ts";
-import { attend } from "../src/attend.ts";
 
 it.prop(
   "Hard levers use the authenticated sender, never an unverified payload label",

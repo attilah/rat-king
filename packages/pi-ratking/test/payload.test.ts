@@ -1,8 +1,11 @@
 import { it } from "@effect/vitest";
+import {
+  decodePayload,
+  encodePayload,
+  Payload,
+} from "@rat-king/ratking-client/payload";
 import { Arbitrary, Effect, Option, Schema } from "effect";
 import { expect } from "vitest";
-
-import { decodePayload, encodePayload, Payload } from "../src/payload.ts";
 
 it.effect.prop(
   "a message on the wire carries signed message and thread fields, never caller session ids",

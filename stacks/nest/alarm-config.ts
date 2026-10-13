@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-import { AgentName } from "../../packages/pi-ratking/src/name.ts";
+import { AgentName } from "../../packages/ratking-client/src/name.ts";
 
 export const AlarmKey = Schema.Literals([
   "ship.failed",

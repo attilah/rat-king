@@ -54,6 +54,7 @@ import { AskAimedAtCc, ccLint, ccRefusal } from "./cc-lint.ts";
 import { Settings } from "./config.ts";
 import { injects, recipientLevels } from "./delivery.ts";
 import type { RecipientLevelValue } from "./delivery.ts";
+import { digestFor } from "./digest.ts";
 import { Directory, writePrivateJson } from "./directory.ts";
 import type { Listed, Resolved } from "./directory.ts";
 import { reasonOf } from "./errors.ts";
@@ -84,7 +85,6 @@ import type {
   LexiconRecordValue,
   PayloadValue,
 } from "./payload.ts";
-import { digestFor } from "./pending.ts";
 import { PRESENCE_TTL_MS, PresenceTimeout, presenceLine } from "./presence.ts";
 import type { PresenceValue } from "./presence.ts";
 import { quarantined, recover } from "./quarantine.ts";

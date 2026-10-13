@@ -29,20 +29,20 @@ import {
 import {
   loadSettings,
   Settings,
-} from "../../packages/pi-ratking/src/config.ts";
+} from "../../packages/ratking-client/src/config.ts";
 import {
   Directory,
   directoryLayer,
-} from "../../packages/pi-ratking/src/directory.ts";
-import { nameFor } from "../../packages/pi-ratking/src/name.ts";
+} from "../../packages/ratking-client/src/directory.ts";
+import { nameFor } from "../../packages/ratking-client/src/name.ts";
 import {
   PayloadJson,
   RecordJson,
-} from "../../packages/pi-ratking/src/payload.ts";
+} from "../../packages/ratking-client/src/payload.ts";
 import {
   SecretStore,
   secretStoreLayer,
-} from "../../packages/pi-ratking/src/secrets.ts";
+} from "../../packages/ratking-client/src/secrets.ts";
 import { DrainFailure } from "./drain-error.ts";
 import { drainMachine } from "./drain-machine.ts";
 import { executeBatch } from "./drain-process.ts";

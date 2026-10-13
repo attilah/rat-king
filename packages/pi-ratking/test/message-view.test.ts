@@ -1,10 +1,10 @@
 import { stripTerminalSequences } from "@earendil-works/pi-tui";
 import { it } from "@effect/vitest";
+import { Kind } from "@rat-king/ratking-client/payload";
 import { Arbitrary, Effect, Schema } from "effect";
 import { describe, expect } from "vitest";
 
 import { inboundLines, messageView } from "../src/message-view.ts";
-import { Kind } from "../src/payload.ts";
 import {
   Tokens,
   Width,

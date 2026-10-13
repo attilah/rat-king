@@ -3,6 +3,11 @@ import { NodeServices } from "@effect/platform-node";
 import { it } from "@effect/vitest";
 import * as Defs from "@rat-king/lexicon/defs";
 import { layer, RatKingMailbox } from "@rat-king/mailbox-client";
+import { Settings } from "@rat-king/ratking-client/config";
+import { Directory, directoryLayer } from "@rat-king/ratking-client/directory";
+import { AgentName, didFor, nameFor } from "@rat-king/ratking-client/name";
+import { PayloadJson } from "@rat-king/ratking-client/payload";
+import { SecretStore } from "@rat-king/ratking-client/secrets";
 import {
   Duration,
   Effect,
@@ -20,11 +25,6 @@ import { expect } from "vitest";
 
 import { render, scriptSend, SendBackoff } from "../../../stacks/nest/send.ts";
 import { document, identity } from "../../mailbox-client/test/identity.ts";
-import { Settings } from "../src/config.ts";
-import { Directory, directoryLayer } from "../src/directory.ts";
-import { AgentName, didFor, nameFor } from "../src/name.ts";
-import { PayloadJson } from "../src/payload.ts";
-import { SecretStore } from "../src/secrets.ts";
 
 const TEMPLATE = "did:web:{agent}.agents.example.invalid";
 

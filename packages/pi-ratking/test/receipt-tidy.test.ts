@@ -1,9 +1,9 @@
 import { stripTerminalSequences } from "@earendil-works/pi-tui";
 import { it } from "@effect/vitest";
+import { recipientLines } from "@rat-king/ratking-client/delivery";
 import { Arbitrary, Effect, Schema } from "effect";
 import { expect } from "vitest";
 
-import { recipientLines } from "../src/delivery.ts";
 import { callView, resultView } from "../src/tool-view.ts";
 import type { ResultInput } from "../src/tool-view.ts";
 import { receiptText } from "../src/tool.ts";

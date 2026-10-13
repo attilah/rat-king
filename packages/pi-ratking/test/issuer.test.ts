@@ -10,6 +10,12 @@ import {
   unbase64url,
 } from "@rat-king/mailbox-client";
 import type { PeerDocument } from "@rat-king/mailbox-client";
+import { Settings } from "@rat-king/ratking-client/config";
+import { Directory, directoryLayer } from "@rat-king/ratking-client/directory";
+import { Issuer, issuerLayer } from "@rat-king/ratking-client/issuer";
+import { AgentName, didFor } from "@rat-king/ratking-client/name";
+import { RatKing, ratKingLayer } from "@rat-king/ratking-client/ratking";
+import { SecretStore } from "@rat-king/ratking-client/secrets";
 import {
   Arbitrary,
   Effect,
@@ -25,12 +31,6 @@ import { HttpClient, HttpClientResponse } from "effect/http";
 import { expect } from "vitest";
 
 import { document, identity } from "../../mailbox-client/test/identity.ts";
-import { Settings } from "../src/config.ts";
-import { Directory, directoryLayer } from "../src/directory.ts";
-import { Issuer, issuerLayer } from "../src/issuer.ts";
-import { AgentName, didFor } from "../src/name.ts";
-import { RatKing, ratKingLayer } from "../src/ratking.ts";
-import { SecretStore } from "../src/secrets.ts";
 
 const serviceDid = "did:web:mailbox.example.invalid";
 

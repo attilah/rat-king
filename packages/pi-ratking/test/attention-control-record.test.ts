@@ -1,5 +1,6 @@
 import { NodeServices } from "@effect/platform-node";
 import { it } from "@effect/vitest";
+import { RatKing } from "@rat-king/ratking-client/ratking";
 import { Deferred, Effect, FileSystem, Layer, Option, Schema } from "effect";
 import { HttpClient } from "effect/http";
 import { expect } from "vitest";
@@ -10,7 +11,6 @@ import {
 } from "../../mailbox-client/src/attention.ts";
 import { ratkingExtension, RECORD_EVENT } from "../src/extension.ts";
 import type { PiHost, SessionStart } from "../src/extension.ts";
-import { RatKing } from "../src/ratking.ts";
 import { harness } from "./harness.ts";
 
 it.effect.prop(

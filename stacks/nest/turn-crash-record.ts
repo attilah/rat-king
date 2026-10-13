@@ -2,7 +2,7 @@ import { DateTime, Option, Schema } from "effect";
 
 import { Turn } from "../../packages/lexicon/turns.ts";
 import type { TurnValue } from "../../packages/lexicon/turns.ts";
-import type { ReaderHeartbeatValue } from "../../packages/pi-ratking/src/reader-health.ts";
+import type { ReaderHeartbeatValue } from "../../packages/ratking-client/src/reader-health.ts";
 
 export const crashedReader = (
   beat: ReaderHeartbeatValue,

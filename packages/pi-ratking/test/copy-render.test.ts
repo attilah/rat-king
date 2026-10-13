@@ -1,9 +1,12 @@
+import { addressedElsewhere } from "@rat-king/ratking-client/name";
+import {
+  COPY_BODY_MAX,
+  COPY_NOTE,
+  renderInbound,
+} from "@rat-king/ratking-client/payload";
+import type { Inbound } from "@rat-king/ratking-client/payload";
 import { Option } from "effect";
 import { describe, expect, it } from "vitest";
-
-import { addressedElsewhere } from "../src/name.ts";
-import { COPY_BODY_MAX, COPY_NOTE, renderInbound } from "../src/payload.ts";
-import type { Inbound } from "../src/payload.ts";
 
 const base: Inbound = {
   body: "full progress note",

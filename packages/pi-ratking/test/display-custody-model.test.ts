@@ -1,6 +1,9 @@
 // @effect-diagnostics asyncFunction:off -- Pi's extension API is the Promise boundary under test.
 import { NodeServices } from "@effect/platform-node";
 import { it } from "@effect/vitest";
+import type { Inbound } from "@rat-king/ratking-client/payload";
+import { RatKing } from "@rat-king/ratking-client/ratking";
+import type { Deliver } from "@rat-king/ratking-client/ratking";
 import {
   Arbitrary,
   Clock,
@@ -17,10 +20,7 @@ import { expect } from "vitest";
 
 import { ratkingExtension } from "../src/extension.ts";
 import type { PiHost, SessionStart } from "../src/extension.ts";
-import type { Inbound } from "../src/payload.ts";
 import { shownIds } from "../src/pending.ts";
-import { RatKing } from "../src/ratking.ts";
-import type { Deliver } from "../src/ratking.ts";
 import { harness } from "./harness.ts";
 
 const idle = async () => {};

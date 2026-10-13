@@ -1,9 +1,8 @@
 import { it } from "@effect/vitest";
+import { openRelay, transferCustody } from "@rat-king/ratking-client/relay";
+import type { RelayEntryValue } from "@rat-king/ratking-client/relay";
 import { Arbitrary, Effect, Option, Result, Schema } from "effect";
 import { expect } from "vitest";
-
-import { openRelay, transferCustody } from "../src/relay.ts";
-import type { RelayEntryValue } from "../src/relay.ts";
 
 it.effect.prop(
   "relay acceptance transfers custody; refusal waits for fallback display; journal replay never forwards twice",

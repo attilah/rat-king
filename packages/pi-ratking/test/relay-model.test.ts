@@ -1,12 +1,11 @@
 /* oxlint-disable typescript/promise-function-async -- fast-check model command Promise boundary. */
 import { it } from "@effect/vitest";
+import { openRelay } from "@rat-king/ratking-client/relay";
+import type { RelayEntryValue } from "@rat-king/ratking-client/relay";
 import { Effect, Option, Schema } from "effect";
 import { asyncModelRun } from "fast-check";
 import type { AsyncCommand } from "fast-check";
 import { expect } from "vitest";
-
-import { openRelay } from "../src/relay.ts";
-import type { RelayEntryValue } from "../src/relay.ts";
 
 const Step = Schema.Struct({
   event: Schema.Literals([
