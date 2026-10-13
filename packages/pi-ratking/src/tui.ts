@@ -14,6 +14,9 @@ const CONTROLS = /[\u0000-\u0008\u000B-\u001F\u007F-\u009F]/gu;
 export const clean = (text: string) =>
   stripTerminalSequences(text).replaceAll("\t", "  ").replaceAll(CONTROLS, "");
 
+export const terminalStyles = (text: string) =>
+  text.replaceAll("\u001B[1;38;", "\u001B[1m\u001B[38;");
+
 export const oneLine = (text: string) =>
   clean(text).replaceAll(/\s+/gu, " ").trim();
 
@@ -59,6 +62,26 @@ export const roleColour = (role: string): ThemeColor => {
 
   return ROLE_COLOURS[hash % ROLE_COLOURS.length] ?? "accent";
 };
+
+export type Labels = (name: string) => string | undefined;
+
+const UNKNOWN_PARTIES = new Map<string, string>();
+
+export const noLabels: Labels = (name) => UNKNOWN_PARTIES.get(name);
+
+export const party = (theme: Paint, name: string, label?: string) => {
+  const title = oneLine(label ?? name);
+  const colour = roleColour(roleOf(name, label));
+
+  return `${theme.fg(colour, theme.bold(title))}${label === undefined ? "" : theme.fg("dim", ` ${oneLine(name)}`)}`;
+};
+
+export const ratKingTitle = (
+  theme: Paint,
+  action: string,
+  colour: ThemeColor = "accent"
+) =>
+  `${theme.fg("toolTitle", theme.bold("🐀 Rat King"))} ${theme.fg(colour, oneLine(action))}`;
 
 export const short = (id: string) => oneLine(id).slice(0, 8);
 

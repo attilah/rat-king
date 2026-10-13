@@ -3,8 +3,18 @@ import type { Component } from "@earendil-works/pi-tui";
 import { truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { Schema } from "effect";
 
-import { clean, clip, oneLine, paragraphs, short } from "./tui.ts";
-import type { Paint } from "./tui.ts";
+import {
+  clean,
+  clip,
+  noLabels,
+  oneLine,
+  paragraphs,
+  party,
+  ratKingTitle,
+  short,
+  terminalStyles,
+} from "./tui.ts";
+import type { Labels, Paint } from "./tui.ts";
 
 export interface CallArgs {
   readonly action?: string | undefined;
@@ -38,7 +48,9 @@ const lines = (render: (width: number) => readonly string[]): Component => {
 
       if (cache?.width !== width) {
         cache = {
-          lines: render(width).map((line) => truncateToWidth(line, width, "…")),
+          lines: render(width).map((line) =>
+            terminalStyles(truncateToWidth(line, width, "…"))
+          ),
           width,
         };
       }
@@ -49,29 +61,34 @@ const lines = (render: (width: number) => readonly string[]): Component => {
 };
 
 export const callLines = (
-  tool: string,
+  _tool: string,
   call: CallArgs,
   theme: Paint,
-  width: number
+  width: number,
+  labels: Labels = noLabels
 ): readonly string[] => {
   const action = oneLine(call.action ?? "");
   const dot = theme.fg("dim", " · ");
 
   const head = [
-    `${theme.fg("toolTitle", theme.bold(tool))} ${theme.fg(ACTION_COLOURS.get(action) ?? "accent", action)}`,
+    ratKingTitle(theme, action, ACTION_COLOURS.get(action) ?? "accent"),
     ...(call.to === undefined
       ? []
-      : [`${theme.fg("muted", "→")} ${theme.fg("accent", oneLine(call.to))}`]),
+      : [
+          `${theme.fg("muted", "→")} ${party(theme, call.to, labels(call.to))}`,
+        ]),
     ...(call.successor === undefined
       ? []
       : [
-          `${theme.fg("muted", "→")} ${theme.fg("accent", oneLine(call.successor))}`,
+          `${theme.fg("muted", "→")} ${party(theme, call.successor, labels(call.successor))}`,
         ]),
   ].join(" ");
 
   const flags = [
     ...((call.cc?.length ?? 0) > 0
-      ? [theme.fg("muted", `cc ${(call.cc ?? []).map(oneLine).join(", ")}`)]
+      ? [
+          `${theme.fg("muted", "cc")} ${(call.cc ?? []).map((name) => party(theme, name, labels(name))).join(", ")}`,
+        ]
       : []),
     ...(call.replyTo === undefined
       ? []
@@ -99,8 +116,12 @@ export const callLines = (
   ];
 };
 
-export const callView = (tool: string, call: CallArgs, theme: Paint) =>
-  lines((width) => callLines(tool, call, theme, width));
+export const callView = (
+  tool: string,
+  call: CallArgs,
+  theme: Paint,
+  labels: Labels = noLabels
+) => lines((width) => callLines(tool, call, theme, width, labels));
 
 export interface ResultInput {
   readonly action: string;
@@ -122,22 +143,41 @@ const headed = (mark: string, text: string, width: number) =>
     (line, index) => `${index === 0 ? mark : " "} ${line}`
   );
 
+const receiptParty = (text: string, theme: Paint, labels: Labels) =>
+  text.replaceAll(
+    /(?<=[Dd]elivered to |confirmed to |Reply from |status: )(?<recipient>[^\n]+?)(?= over Rat King| \(id| \(did:)|^(?<copy>[^:]+)(?=: (?:woken|quiet))/gmu,
+    (_match, recipient: string | undefined, copy: string | undefined) => {
+      const name = recipient ?? copy ?? "";
+
+      return party(theme, name, labels(name));
+    }
+  );
+
 export const resultLines = (
   input: ResultInput,
   theme: Paint,
-  width: number
+  width: number,
+  labels: Labels = noLabels
 ): readonly string[] => {
   if (input.isPartial) {
     return [
       theme.fg(
         "warning",
-        input.action === "ask" ? "⋯ waiting for the reply" : "⋯ sending"
+        `${ratKingTitle(theme, input.action)} · ${input.action === "ask" ? "⋯ waiting for the reply" : "⋯ sending"}`
       ),
     ];
   }
 
   const [first = "", ...rest] = clean(input.text).trim().split("\n");
-  const head = first.replaceAll("**", "");
+  const receipt = receiptParty(first.replaceAll("**", ""), theme, labels);
+
+  const head =
+    input.action === "status"
+      ? receipt.replace(
+          "🐀 Rat King status:",
+          `${ratKingTitle(theme, "status")}:`
+        )
+      : `${ratKingTitle(theme, input.action)} · ${receipt}`;
 
   if (failed(input)) {
     return [
@@ -160,7 +200,8 @@ export const resultLines = (
   }
 
   if (input.action === "status") {
-    const [self = "", ...facts] = head.split(" · ");
+    const [self = "", factsText = ""] = head.split(" · reader ");
+    const facts = factsText === "" ? [] : `reader ${factsText}`.split(" · ");
 
     return input.expanded
       ? [
@@ -179,7 +220,7 @@ export const resultLines = (
   const others = rest
     .filter((line) => line.trim() !== "")
     .map((line) => {
-      const plain = line.replaceAll("**", "");
+      const plain = receiptParty(line.replaceAll("**", ""), theme, labels);
 
       const colour = /no reader|not live|offline/iu.test(plain)
         ? "warning"
@@ -198,5 +239,8 @@ export const resultLines = (
   ];
 };
 
-export const resultView = (input: ResultInput, theme: Paint) =>
-  lines((width) => resultLines(input, theme, width));
+export const resultView = (
+  input: ResultInput,
+  theme: Paint,
+  labels: Labels = noLabels
+) => lines((width) => resultLines(input, theme, width, labels));
