@@ -31,6 +31,7 @@ import { sendCommand } from "./send.ts";
 import { launchdPlist, shipCommand } from "./ship-command.ts";
 import { shipJudgeCommand } from "./ship-judge.ts";
 import { FleetError, loadStageConfig, stageProvider } from "./stage-config.ts";
+import { throwawayCommand } from "./throwaway.ts";
 import { usageCommand } from "./usage.ts";
 
 const program = Effect.gen(function* launcher() {
@@ -243,6 +244,10 @@ const scriptCommand = () => {
         })
       )
     );
+  }
+
+  if (process.argv[2] === "throwaway") {
+    return throwawayCommand(process.argv.slice(3));
   }
 
   if (process.argv[2] === "billing-relay") {
