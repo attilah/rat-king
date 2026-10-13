@@ -1,5 +1,8 @@
 import { Array as Arr, Option, Schema } from "effect";
 
+import { literalPrompt } from "./prompt.ts";
+import type { PromptInput } from "./prompt.ts";
+
 export const AskAimedAtCc = Schema.Struct({
   cc: Schema.Array(Schema.String),
   name: Schema.String,
@@ -115,8 +118,11 @@ export const ccLint = (input: LintInput) => {
   });
 };
 
+const ccWhy = (addressed: AskAimedAtCcValue) =>
+  `you sent to ${addressed.to} with ${addressed.name} in cc, and the text addresses ${addressed.name} (${addressed.snippet}), so ${addressed.name} would get a quiet copy and not wake.`;
+
 export const ccRefusal = (addressed: AskAimedAtCcValue) =>
-  `AskAimedAtCc: you sent to ${addressed.to} with ${addressed.name} in cc, and the text addresses ${addressed.name} (${addressed.snippet}), so ${addressed.name} would get a quiet copy and not wake.`;
+  `AskAimedAtCc: ${ccWhy(addressed)}`;
 
 export const fixParams = (
   action: string,
@@ -129,13 +135,17 @@ export const fixParams = (
   to: addressed.name,
 });
 
-export const ccRefusalPrompt = (input: RefusalInput) => {
+export const ccRefusalFields = (input: RefusalInput): PromptInput => {
   const { name } = input.addressed;
 
-  return [
-    ccRefusal(input.addressed),
-    `Accepted: ${name} in to, or ccOnPurpose: true.`,
-    `Fix: ${input.call(fixParams(input.action, input.addressed))} with ${name} moved into to and ${input.addressed.to} moved into cc; put back your own summary and message.`,
-    `Debug: ${input.call({ action: "list" })} shows names; ${name}'s own wake level is its business. Send with ccOnPurpose: true if a quiet copy is what you meant.`,
-  ].join("\n");
+  return {
+    accepted: `${name} in to, or ccOnPurpose: true.`,
+    debug: `${input.call({ action: "list" })} shows names; ${name}'s own wake level is its business. Send with ccOnPurpose: true if a quiet copy is what you meant.`,
+    fix: `${input.call(fixParams(input.action, input.addressed))} with ${name} moved into to and ${input.addressed.to} moved into cc; put back your own summary and message.`,
+    tag: "AskAimedAtCc",
+    why: ccWhy(input.addressed),
+  };
 };
+
+export const ccRefusalPrompt = (input: RefusalInput) =>
+  literalPrompt(ccRefusalFields(input));

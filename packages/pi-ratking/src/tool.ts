@@ -6,6 +6,7 @@ import {
 import { askAge } from "@rat-king/ratking-client/asks";
 import { decimalPreferences } from "@rat-king/ratking-client/attention";
 import { ccRefusalPrompt } from "@rat-king/ratking-client/cc-lint";
+import { sendingOptions } from "@rat-king/ratking-client/compose";
 import type { NotConfigured } from "@rat-king/ratking-client/config";
 import { recipientLines } from "@rat-king/ratking-client/delivery";
 import type { RecipientLevelValue } from "@rat-king/ratking-client/delivery";
@@ -14,13 +15,9 @@ import type {
   AskOptions,
   Delivered,
   NotDelivered,
-  SendOptions,
   Status,
 } from "@rat-king/ratking-client/ratking";
-import {
-  clampSummary,
-  withSummaryLead,
-} from "@rat-king/ratking-client/summary";
+import { withSummaryLead } from "@rat-king/ratking-client/summary";
 import { Clock, DateTime, Effect, Match, Option, Schema } from "effect";
 import type { Duration } from "effect";
 
@@ -245,22 +242,7 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
 ) {
   const ratking = yield* RatKing;
 
-  const encryption: SendOptions = {};
-
-  const clamp =
-    params.summary === undefined ? undefined : clampSummary(params.summary);
-
-  if (params.encrypt !== undefined) {
-    Object.assign(encryption, { encrypt: params.encrypt });
-  }
-
-  if (params.ccOnPurpose !== undefined) {
-    Object.assign(encryption, { ccOnPurpose: params.ccOnPurpose });
-  }
-
-  if (params.summary !== undefined) {
-    Object.assign(encryption, { summary: clamp?.summary ?? params.summary });
-  }
+  const { clamp, options: encryption } = sendingOptions(params);
 
   const lead = params.action === "record" ? undefined : clamp?.full;
 

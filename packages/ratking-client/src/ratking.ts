@@ -2,6 +2,7 @@
 import * as Defs from "@rat-king/lexicon/defs";
 import * as Retire from "@rat-king/lexicon/identity.retireName";
 import * as Runtime from "@rat-king/lexicon/runtime";
+import type * as Lease from "@rat-king/lexicon/runtime.lease";
 import { Transport } from "@rat-king/lexicon/transport";
 import { signedTurn } from "@rat-king/lexicon/turns";
 import {
@@ -68,6 +69,7 @@ import {
   didFor,
   isReserved,
   provisionLabel,
+  secretName,
   verifiedSender,
 } from "./name.ts";
 import {
@@ -133,6 +135,68 @@ export class AskFailed extends Schema.TaggedError<AskFailed>()("AskFailed", {
   code: Schema.Literals(["NoReply", "NoReader", "NoSuchMessage"]),
   reason: Schema.String,
 }) {}
+
+export class LeaseHeld extends Schema.TaggedError<LeaseHeld>()("LeaseHeld", {
+  expiresAt: Schema.String,
+  harness: Schema.String,
+  holder: Schema.String,
+  name: Schema.String,
+  reason: Schema.String,
+}) {}
+
+export interface Attached {
+  readonly did: string;
+  readonly name: string;
+  readonly secret: string;
+}
+
+export interface Located extends Attached {
+  readonly held: boolean;
+}
+
+export interface LeaseHolder {
+  readonly expiresAt: string;
+  readonly generation: number;
+  readonly harness: string;
+  readonly live: boolean;
+  readonly session: string;
+}
+
+export interface PeekOptions {
+  readonly afterSeq?: number;
+  readonly all?: boolean;
+}
+
+export interface Peeked {
+  readonly encrypted: boolean;
+  readonly received: Inbound | InboundRecord;
+  readonly redelivered: boolean;
+  readonly seq: number;
+  readonly state: string;
+}
+
+export interface Unreadable {
+  readonly id: string;
+  readonly reason: string;
+  readonly senderDid: string;
+  readonly seq: number;
+}
+
+export interface Peek {
+  readonly messages: readonly Peeked[];
+  readonly throughSeq: number;
+  readonly unreadable: readonly Unreadable[];
+}
+
+export interface HoldOptions {
+  readonly afterSeq?: number;
+  readonly session: string;
+}
+
+export type HeldDelivery = (
+  entry: Peeked,
+  ack: Effect.Effect<void, NotDelivered>
+) => Effect.Effect<void, NotDelivered>;
 
 export type ReaderState = Data.TaggedEnum<{
   Starting: { readonly reason: string };
@@ -304,6 +368,20 @@ export class RatKing extends Context.Service<
   }
 >()("pi-ratking/RatKing") {}
 
+export class Inbox extends Context.Service<
+  Inbox,
+  {
+    readonly attach: (name: string) => Effect.Effect<Attached, NotDelivered>;
+    readonly hold: (
+      deliver: HeldDelivery,
+      options: HoldOptions
+    ) => Effect.Effect<void, NotDelivered | LeaseHeld>;
+    readonly holder: Effect.Effect<Option.Option<LeaseHolder>, NotDelivered>;
+    readonly locate: (name: string) => Effect.Effect<Located, NotDelivered>;
+    readonly peek: (options?: PeekOptions) => Effect.Effect<Peek, NotDelivered>;
+  }
+>()("ratking-client/Inbox") {}
+
 const Cursor = Schema.Struct({ afterSeq: Schema.Int });
 
 const SavedLease = Schema.Struct({
@@ -320,6 +398,11 @@ const instant = (millis: number) => DateTime.makeUnsafe(millis);
 
 const backoff = (attempt: number) =>
   Duration.millis(Math.min(30_000, 1000 * 2 ** Math.min(attempt, 5)));
+
+const unsettled = (event: Defs.MessageEventValue) =>
+  event.receipt.state !== "acked" &&
+  event.receipt.state !== "expired" &&
+  event.receipt.state !== "failed";
 
 export const makeRatKing = Effect.gen(function* makeRatKing() {
   const settings = yield* Settings;
@@ -618,6 +701,92 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       return yield* supervise(name, effect);
     });
 
+  const inboundOf = (own: Self, message: OpenedMessage) =>
+    Effect.gen(function* decodeInbound() {
+      const payload = yield* decodePayload(message.body);
+      const known = yield* directory.nameOf(message.senderDid);
+
+      const claimed = Option.match(payload, {
+        onNone: () => Option.getOrElse(known, () => message.senderDid),
+        onSome: (value) => canonicalName(settings.reserved, value.from),
+      });
+
+      const verified = verifiedSender({
+        claimed,
+        did: message.senderDid,
+        known,
+        reserved: settings.reserved,
+        template: settings.didTemplate,
+      });
+
+      const inbound: Inbound = {
+        body: Option.match(payload, {
+          onNone: () => message.body,
+          onSome: (value) => value.body,
+        }),
+        cc:
+          message.cc !== undefined ||
+          Option.exists(payload, (value) => (value.cc?.length ?? 0) > 0),
+        did: message.senderDid,
+        from: claimed,
+        id: message.tid,
+        kind: Option.getOrElse(
+          Option.flatMapNullishOr(payload, (value) => value.kind),
+          (): KindValue => "message"
+        ),
+        label: Option.flatMapNullishOr(payload, (value) => value.label),
+        replyTo: Option.orElse(
+          Option.flatMapNullishOr(
+            payload,
+            (value) => value.reply?.parent ?? value.replyTo
+          ),
+          () => Option.fromNullishOr(message.replyTo?.messageId)
+        ),
+        summary: Option.flatMapNullishOr(payload, (value) => value.summary),
+        verified,
+      };
+
+      if (settings.attentionLevers === true) {
+        Object.assign(inbound, {
+          sender: Option.getOrElse(known, () =>
+            verified ? claimed : message.senderDid
+          ),
+        });
+      }
+
+      if (Option.isSome(payload)) {
+        if (payload.value.reply !== undefined) {
+          Object.assign(inbound, { reply: payload.value.reply });
+        }
+
+        if (payload.value.cc !== undefined) {
+          Object.assign(inbound, { ccNames: payload.value.cc });
+        }
+
+        if (payload.value.to !== undefined) {
+          const copy = addressedElsewhere(
+            settings.reserved,
+            payload.value.to,
+            own.name
+          );
+
+          Object.assign(inbound, { copy, to: payload.value.to });
+
+          const digest = digestFor(settings.ccDigestMinutes ?? {}, own.name);
+
+          if (copy && Option.isSome(digest)) {
+            Object.assign(inbound, { digestMinutes: digest.value });
+          }
+        }
+
+        if (payload.value.thread !== undefined) {
+          Object.assign(inbound, { thread: payload.value.thread });
+        }
+      }
+
+      return { inbound, payload };
+    });
+
   const intake =
     (own: Self, route: RelayRoute) =>
     (message: OpenedMessage, meta: MessageMeta) =>
@@ -629,89 +798,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
             message.tid,
             Deferred.await(checkpoint).pipe(Effect.andThen(meta.ack))
           );
-          const payload = yield* decodePayload(message.body);
-          const known = yield* directory.nameOf(message.senderDid);
-
-          const claimed = Option.match(payload, {
-            onNone: () => Option.getOrElse(known, () => message.senderDid),
-            onSome: (value) => canonicalName(settings.reserved, value.from),
-          });
-
-          const verified = verifiedSender({
-            claimed,
-            did: message.senderDid,
-            known,
-            reserved: settings.reserved,
-            template: settings.didTemplate,
-          });
-
-          const inbound: Inbound = {
-            body: Option.match(payload, {
-              onNone: () => message.body,
-              onSome: (value) => value.body,
-            }),
-            cc:
-              message.cc !== undefined ||
-              Option.exists(payload, (value) => (value.cc?.length ?? 0) > 0),
-            did: message.senderDid,
-            from: claimed,
-            id: message.tid,
-            kind: Option.getOrElse(
-              Option.flatMapNullishOr(payload, (value) => value.kind),
-              (): KindValue => "message"
-            ),
-            label: Option.flatMapNullishOr(payload, (value) => value.label),
-            replyTo: Option.orElse(
-              Option.flatMapNullishOr(
-                payload,
-                (value) => value.reply?.parent ?? value.replyTo
-              ),
-              () => Option.fromNullishOr(message.replyTo?.messageId)
-            ),
-            summary: Option.flatMapNullishOr(payload, (value) => value.summary),
-            verified,
-          };
-
-          if (settings.attentionLevers === true) {
-            Object.assign(inbound, {
-              sender: Option.getOrElse(known, () =>
-                verified ? claimed : message.senderDid
-              ),
-            });
-          }
-
-          if (Option.isSome(payload)) {
-            if (payload.value.reply !== undefined) {
-              Object.assign(inbound, { reply: payload.value.reply });
-            }
-
-            if (payload.value.cc !== undefined) {
-              Object.assign(inbound, { ccNames: payload.value.cc });
-            }
-
-            if (payload.value.to !== undefined) {
-              const copy = addressedElsewhere(
-                settings.reserved,
-                payload.value.to,
-                own.name
-              );
-
-              Object.assign(inbound, { copy, to: payload.value.to });
-
-              const digest = digestFor(
-                settings.ccDigestMinutes ?? {},
-                own.name
-              );
-
-              if (copy && Option.isSome(digest)) {
-                Object.assign(inbound, { digestMinutes: digest.value });
-              }
-            }
-
-            if (payload.value.thread !== undefined) {
-              Object.assign(inbound, { thread: payload.value.thread });
-            }
-          }
+          const { inbound, payload } = yield* inboundOf(own, message);
 
           const record = Option.isNone(payload)
             ? yield* decodeRecord(message.body)
@@ -1576,6 +1663,43 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       } satisfies RelayRoute;
     });
 
+  const openJournal = (own: Self) => {
+    const file = path.join(
+      settings.state,
+      "asks",
+      `${provisionLabel(own.name)}.json`
+    );
+
+    return openAsks({
+      load: fs.exists(file).pipe(
+        Effect.flatMap((exists) =>
+          exists
+            ? fs
+                .readFileString(file)
+                .pipe(
+                  Effect.flatMap(
+                    Schema.decodeEffect(Schema.fromJsonString(AskJournal))
+                  )
+                )
+            : Effect.succeed([])
+        ),
+        Effect.mapError((failure) =>
+          refused("NotAttempted")(`Ask journal: ${reasonOf(failure)}`)
+        )
+      ),
+      now: Clock.currentTimeMillis,
+      save: (entries) =>
+        Schema.encodeEffect(Schema.fromJsonString(AskJournal))(entries).pipe(
+          Effect.flatMap((json) => writePrivateJson(file, json)),
+          Effect.provideService(FileSystem.FileSystem, fs),
+          Effect.provideService(Path.Path, path),
+          Effect.mapError((failure) =>
+            refused("NotAttempted")(`Ask journal: ${reasonOf(failure)}`)
+          )
+        ),
+    });
+  };
+
   const loop = Effect.fn("RatKing.run")(function* loop(
     facts: SessionFacts,
     deliver: Deliver,
@@ -1617,43 +1741,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       }).pipe(services)
     );
 
-    const file = path.join(
-      settings.state,
-      "asks",
-      `${provisionLabel(own.name)}.json`
-    );
-
-    const journal = yield* supervise(
-      Option.some(own.name),
-      openAsks({
-        load: fs.exists(file).pipe(
-          Effect.flatMap((exists) =>
-            exists
-              ? fs
-                  .readFileString(file)
-                  .pipe(
-                    Effect.flatMap(
-                      Schema.decodeEffect(Schema.fromJsonString(AskJournal))
-                    )
-                  )
-              : Effect.succeed([])
-          ),
-          Effect.mapError((error) =>
-            refused("NotAttempted")(`Ask journal: ${reasonOf(error)}`)
-          )
-        ),
-        now: Clock.currentTimeMillis,
-        save: (entries) =>
-          Schema.encodeEffect(Schema.fromJsonString(AskJournal))(entries).pipe(
-            Effect.flatMap((json) => writePrivateJson(file, json)),
-            Effect.provideService(FileSystem.FileSystem, fs),
-            Effect.provideService(Path.Path, path),
-            Effect.mapError((error) =>
-              refused("NotAttempted")(`Ask journal: ${reasonOf(error)}`)
-            )
-          ),
-      })
-    );
+    const journal = yield* supervise(Option.some(own.name), openJournal(own));
 
     yield* Deferred.succeed(asks, journal);
     yield* Ref.set(established, Option.some(own));
@@ -1791,6 +1879,365 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       );
       yield* Effect.addFinalizer(() => retireHeartbeat);
     });
+
+  type Prepared = Effect.Success<ReturnType<typeof prepare>>;
+
+  const unreachable = (error: { readonly _tag: string }) =>
+    refused("Uncertain")(`Mailbox unreachable: ${reasonOf(error)}`);
+
+  const withClient = <A, E>(
+    own: Self,
+    peers: readonly PeerDocument[],
+    use: (client: Prepared) => Effect.Effect<A, E>
+  ) =>
+    Effect.gen(function* clientScope() {
+      const client = yield* prepare({
+        endpoint: settings.endpoint,
+        own: yield* ownIdentity(own.identity),
+        peers,
+        serviceDid: settings.serviceDid,
+      });
+
+      return yield* use(client);
+    }).pipe(Effect.scoped, Effect.provideService(HttpClient.HttpClient, http));
+
+  const holderOf = (client: Prepared, did: string) =>
+    Effect.gen(function* resolveHolder() {
+      const found = yield* client.resolveLease(did).pipe(
+        Effect.map(Option.some),
+        Effect.catchIf(
+          (failure) => failure.error === "LeaseNotFound",
+          () => Effect.succeed(Option.none<Lease.MainValue>())
+        )
+      );
+
+      const now = yield* Clock.currentTimeMillis;
+
+      return found.pipe(
+        Option.map((lease): LeaseHolder => ({
+          expiresAt: lease.expiresAt,
+          generation: lease.generation,
+          harness: lease.harness.$type.split("#")[1] ?? lease.harness.$type,
+          live: Date.parse(lease.expiresAt) > now,
+          session: Schema.is(Schema.String)(lease.harness.sessionId)
+            ? lease.harness.sessionId
+            : "unknown",
+        }))
+      );
+    });
+
+  const classify = Effect.fn("RatKing.classify")(function* classify(
+    own: Self,
+    message: OpenedMessage
+  ) {
+    const { inbound, payload } = yield* inboundOf(own, message);
+
+    const record = Option.isNone(payload)
+      ? yield* decodeRecord(message.body)
+      : Option.none<LexiconRecordValue>();
+
+    yield* threads.remember(inbound);
+
+    return Option.isSome(record)
+      ? ({
+          did: inbound.did,
+          from: inbound.from,
+          id: inbound.id,
+          record: record.value,
+          replyTo: inbound.replyTo,
+          verified: inbound.verified,
+        } satisfies InboundRecord)
+      : inbound;
+  });
+
+  const locate = Effect.fn("RatKing.locate")(function* locate(
+    requested: string
+  ) {
+    const name = canonicalName(settings.reserved, requested);
+
+    if (!Schema.is(AgentName)(name)) {
+      return yield* refused("UnknownName")(
+        `${requested} is not a valid Rat King name`
+      );
+    }
+
+    const secret = secretName(name);
+
+    const held = yield* store
+      .exists(secret)
+      .pipe(Effect.mapError((error) => refused("NoIdentity")(error.reason)));
+
+    return {
+      did: didFor(settings.didTemplate, settings.reserved, name),
+      held,
+      name,
+      secret,
+    } satisfies Located;
+  });
+
+  const attach = Effect.fn("RatKing.attach")(function* attach(
+    requested: string
+  ) {
+    const located = yield* locate(requested);
+
+    if (!located.held) {
+      return yield* refused("NoIdentity")(
+        `This machine holds no key for ${located.name} (secret ${located.secret})`
+      );
+    }
+
+    const identity = yield* ensureIdentity(located.name).pipe(
+      services,
+      Effect.mapError((error) => refused("NoIdentity")(reasonOf(error)))
+    );
+
+    const own: Self = { did: identity.did, identity, name: located.name };
+    const journal = yield* openJournal(own);
+
+    yield* Deferred.succeed(asks, journal);
+    yield* Ref.set(established, Option.some(own));
+    yield* Deferred.succeed(self, own);
+
+    return {
+      did: own.did,
+      name: own.name,
+      secret: located.secret,
+    } satisfies Attached;
+  });
+
+  const afterSeqOf = (
+    own: Self,
+    options:
+      | {
+          readonly afterSeq?: number | undefined;
+          readonly all?: boolean | undefined;
+        }
+      | undefined
+  ) => {
+    if (options?.afterSeq !== undefined) {
+      return Effect.succeed(options.afterSeq);
+    }
+
+    return options?.all === true
+      ? Effect.succeed(0)
+      : readCursor(own.name).pipe(Effect.map(Option.getOrElse(() => 0)));
+  };
+
+  const peek = Effect.fn("RatKing.peek")(function* peek(options?: PeekOptions) {
+    const own = yield* awaitSelf;
+    const afterSeq = yield* afterSeqOf(own, options);
+
+    return yield* withClient(
+      own,
+      peersOf(yield* directory.documents),
+      (client) =>
+        Effect.gen(function* listInbox() {
+          const batch = yield* client.mailbox.poll(afterSeq);
+          const messages: Peeked[] = [];
+          const unreadable: Unreadable[] = [];
+
+          for (const event of batch.events) {
+            if (
+              !Schema.is(Defs.MessageEvent)(event) ||
+              (options?.all !== true && !unsettled(event))
+            ) {
+              continue;
+            }
+
+            const opened = yield* client.open(event.envelope).pipe(
+              Effect.catch((error) =>
+                client.refresh(event.envelope.aad.senderDid).pipe(
+                  Effect.andThen(client.open(event.envelope)),
+                  Effect.mapError((retry) => ({ error, retry }))
+                )
+              ),
+              Effect.result
+            );
+
+            if (Result.isFailure(opened)) {
+              unreadable.push({
+                id: event.receipt.message.messageId,
+                reason: opened.failure.error.reason,
+                senderDid: event.envelope.aad.senderDid,
+                seq: event.seq,
+              });
+
+              continue;
+            }
+
+            messages.push({
+              encrypted: opened.success.encrypted ?? true,
+              received: yield* classify(own, opened.success),
+              redelivered: event.receipt.state === "delivered",
+              seq: event.seq,
+              state: event.receipt.state,
+            });
+          }
+
+          return { messages, throughSeq: batch.throughSeq, unreadable };
+        })
+    ).pipe(
+      Effect.mapError((error) =>
+        Schema.is(NotDelivered)(error) ? error : unreachable(error)
+      )
+    );
+  });
+
+  const holder = Effect.gen(function* currentHolder() {
+    const own = yield* awaitSelf;
+
+    return yield* withClient(own, [], (client) => holderOf(client, own.did));
+  }).pipe(
+    Effect.mapError((failure) =>
+      Schema.is(NotDelivered)(failure) ? failure : unreachable(failure)
+    )
+  );
+
+  const hold = Effect.fn("RatKing.hold")(function* hold(
+    deliver: HeldDelivery,
+    options: HoldOptions
+  ) {
+    const own = yield* awaitSelf;
+
+    if (
+      settings.relays.some(
+        (relay) => relay.name === own.name || relay.to === own.name
+      )
+    ) {
+      return yield* refused("NotAttempted")(
+        `${own.name} is a relay name; its Pi reader owns consumption`
+      );
+    }
+
+    const afterSeq = yield* afterSeqOf(own, { afterSeq: options.afterSeq });
+
+    return yield* withClient(
+      own,
+      peersOf(yield* directory.documents),
+      (client) =>
+        Effect.gen(function* holding() {
+          const now = yield* Clock.currentTimeMillis;
+
+          const harness = {
+            $type: "sh.mschf.ratking.runtime.lease#other",
+            kind: "ratking-cli",
+            sessionId: options.session,
+          } as const;
+
+          const taken = yield* client.mailbox.lease
+            .acquire({
+              did: own.did,
+              expiresAt: DateTime.formatIso(DateTime.makeUnsafe(now + 300_000)),
+              harness,
+              renders: RENDERS,
+            })
+            .pipe(
+              Effect.catchIf(
+                (failure) => failure.error === "LeaseHeld",
+                (failure) =>
+                  holderOf(client, own.did).pipe(
+                    Effect.flatMap((found) =>
+                      Effect.fail(
+                        new LeaseHeld({
+                          expiresAt: Option.match(found, {
+                            onNone: () => "unknown",
+                            onSome: (value) => value.expiresAt,
+                          }),
+                          harness: Option.match(found, {
+                            onNone: () => "unknown",
+                            onSome: (value) => value.harness,
+                          }),
+                          holder: Option.match(found, {
+                            onNone: () => "unknown",
+                            onSome: (value) => value.session,
+                          }),
+                          name: own.name,
+                          reason: failure.reason,
+                        })
+                      )
+                    )
+                  )
+              )
+            );
+
+          const held: LeaseFence = {
+            did: own.did,
+            generation: taken.generation,
+            leaseId: taken.leaseId,
+          };
+
+          const release = client.mailbox.lease
+            .release(held)
+            .pipe(Effect.ignore);
+
+          const batch = yield* client.mailbox
+            .poll(afterSeq)
+            .pipe(Effect.tapError(() => release));
+
+          const backlog = new Set<string>(
+            batch.events
+              .filter(Schema.is(Defs.MessageEvent))
+              .filter(unsettled)
+              .map((event) => event.receipt.message.messageId)
+          );
+
+          if (backlog.size === 0) {
+            return yield* release;
+          }
+
+          const done = yield* Deferred.make<boolean>();
+
+          const settle = (id: string) =>
+            Effect.suspend(() => {
+              backlog.delete(id);
+
+              return backlog.size === 0
+                ? Deferred.succeed(done, true)
+                : Effect.void;
+            });
+
+          const consuming = client.consume(
+            (message, meta) =>
+              Effect.gen(function* showHeld() {
+                yield* deliver(
+                  {
+                    encrypted: message.encrypted ?? true,
+                    received: yield* classify(own, message),
+                    redelivered: meta.redelivered,
+                    seq: meta.seq,
+                    state: meta.redelivered ? "delivered" : "accepted",
+                  },
+                  meta.ack.pipe(Effect.mapError(unreachable))
+                );
+                yield* settle(message.tid);
+              }),
+            {
+              ackOnReturn: false,
+              afterSeq,
+              harness,
+              onSkip: ({ messageId }) => settle(messageId),
+              renders: RENDERS,
+              resume: held,
+              unopenable: (event, error) =>
+                recover(quarantineDir(own.name), client)(event, error).pipe(
+                  Effect.provideService(FileSystem.FileSystem, fs),
+                  Effect.provideService(Path.Path, path)
+                ),
+            }
+          );
+
+          return yield* Effect.raceFirst(consuming, Deferred.await(done)).pipe(
+            Effect.ensuring(release)
+          );
+        })
+    ).pipe(
+      Effect.mapError((error) =>
+        Schema.is(NotDelivered)(error) || Schema.is(LeaseHeld)(error)
+          ? error
+          : unreachable(error)
+      )
+    );
+  });
 
   const awaitLive = Ref.get(state).pipe(
     Effect.flatMap((reader) =>
@@ -1934,7 +2381,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
     }
   );
 
-  return RatKing.of({
+  const ratking = RatKing.of({
     ask: Effect.fn("RatKing.ask")(function* ask(to, body, timeout, options) {
       yield* awaitLive;
 
@@ -2287,8 +2734,12 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       };
     }),
   });
+
+  return Context.make(RatKing, ratking).pipe(
+    Context.add(Inbox, Inbox.of({ attach, hold, holder, locate, peek }))
+  );
 });
 
-export const ratKingLayer = Layer.effect(RatKing, makeRatKing).pipe(
+export const ratKingLayer = Layer.effectContext(makeRatKing).pipe(
   Layer.provide(threadsLayer)
 );
