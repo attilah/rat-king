@@ -372,6 +372,17 @@ export const piHost = (pi: ExtensionAPI): PiHost => ({
   },
 });
 
+type TurnAction = Pick<typeof ToolParams.Type, "action" | "wait">;
+
+export const withTurnWait = <A, E, R>(
+  turns: TurnReporter | undefined,
+  params: TurnAction,
+  action: Effect.Effect<A, E, R>
+) =>
+  params.action === "ask" && params.wait === true && turns !== undefined
+    ? turns.waitForReply(action)
+    : action;
+
 export interface ExtensionOptions {
   readonly layer: Layer.Layer<Services, NotConfigured>;
   readonly facts: (
@@ -905,7 +916,11 @@ export const ratkingExtension = (options: ExtensionOptions) =>
               status.self.pipe(Option.map((self) => self.name))
             );
 
-            return yield* runAction(tool, settings.askTimeoutMs, decoded);
+            return yield* withTurnWait(
+              turns,
+              decoded,
+              runAction(tool, settings.askTimeoutMs, decoded)
+            );
           }).pipe(
             Effect.orElseSucceed((): ToolText => ({
               details: { error: true },

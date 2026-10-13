@@ -27,7 +27,6 @@ import type { Deliver } from "../src/ratking.ts";
 import { harness } from "./harness.ts";
 
 const Case = Schema.Struct({
-  asks: Schema.Boolean,
   fail: Schema.Boolean,
   initial: Schema.Int.check(Schema.isBetween({ maximum: 10, minimum: 0 })),
   owned: Schema.Boolean,
@@ -134,7 +133,7 @@ it.effect.prop(
             }),
           status: Effect.succeed({
             endpoint: "https://mailbox.invalid",
-            openAsks: sample.asks ? 1 : 0,
+            openAsks: 0,
             quarantine: { count: 0, latest: Option.none() },
             reader: ReaderState.Starting({ reason: "test" }),
             self: Option.some({
@@ -263,10 +262,6 @@ it.effect.prop(
 
             if (emitting) {
               model.states.push(event === "approval" ? "blocked" : event);
-
-              if (event === "done" && sample.asks) {
-                model.states.push("blocked");
-              }
             }
 
             expect(real.records.map(({ record }) => record.state)).toEqual(
@@ -301,11 +296,11 @@ it.effect.prop(
       ).toHaveLength(1);
       expect(records.map(({ record }) => record.state)).toEqual([
         "idle",
-        ...Array.from({ length: 3 }, () =>
-          sample.asks
-            ? ["working", "blocked", "done", "blocked"]
-            : ["working", "blocked", "done"]
-        ).flat(),
+        ...Array.from({ length: 3 }, () => [
+          "working",
+          "blocked",
+          "done",
+        ]).flat(),
       ]);
 
       for (let n = 1; n <= 3; n += 1) {

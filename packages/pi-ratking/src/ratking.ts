@@ -1253,8 +1253,6 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
         });
 
         accepted.push(delivered);
-        yield* Effect.sync(() => {
-        });
       }
 
       const [admitted] = accepted;
@@ -2130,13 +2128,16 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
 
     status: Effect.gen(function* status() {
       const current = yield* Ref.get(established);
+
       const pendingAsks = (yield* Deferred.isDone(asks))
         ? yield* (yield* Deferred.await(asks)).pending
         : [];
 
       return {
         endpoint: settings.endpoint,
-        openAsks: pendingAsks.filter((ask) => ask.state === "pending" || ask.state === "nudged").length,
+        openAsks: pendingAsks.filter(
+          (ask) => ask.state === "pending" || ask.state === "nudged"
+        ).length,
         quarantine: yield* Option.match(current, {
           onNone: () =>
             Effect.succeed<Quarantined>({ count: 0, latest: Option.none() }),

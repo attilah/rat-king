@@ -92,17 +92,7 @@ export const turnReporter = (
   return {
     approval: () =>
       emit("blocked", n, { reason: "Pi is waiting for approval" }),
-    done: (reason: StopReason) =>
-      Effect.gen(function* finish() {
-        yield* emit("done", n, { stopReason: reason });
-        const status = yield* RatKing.use((ratking) => ratking.status);
-
-        if ((status.openAsks ?? 0) > 0) {
-          yield* emit("blocked", n, {
-            reason: "Turn ended with an unanswered outbound ask",
-          });
-        }
-      }),
+    done: (reason: StopReason) => emit("done", n, { stopReason: reason }),
     idle: () =>
       Effect.gen(function* idle() {
         if (!announced) {
@@ -110,6 +100,11 @@ export const turnReporter = (
           yield* emit("idle", initial);
         }
       }),
+    waitForReply: <A, E, R>(reply: Effect.Effect<A, E, R>) =>
+      emit("blocked", n, { reason: "Pi is waiting for an ask reply" }).pipe(
+        Effect.andThen(reply),
+        Effect.ensuring(emit("working", n))
+      ),
     working: () =>
       Effect.gen(function* working() {
         n += 1;
