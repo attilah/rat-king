@@ -612,15 +612,18 @@ export const ratkingExtension = (options: ExtensionOptions) =>
       },
     });
 
-    pi.onMessageShown?.((id) => {
-      mail.shown(id);
-
+    const consume = (id: string) => {
       const ack = acknowledgments.get(id);
 
       if (Option.isSome(runtime) && ack !== undefined) {
         acknowledgments.delete(id);
         void runtime.value.runPromiseExit(ack);
       }
+    };
+
+    pi.onMessageShown?.((id) => {
+      mail.shown(id);
+      consume(id);
     });
 
     const digestTicks = Clock.currentTimeMillis.pipe(
@@ -684,7 +687,9 @@ export const ratkingExtension = (options: ExtensionOptions) =>
           } else {
             const notice = recordNotice({ ...inbound, body }, settled);
 
-            if (notice !== undefined) {
+            if (notice === undefined) {
+              consume(inbound.id);
+            } else {
               pi.sendMessage(
                 {
                   content: notice,
@@ -742,6 +747,8 @@ export const ratkingExtension = (options: ExtensionOptions) =>
             },
             deliveryMode(inbound)
           );
+        } else if (notice === undefined) {
+          consume(inbound.id);
         }
       });
 

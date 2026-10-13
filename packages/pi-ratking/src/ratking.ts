@@ -172,6 +172,11 @@ interface Admitted {
   readonly did: string;
 }
 
+export interface HandledAck {
+  readonly acked: true;
+  readonly id: string;
+}
+
 export interface Delivered extends Admitted {
   readonly presence?: string;
   readonly recipients?: readonly RecipientLevelValue[];
@@ -268,7 +273,7 @@ export class RatKing extends Context.Service<
     ) => Effect.Effect<Delivered, NotDelivered | AskFailed>;
     readonly handled: (
       id: string
-    ) => Effect.Effect<Delivered, NotDelivered | AskFailed>;
+    ) => Effect.Effect<Delivered | HandledAck, NotDelivered | AskFailed>;
     readonly pending: Effect.Effect<readonly Received[]>;
     readonly list: Effect.Effect<readonly Listed[]>;
     readonly retire: (
@@ -346,6 +351,11 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
         Effect.logWarning("Rat King display acknowledgment failed", failure)
       )
     );
+
+  const relayed = new Map<string, string>();
+
+  const consumeAck = (id: string) =>
+    (displayAck(id) ?? Effect.void).pipe(Effect.forkIn(lifetime));
 
   const presences = new Map<
     string,
@@ -707,6 +717,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
                 ) {
                   seen.clear();
                   acknowledgments.clear();
+                  relayed.clear();
                 }
               })
             ),
@@ -1245,7 +1256,13 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
             Effect.gen(function* staffRecord() {
               const accepted = yield* deliverRelay(config, own.name, inbound, {
                 deliver: (received, settled) =>
-                  deliver(received, settled, displayAck(inbound.id)),
+                  Effect.sync(() => {
+                    relayed.set(received.id, inbound.id);
+                  }).pipe(
+                    Effect.andThen(
+                      deliver(received, settled, displayAck(inbound.id))
+                    )
+                  ),
                 remember: threads.remember,
               });
 
@@ -1362,10 +1379,11 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
                 Effect.ignore,
                 Effect.forkIn(scope)
               );
-            } else if (yield* relay.transferred(inbound.id)) {
-              yield* (displayAck(inbound.id) ?? Effect.void).pipe(
-                Effect.forkIn(scope)
-              );
+            } else if (
+              (yield* relay.transferred(inbound.id)) ||
+              (yield* relay.closed(inbound.id))
+            ) {
+              yield* consumeAck(inbound.id);
             }
           }),
         record: (inbound) =>
@@ -1378,7 +1396,9 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
             inbound.verified &&
             inbound.from === config.to &&
             Option.isSome(handled)
-              ? relay.handled(handled.value.id)
+              ? relay
+                  .handled(handled.value.id)
+                  .pipe(Effect.andThen(consumeAck(inbound.id)))
               : deliver(inbound, false);
           }),
       } satisfies RelayRoute;
@@ -1555,6 +1575,15 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       const record = yield* threads.lookup(id);
 
       if (Option.isNone(record) || record.value.relay === undefined) {
+        const open = relayed.get(id);
+
+        if (open !== undefined && acknowledgments.has(open)) {
+          relayed.delete(id);
+          yield* consumeAck(open);
+
+          return { acked: true, id } satisfies HandledAck;
+        }
+
         return yield* new AskFailed({
           code: "NoSuchMessage",
           reason: `No relayed message ${id} reached this Pi`,
@@ -1594,6 +1623,13 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       );
 
       yield* threads.answer(id);
+
+      const open = relayed.get(id);
+
+      if (open !== undefined) {
+        relayed.delete(id);
+        yield* consumeAck(open);
+      }
 
       return delivered;
     }

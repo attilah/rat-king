@@ -324,6 +324,13 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
 
         const delivered = yield* ratking.handled(params.replyTo);
 
+        if ("acked" in delivered) {
+          return ok(
+            `Handled recorded for ${delivered.id}: this Pi no longer holds the relayed message, so its delivery was acknowledged and no confirmation was sent to the desk.`,
+            { acked: true, id: delivered.id, replyTo: params.replyTo }
+          );
+        }
+
         return ok(
           `Handled confirmed to ${delivered.to} (id ${delivered.id}, seq ${delivered.seq}).`,
           { id: delivered.id, replyTo: params.replyTo, seq: delivered.seq }
