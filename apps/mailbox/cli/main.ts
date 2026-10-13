@@ -243,7 +243,7 @@ const openCommand = Command.make(
   })
 );
 
-const identityCommand = Command.make(
+export const identityCommand = Command.make(
   "identity",
   { as: Flag.String("as"), did: Flag.String("did") },
   Effect.fn("MailboxCli.identity")(function* identity(args) {
@@ -253,7 +253,7 @@ const identityCommand = Command.make(
   })
 );
 
-const provisionCommand = Command.make(
+export const provisionCommand = Command.make(
   "provision",
   {
     agent: Flag.String("agent"),
@@ -354,7 +354,7 @@ const authority = Effect.gen(function* authority() {
   };
 });
 
-const retireCommand = Command.make(
+export const retireCommand = Command.make(
   "retire",
   {
     name: Flag.String("name"),
@@ -369,7 +369,7 @@ const retireCommand = Command.make(
   })
 );
 
-const unretireCommand = Command.make(
+export const unretireCommand = Command.make(
   "unretire",
   { name: Flag.String("name") },
   Effect.fn("MailboxCli.unretire")(function* unretire(args) {
@@ -381,7 +381,7 @@ const unretireCommand = Command.make(
   })
 );
 
-const retiredCommand = Command.make(
+export const retiredCommand = Command.make(
   "retired",
   { cursor: Flag.String("cursor").pipe(Flag.optional) },
   Effect.fn("MailboxCli.retired")(function* retired(args) {
@@ -531,7 +531,7 @@ const ackCommand = Command.make(
   })
 );
 
-const trafficCommand = Command.make(
+export const trafficCommand = Command.make(
   "traffic",
   {
     as: Flag.String("as"),

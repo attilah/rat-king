@@ -131,7 +131,33 @@ const textOf = (request: HttpClientRequest.HttpClientRequest) =>
     ? new TextDecoder().decode(request.body.body)
     : "{}";
 
-export const fakeMailbox = (mails: readonly Mail[], held?: FakeLease) => {
+export interface FakeAttention {
+  prefs: Schema.Json;
+  status: Schema.Json;
+}
+
+export const quietAttention = (): FakeAttention => ({
+  prefs: {
+    allow: [],
+    forward: [],
+    log: false,
+    model: { body: "summary", kind: "none", timeoutMs: 30_000 },
+    mute: [],
+    refuse: [],
+    version: "0.1",
+  },
+  status: {
+    $type: "sh.mschf.ratking.attention.status",
+    state: "available",
+    version: "0.1",
+  },
+});
+
+export const fakeMailbox = (
+  mails: readonly Mail[],
+  held?: FakeLease,
+  attention: FakeAttention = quietAttention()
+) => {
   const calls: Call[] = [];
   const sends: Defs.EncryptedEnvelopeValue[] = [];
   let lease = held;
@@ -279,6 +305,34 @@ export const fakeMailbox = (mails: readonly Mail[], held?: FakeLease) => {
         return yield* admission(text, now);
       }
 
+      if (nsid.endsWith("attention.getPreferences")) {
+        return { body: { prefs: attention.prefs }, status: 200 };
+      }
+
+      if (nsid.endsWith("attention.getStatus")) {
+        return { body: { status: attention.status }, status: 200 };
+      }
+
+      if (nsid.endsWith("attention.putPreferences")) {
+        const input = yield* Schema.decodeUnknownEffect(
+          Schema.fromJsonString(Schema.Struct({ prefs: Schema.Json }))
+        )(text);
+
+        attention.prefs = input.prefs;
+
+        return { body: { prefs: attention.prefs }, status: 200 };
+      }
+
+      if (nsid.endsWith("attention.putStatus")) {
+        const input = yield* Schema.decodeUnknownEffect(
+          Schema.fromJsonString(Schema.Struct({ status: Schema.Json }))
+        )(text);
+
+        attention.status = input.status;
+
+        return { body: { status: attention.status }, status: 200 };
+      }
+
       return { body: { error: "MailboxUnavailable" }, status: 503 };
     });
 
@@ -304,7 +358,7 @@ export const fakeMailbox = (mails: readonly Mail[], held?: FakeLease) => {
     }).pipe(Effect.orDie)
   );
 
-  return { calls, http, lease: () => lease, sends };
+  return { attention, calls, http, lease: () => lease, sends };
 };
 
 export interface Captured {

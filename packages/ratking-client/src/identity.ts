@@ -66,7 +66,7 @@ const generateKey = Effect.fn("RatKing.generateKey")(function* generateKey(
     )
   );
 
-  const pair = yield* Schema.decodeEffect(Pair)(key);
+  const pair = yield* Schema.decodeUnknownEffect(Pair)(key);
 
   return yield* Schema.decodeUnknownEffect(PrivateJwk)(
     yield* cryptoOperation(() =>
