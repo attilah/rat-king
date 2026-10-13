@@ -97,9 +97,7 @@ export const callLines = (
 
   const flags = [
     ...((call.cc?.length ?? 0) > 0
-      ? [
-          `${theme.fg("muted", "cc")} ${(call.cc ?? []).map((name) => party(theme, name, labels(name))).join(", ")}`,
-        ]
+      ? [theme.fg("muted", `+${call.cc?.length ?? 0} cc`)]
       : []),
     ...(call.replyTo === undefined
       ? []
@@ -136,6 +134,7 @@ interface CallInput {
 
 class CallShell implements Component {
   input: CallInput;
+  recipient?: string | undefined;
   readonly view: Component;
 
   constructor(input: CallInput) {
@@ -143,7 +142,16 @@ class CallShell implements Component {
     this.view = lines((width) => {
       const { call, labels, theme, tool } = this.input;
 
-      return callLines(tool, call, theme, width, labels);
+      return callLines(
+        tool,
+        {
+          ...call,
+          to: call.to ?? (call.action === "reply" ? this.recipient : undefined),
+        },
+        theme,
+        width,
+        labels
+      );
     });
   }
 
@@ -189,7 +197,6 @@ export interface ResultInput {
   readonly expanded: boolean;
   readonly isError: boolean;
   readonly isPartial: boolean;
-  readonly summary?: string | undefined;
   readonly text: string;
 }
 
@@ -222,7 +229,6 @@ const receiptParty = (
 const ReceiptDetails = Schema.Struct({
   id: Schema.String,
   recipients: Schema.optionalKey(Recipients),
-  summary: Schema.optionalKey(Schema.String),
   to: Schema.optionalKey(Schema.String),
 });
 
@@ -254,9 +260,7 @@ const compactReceipt = (
       level: recipient.level === "wake" ? "woken" : "quiet",
       party: party(theme, recipient.name, labels(recipient.name)),
     })),
-    summary: input.summary ?? details.summary,
     theme,
-    trimmed: /^summary trimmed to /mu.test(clean(input.text)),
     width,
   });
 };
@@ -446,13 +450,18 @@ export const resultView = (
 
   if (shell !== undefined) {
     shell.input = { ...shell.input, labels, theme };
+
+    if (
+      input.action === "reply" &&
+      !input.isPartial &&
+      !failed(input) &&
+      Schema.is(ReceiptDetails)(input.details)
+    ) {
+      shell.recipient = input.details.to ?? input.details.recipients?.[0]?.name;
+    }
+
     shell.invalidate();
   }
 
-  const summary =
-    input.summary ?? shell?.input.call.summary ?? shell?.input.call.message;
-
-  return lines((width) =>
-    resultLines({ ...input, summary }, theme, width, labels)
-  );
+  return lines((width) => resultLines(input, theme, width, labels));
 };

@@ -44,7 +44,10 @@ export const applyDelivery = <A>(
   return host.settle();
 };
 
+export type DigestVariant = "cc" | "wake";
+
 export interface PendingMail {
+  readonly coalesce?: boolean;
   readonly content: string;
   readonly deliverAs?: Hold;
   readonly details: unknown;
@@ -91,7 +94,10 @@ export const shownIds = (message: SessionMessage): readonly string[] =>
     : [];
 
 export interface MailHost {
-  readonly digest: (mails: readonly PendingMail[]) => void;
+  readonly digest: (
+    mails: readonly PendingMail[],
+    variant?: DigestVariant
+  ) => void;
   readonly show: (pending: PendingMail, deliverAs: DeliverAs) => void;
 }
 
@@ -117,6 +123,28 @@ export const inbox = (host: MailHost) => {
       digested.clear();
       last = Option.none();
     },
+    flushNext: () => {
+      const due = [...pending.values()].filter(
+        (mail) =>
+          mail.deliverAs === "nextTurn" &&
+          mail.coalesce === true &&
+          !digested.has(mail.id)
+      );
+
+      if (due.length === 0) {
+        return;
+      }
+
+      if (due.length === 1 && due[0] !== undefined) {
+        host.show(due[0], "nextTurn");
+      } else {
+        host.digest(due, "wake");
+      }
+
+      for (const mail of due) {
+        digested.add(mail.id);
+      }
+    },
     shown: (id: string) => {
       pending.delete(id);
       digested.delete(id);
@@ -130,7 +158,10 @@ export const inbox = (host: MailHost) => {
 
       pending.set(mail.id, mail);
 
-      if (hold !== "digest") {
+      if (
+        hold !== "digest" &&
+        !(hold === "nextTurn" && mail.coalesce === true)
+      ) {
         host.show(mail, hold);
       }
     },

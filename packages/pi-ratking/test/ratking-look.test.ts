@@ -137,9 +137,9 @@ it.effect.prop(
         expect(view).toContain(known ? "🔮 Merlin · Desk" : "peer");
       }
 
-      for (const view of [call, result]) {
-        expect(view).toContain(known ? "🦉 Scout · Watch" : "observer");
-      }
+      expect(call).toContain("+1 cc");
+      expect(call).not.toContain(known ? "🦉 Scout · Watch" : "observer");
+      expect(result).toContain(known ? "🦉 Scout · Watch" : "observer");
 
       expect(call).toMatch(/^🐀 send/u);
     })

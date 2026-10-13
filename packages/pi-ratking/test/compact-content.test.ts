@@ -10,8 +10,11 @@ import { mail, themes } from "./inline-fixtures.ts";
 import { plainTheme } from "./view-arbitraries.ts";
 
 const Sample = Schema.Struct({
+  action: Schema.Literals(["send", "reply", "record"]),
+  cc: Schema.Boolean,
   known: Schema.Boolean,
   role: Schema.Literals(["desk", "scout", "judge"]),
+  senderOnly: Schema.Boolean,
   summary: Schema.String.check(Schema.isPattern(/^[a-z]{10,80}$/u)),
 });
 
@@ -27,13 +30,19 @@ const unique = (text: string) =>
   new Set(words(text)).size === words(text).length;
 
 it.effect.prop(
-  "compact parties never repeat callsign words in raw names; receipts spend spare width on one summary while reserving id8, and expansion restores the name",
+  "collapsed call and receipt show each party and summary once, the id once, CC wake facts, and a resolved reply header with its sender-only exception",
   [Arbitrary.schema(Sample)],
   ([sample]) =>
     Effect.sync(() => {
       const name = `sample/sample-${sample.role}`;
       const label = `💬 ${sample.role}`;
-      const lookup = () => (sample.known ? label : undefined);
+
+      const lookup = (recipient: string) => {
+        const known = recipient === name ? label : "🦉 observer";
+
+        return sample.known ? known : undefined;
+      };
+
       const party = Party({ label, name, theme: plainTheme });
 
       expect(unique(party)).toBe(true);
@@ -46,48 +55,77 @@ it.effect.prop(
       for (const { theme } of themes) {
         for (const width of [40, 60, 80, 120]) {
           const state = {};
-          callView(
-            "ratking",
-            { action: "send", summary: sample.summary, to: name },
-            theme,
-            lookup,
-            { state }
-          );
+          const copies = sample.cc && sample.action !== "record";
+
+          const args = {
+            action: sample.action,
+            cc: copies ? ["sample/observer"] : [],
+            replyAll: !sample.senderOnly,
+            replyTo: sample.action === "reply" ? "3rootabcdef" : undefined,
+            summary: sample.summary,
+            to: sample.action === "reply" ? undefined : name,
+          };
+
+          const call = callView("ratking", args, theme, lookup, { state });
+          const before = plain(call.render(width)).join("\n");
+
+          if (sample.action === "reply") {
+            expect(before).not.toContain(name);
+          }
 
           const input = Object.freeze({
-            action: "send",
-            details: { id: "3abcdefghijk", to: name },
+            action: sample.action,
+            details: copies
+              ? {
+                  id: "3abcdefghijk",
+                  recipients: [
+                    { level: "wake", name },
+                    { level: "quiet", name: "sample/observer" },
+                  ],
+                }
+              : { id: "3abcdefghijk", to: name },
             expanded: false,
             isError: false,
             isPartial: false,
             text: `Delivered to ${name} over Rat King (id 3abcdefghijk, seq 9).`,
           });
 
-          const rendered = plain(
+          const receipt = plain(
             resultView(input, theme, lookup, { state }).render(width)
           );
 
-          const line = rendered[0] ?? "";
-
-          expect(rendered).toHaveLength(1);
-          expect(visibleWidth(line)).toBeLessThanOrEqual(width);
-          expect(line).toMatch(/ · 3abcdefg$/u);
-          expect(line).toContain(sample.known ? label : name);
-
+          const header = plain(call.render(width)).join("\n");
+          const combined = [header, ...receipt].join("\n");
           const anchor = sample.known ? label : name;
-          const room = width - visibleWidth(`✓ ${anchor} · 3abcdefg`) - 3;
 
-          if (room >= 10) {
-            expect(line).toContain(
-              sample.summary.slice(0, Math.min(room - 1, sample.summary.length))
-            );
+          expect(combined.split(anchor)).toHaveLength(2);
+          expect(combined.split(sample.summary.slice(0, 10))).toHaveLength(2);
+          expect(combined.split("3abcdefg")).toHaveLength(2);
+          expect(receipt).toHaveLength(copies ? 2 : 1);
+          expect(receipt[0]).toBe(copies ? "✓ woken · 3abcdefg" : "✓ 3abcdefg");
+
+          if (copies) {
+            const observer = sample.known ? "🦉 observer" : "sample/observer";
+            expect(header).toContain("+1 cc");
+            expect(header).not.toContain(observer);
+            expect(combined.split(observer)).toHaveLength(2);
+            expect(receipt[1]).toBe(`✓ ${observer} · quiet`);
           }
 
-          if (sample.known) {
-            const identity = line.slice(2).split(" · ")[0] ?? "";
+          if (sample.action === "reply" && width >= 80) {
+            expect(header).toContain(`reply → ${anchor}`);
+            expect(header).toContain("↩ 3rootabc");
+            expect(header.includes("sender only")).toBe(sample.senderOnly);
+          }
 
-            expect(unique(identity)).toBe(true);
-            expect(identity).not.toContain(name);
+          expect(
+            plain(
+              callView("ratking", args, theme, lookup, { state }).render(width)
+            ).join("\n")
+          ).toBe(header);
+
+          for (const line of [...call.render(width), ...receipt]) {
+            expect(visibleWidth(line)).toBeLessThanOrEqual(width);
           }
 
           const expanded = plain(
@@ -100,49 +138,6 @@ it.effect.prop(
           expect(input.text).toBe(
             `Delivered to ${name} over Rat King (id 3abcdefghijk, seq 9).`
           );
-        }
-      }
-    })
-);
-
-it.effect.prop(
-  "multiple recipients share one summary row then one wake-level receipt each",
-  [Arbitrary.schema(Sample)],
-  ([sample]) =>
-    Effect.sync(() => {
-      for (const { theme } of themes) {
-        for (const width of [40, 60, 80, 120]) {
-          const lines = plain(
-            resultView(
-              {
-                action: "send",
-                details: {
-                  id: "3abcdefghijk",
-                  recipients: [
-                    { level: "wake", name: "sample/desk" },
-                    { level: "quiet", name: "sample/scout" },
-                  ],
-                },
-                expanded: false,
-                isError: false,
-                isPartial: false,
-                summary: sample.summary,
-                text: "Delivered",
-              },
-              theme,
-              (name) => (name.endsWith("desk") ? "💬 desk" : "🦉 scout")
-            ).render(width)
-          );
-
-          expect(lines).toHaveLength(3);
-          expect(lines[0]).toMatch(/3abcdefg$/u);
-          expect(lines[0]).toContain(sample.summary.slice(0, 10));
-          expect(lines[1]).toBe("✓ 💬 desk · woken");
-          expect(lines[2]).toBe("✓ 🦉 scout · quiet");
-
-          for (const line of lines) {
-            expect(visibleWidth(line)).toBeLessThanOrEqual(width);
-          }
         }
       }
     })

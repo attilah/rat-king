@@ -42,7 +42,7 @@ import type { SessionFacts } from "./identity.ts";
 import { issuerLayer } from "./issuer.ts";
 import { messageView } from "./message-view.ts";
 import { digestView, recordView } from "./notice-view.ts";
-import { LexiconRecord, renderInbound } from "./payload.ts";
+import { COPY_NOTE, LexiconRecord, renderInbound } from "./payload.ts";
 import type { Inbound } from "./payload.ts";
 import {
   applyDelivery,
@@ -52,7 +52,7 @@ import {
   shownIds,
   verdictToHold,
 } from "./pending.ts";
-import type { PendingMail } from "./pending.ts";
+import type { DigestVariant, PendingMail } from "./pending.ts";
 import { NotDelivered, RatKing, ratKingLayer } from "./ratking.ts";
 import type { Deliver, SendOptions } from "./ratking.ts";
 import { recordNotice } from "./record-visibility.ts";
@@ -117,20 +117,50 @@ export const digestLine = (inbound: Inbound) => {
   return `- ${sender} · id ${inbound.id} · ${gist.replaceAll("\n", " ")}`;
 };
 
-export const renderDigest = (tool: string, mails: readonly PendingMail[]) =>
-  [
-    `**🐀 cc digest** · ${mails.length} cc'd since the last digest, newest first`,
-    formatReason(DIGEST_REASON),
-    "",
-    ...mails.map((mail) => mail.line ?? `- id ${mail.id}`),
-    "",
-    `These are copies; the sender used to: for whoever must act. To answer one: ${tool}({ action: "reply", replyTo: "<id>", summary: "...", message: "..." })`,
-  ].join("\n");
-
-export const digestDetails = (mails: readonly PendingMail[]) => ({
-  ids: mails.map((held) => held.id),
-  reason: DIGEST_REASON,
+const WakeEntry = Schema.Struct({
+  body: Schema.String,
+  from: Schema.String,
+  replyTo: Schema.optional(Schema.String),
+  summary: Schema.optional(Schema.String),
 });
+
+const wakeLine = (mail: PendingMail) =>
+  Option.match(Schema.decodeUnknownOption(WakeEntry)(mail.details), {
+    onNone: () => `- id ${mail.id}`,
+    onSome: (value) =>
+      `- ${value.from} · ${(value.summary ?? value.body).replaceAll(/\s+/gu, " ").slice(0, DIGEST_LINE_MAX)} · id ${mail.id}${value.replyTo === undefined ? "" : ` · reply to ${value.replyTo}`}`,
+  });
+
+export const renderDigest = (
+  tool: string,
+  mails: readonly PendingMail[],
+  variant: DigestVariant = "cc"
+) =>
+  variant === "wake"
+    ? [
+        `**🐀 while you were away** · ${mails.length}`,
+        ...mails.map(wakeLine),
+        "",
+        COPY_NOTE,
+        `To reply: ${tool}({ action: "reply", replyTo: "<id>", summary: "...", message: "..." })`,
+      ].join("\n")
+    : [
+        `**🐀 cc digest** · ${mails.length} cc'd since the last digest, newest first`,
+        formatReason(DIGEST_REASON),
+        "",
+        ...mails.map((mail) => mail.line ?? `- id ${mail.id}`),
+        "",
+        `These are copies; the sender used to: for whoever must act. To answer one: ${tool}({ action: "reply", replyTo: "<id>", summary: "...", message: "..." })`,
+      ].join("\n");
+
+export const digestDetails = (
+  mails: readonly PendingMail[],
+  variant: DigestVariant = "cc"
+) => {
+  const details = { ids: mails.map((held) => held.id), reason: DIGEST_REASON };
+
+  return variant === "wake" ? { ...details, variant } : details;
+};
 
 export { injects } from "./delivery.ts";
 
@@ -275,6 +305,7 @@ export interface SessionStart {
 }
 
 export interface PiHost {
+  readonly onBeforeAgentStart?: (handler: () => void) => void;
   readonly onAgentStart?: (handler: () => Promise<void>) => void;
   readonly onAgentEnd?: (
     handler: (messages: readonly unknown[]) => Promise<void>
@@ -307,6 +338,9 @@ export const piHost = (pi: ExtensionAPI): PiHost => ({
         await handler();
       }
     });
+  },
+  onBeforeAgentStart: (handler) => {
+    pi.on("before_agent_start", handler);
   },
   onMessageShown: (handler) => {
     pi.on("message_end", (event) => {
@@ -645,6 +679,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
           expanded: renderOptions.expanded,
           labels,
           theme,
+          tool,
         })
     );
     pi.registerMessageRenderer(
@@ -686,18 +721,21 @@ export const ratkingExtension = (options: ExtensionOptions) =>
     const acknowledgments = new Map<string, Effect.Effect<void>>();
 
     const mail = inbox({
-      digest: (mails) => {
+      digest: (mails, variant = "cc") => {
         pi.sendMessage(
           {
-            content: renderDigest(tool, mails),
+            content: renderDigest(tool, mails, variant),
             customType: DIGEST_MESSAGE,
             details: {
-              ...digestDetails(mails),
+              ...digestDetails(mails, variant),
               messages: mails.map((held) => held.details),
             },
             display: true,
           },
-          { deliverAs: "followUp", triggerTurn: true }
+          {
+            deliverAs: variant === "wake" ? "nextTurn" : "followUp",
+            triggerTurn: variant !== "wake",
+          }
         );
       },
       show: (pending, deliverAs) => {
@@ -711,6 +749,10 @@ export const ratkingExtension = (options: ExtensionOptions) =>
           { deliverAs, triggerTurn: deliverAs !== "nextTurn" }
         );
       },
+    });
+
+    pi.onBeforeAgentStart?.(() => {
+      mail.flushNext();
     });
 
     const consume = (id: string) => {
@@ -863,6 +905,11 @@ export const ratkingExtension = (options: ExtensionOptions) =>
             inject: (hold) =>
               Effect.sync(() => {
                 const pending = {
+                  coalesce:
+                    pi.onBeforeAgentStart !== undefined &&
+                    hold === "nextTurn" &&
+                    (inbound.cc || inbound.copy === true) &&
+                    inbound.kind !== "ask",
                   content: renderInbound(tool, inbound),
                   details: inboundDetails(inbound, settled),
                   digestMinutes:
