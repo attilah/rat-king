@@ -1,8 +1,8 @@
+import { attend } from "@rat-king/ratking-client/attend";
+import type { Arrival } from "@rat-king/ratking-client/attend";
 import { Option } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { attend } from "../src/attend.ts";
-import type { Arrival } from "../src/attend.ts";
 import { applyDelivery, verdictToHold } from "../src/pending.ts";
 import type { Hold } from "../src/pending.ts";
 

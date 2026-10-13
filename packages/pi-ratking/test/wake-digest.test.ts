@@ -2,6 +2,10 @@ import { stripTerminalSequences, visibleWidth } from "@earendil-works/pi-tui";
 // @effect-diagnostics asyncFunction:off -- Pi's Promise boundary under test.
 import { NodeServices } from "@effect/platform-node";
 import { it } from "@effect/vitest";
+import { COPY_NOTE } from "@rat-king/ratking-client/payload";
+import type { Inbound } from "@rat-king/ratking-client/payload";
+import { RatKing } from "@rat-king/ratking-client/ratking";
+import type { Deliver } from "@rat-king/ratking-client/ratking";
 import {
   Arbitrary,
   Clock,
@@ -22,12 +26,8 @@ import {
 } from "../src/extension.ts";
 import type { PiHost, SessionStart } from "../src/extension.ts";
 import { digestView } from "../src/notice-view.ts";
-import { COPY_NOTE } from "../src/payload.ts";
-import type { Inbound } from "../src/payload.ts";
 import { DIGEST_MESSAGE, inbox, shownIds } from "../src/pending.ts";
 import type { PendingMail } from "../src/pending.ts";
-import { RatKing } from "../src/ratking.ts";
-import type { Deliver } from "../src/ratking.ts";
 import { harness } from "./harness.ts";
 import { mail, themes } from "./inline-fixtures.ts";
 

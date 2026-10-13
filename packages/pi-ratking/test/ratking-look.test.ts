@@ -1,5 +1,8 @@
 import { stripTerminalSequences } from "@earendil-works/pi-tui";
 import { it } from "@effect/vitest";
+import { COPY_NOTE, renderInbound } from "@rat-king/ratking-client/payload";
+import type { Inbound } from "@rat-king/ratking-client/payload";
+import { NotDelivered, ReaderState } from "@rat-king/ratking-client/ratking";
 import { Arbitrary, Effect, Option, Schema } from "effect";
 import { expect } from "vitest";
 
@@ -11,9 +14,6 @@ import {
 } from "../src/extension.ts";
 import { inboundLines } from "../src/message-view.ts";
 import { digestView, recordView } from "../src/notice-view.ts";
-import { COPY_NOTE, renderInbound } from "../src/payload.ts";
-import type { Inbound } from "../src/payload.ts";
-import { NotDelivered, ReaderState } from "../src/ratking.ts";
 import { callView, resultView } from "../src/tool-view.ts";
 import { notDeliveredText, receiptText, statusText } from "../src/tool.ts";
 import { noLabels, party, roleColour, roleOf } from "../src/tui.ts";

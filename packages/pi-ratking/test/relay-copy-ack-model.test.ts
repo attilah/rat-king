@@ -5,6 +5,9 @@ import { it } from "@effect/vitest";
 import type * as Defs from "@rat-king/lexicon/defs";
 import * as List from "@rat-king/lexicon/mailbox.list";
 import { ownIdentity, prepare } from "@rat-king/mailbox-client";
+import { Directory } from "@rat-king/ratking-client/directory";
+import { PayloadJson } from "@rat-king/ratking-client/payload";
+import { SecretStore } from "@rat-king/ratking-client/secrets";
 import {
   Clock,
   DateTime,
@@ -23,11 +26,8 @@ import { expect } from "vitest";
 
 import { WebSocketPort } from "../../mailbox-client/src/watch.ts";
 import { document, identity } from "../../mailbox-client/test/identity.ts";
-import { Directory } from "../src/directory.ts";
 import { ratkingExtension } from "../src/extension.ts";
 import type { PiHost, SessionStart } from "../src/extension.ts";
-import { PayloadJson } from "../src/payload.ts";
-import { SecretStore } from "../src/secrets.ts";
 import { harness } from "./harness.ts";
 
 const ENDPOINT = "https://mailbox.example.invalid";

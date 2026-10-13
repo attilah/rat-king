@@ -1,13 +1,12 @@
 /* oxlint-disable typescript/promise-function-async -- fast-check AsyncCommand.run and asyncModelRun are Promise boundaries. */
 import { it } from "@effect/vitest";
+import type { Inbound } from "@rat-king/ratking-client/payload";
+import { Threads, threadsLayer } from "@rat-king/ratking-client/threads";
+import type { Reply } from "@rat-king/ratking-client/threads";
 import { Arbitrary, Deferred, Effect, Option, Schema } from "effect";
 import { asyncModelRun } from "fast-check";
 import type { AsyncCommand } from "fast-check";
 import { expect } from "vitest";
-
-import type { Inbound } from "../src/payload.ts";
-import { Threads, threadsLayer } from "../src/threads.ts";
-import type { Reply } from "../src/threads.ts";
 
 class ModelFailure extends Schema.TaggedError<ModelFailure>()("ModelFailure", {
   message: Schema.String,

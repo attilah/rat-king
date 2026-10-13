@@ -11,7 +11,7 @@ import {
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { shellQuote } from "../../packages/alchemy-nest/src/ssh.ts";
-import { HeartbeatJson } from "../../packages/pi-ratking/src/reader-health.ts";
+import { HeartbeatJson } from "../../packages/ratking-client/src/reader-health.ts";
 import { collectSessionsBackup } from "./alarm-backups.ts";
 import { collectInstanceHealth } from "./alarm-instances.ts";
 import type { DeployMarker } from "./alarm-sources.ts";

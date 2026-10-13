@@ -1,12 +1,17 @@
 import { it } from "@effect/vitest";
+import {
+  attend,
+  formatReason,
+  Reasons,
+  Verdicts,
+} from "@rat-king/ratking-client/attend";
+import type { Arrival } from "@rat-king/ratking-client/attend";
+import { Kind } from "@rat-king/ratking-client/payload";
 import { Option, Schema } from "effect";
 import { expect } from "vitest";
 
-import { attend, formatReason, Reasons, Verdicts } from "../src/attend.ts";
-import type { Arrival } from "../src/attend.ts";
 import { messageView } from "../src/message-view.ts";
 import type { InboundView } from "../src/message-view.ts";
-import { Kind } from "../src/payload.ts";
 import { applyDelivery, Dispositions, verdictToHold } from "../src/pending.ts";
 import type { Hold } from "../src/pending.ts";
 import { plainTheme } from "./view-arbitraries.ts";

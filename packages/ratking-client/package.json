@@ -1,0 +1,23 @@
+{
+  "name": "@rat-king/ratking-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "dependencies": {
+    "@effect/platform-node": "4.0.0",
+    "@rat-king/envelope": "workspace:*",
+    "@rat-king/lexicon": "workspace:*",
+    "@rat-king/mailbox-client": "workspace:*",
+    "effect": "4.0.1",
+    "xstate": "6.0.0-alpha.65"
+  },
+  "devDependencies": {
+    "@effect/vitest": "4.0.1",
+    "fast-check": "4.10.2",
+    "vitest": "5.0.1"
+  }
+}

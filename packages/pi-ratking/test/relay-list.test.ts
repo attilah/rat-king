@@ -1,8 +1,7 @@
+import { PiConfig, relaysOf } from "@rat-king/ratking-client/config";
+import { copiesOutbound } from "@rat-king/ratking-client/relay";
 import { Schema } from "effect";
 import { expect, it } from "vitest";
-
-import { PiConfig, relaysOf } from "../src/config.ts";
-import { copiesOutbound } from "../src/relay.ts";
 
 const front = {
   copyOutbound: true,

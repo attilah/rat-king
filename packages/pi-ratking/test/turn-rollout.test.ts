@@ -1,12 +1,12 @@
 import { it } from "@effect/vitest";
+import { resolveTurnRecords } from "@rat-king/ratking-client/config";
+import type { PiConfigValue } from "@rat-king/ratking-client/config";
 import { Arbitrary, ConfigProvider, Effect, Schema } from "effect";
 import { expect } from "vitest";
 
 import { AlarmSettings } from "../../../stacks/nest/alarm-config.ts";
 import type { AlarmSettingsValue } from "../../../stacks/nest/alarm-config.ts";
 import { readerCrashSources } from "../../../stacks/nest/turn-crashes.ts";
-import { resolveTurnRecords } from "../src/config.ts";
-import type { PiConfigValue } from "../src/config.ts";
 
 const Case = Schema.Struct({
   configured: Schema.optionalKey(Schema.Boolean),

@@ -1,12 +1,20 @@
 import type { Component } from "@earendil-works/pi-tui";
 import { truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { compactRecord } from "@rat-king/ratking-client/agentgraph";
+import { formatReason, reasonTone } from "@rat-king/ratking-client/attend";
+import {
+  DeliveryReason,
+  storedReason,
+} from "@rat-king/ratking-client/delivery";
+import {
+  COPY_NOTE,
+  Kind,
+  RelaySource,
+  replyHint,
+} from "@rat-king/ratking-client/payload";
+import type { Inbound } from "@rat-king/ratking-client/payload";
 import { Match, Option, Schema } from "effect";
 
-import { compactRecord } from "./agentgraph.ts";
-import { formatReason, reasonTone } from "./attend.ts";
-import { DeliveryReason, storedReason } from "./delivery.ts";
-import { COPY_NOTE, Kind, RelaySource, replyHint } from "./payload.ts";
-import type { Inbound } from "./payload.ts";
 import {
   FRAME_MIN,
   clean,

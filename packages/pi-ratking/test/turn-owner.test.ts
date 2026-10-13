@@ -1,8 +1,7 @@
 import { it } from "@effect/vitest";
+import { resolveTurnOwner } from "@rat-king/ratking-client/config";
 import { ConfigProvider, Effect, Option } from "effect";
 import { expect } from "vitest";
-
-import { resolveTurnOwner } from "../src/config.ts";
 
 const ownerFor = (env: Readonly<Record<string, string>>) =>
   resolveTurnOwner().pipe(

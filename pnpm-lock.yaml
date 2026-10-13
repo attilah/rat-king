@@ -342,6 +342,34 @@ importers:
         specifier: 4.10.2
         version: 4.10.2
 
+  apps/ratking-cli:
+    dependencies:
+      '@effect/platform-node':
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.1)(redis@6.3.0)
+      '@rat-king/lexicon':
+        specifier: workspace:*
+        version: link:../../packages/lexicon
+      '@rat-king/mailbox-client':
+        specifier: workspace:*
+        version: link:../../packages/mailbox-client
+      '@rat-king/ratking-client':
+        specifier: workspace:*
+        version: link:../../packages/ratking-client
+      effect:
+        specifier: 4.0.1
+        version: 4.0.1
+    devDependencies:
+      '@effect/vitest':
+        specifier: 4.0.1
+        version: 4.0.1(effect@4.0.1)(vitest@5.0.1(@types/node@24.13.6)(vite@8.3.2(@types/node@24.13.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)))
+      fast-check:
+        specifier: 4.10.2
+        version: 4.10.2
+      vitest:
+        specifier: 5.0.1
+        version: 5.0.1(@types/node@24.13.6)(vite@8.3.2(@types/node@24.13.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+
   packages/agent-runtime:
     dependencies:
       '@earendil-works/chord':
@@ -451,6 +479,9 @@ importers:
       '@rat-king/mailbox-client':
         specifier: workspace:*
         version: link:../mailbox-client
+      '@rat-king/ratking-client':
+        specifier: workspace:*
+        version: link:../ratking-client
       effect:
         specifier: 4.0.1
         version: 4.0.1
@@ -473,6 +504,37 @@ importers:
       typebox:
         specifier: 1.3.27
         version: 1.3.27
+      vitest:
+        specifier: 5.0.1
+        version: 5.0.1(@types/node@24.13.6)(vite@8.3.2(@types/node@24.13.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+
+  packages/ratking-client:
+    dependencies:
+      '@effect/platform-node':
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.1)(redis@6.3.0)
+      '@rat-king/envelope':
+        specifier: workspace:*
+        version: link:../envelope
+      '@rat-king/lexicon':
+        specifier: workspace:*
+        version: link:../lexicon
+      '@rat-king/mailbox-client':
+        specifier: workspace:*
+        version: link:../mailbox-client
+      effect:
+        specifier: 4.0.1
+        version: 4.0.1
+      xstate:
+        specifier: 6.0.0-alpha.65
+        version: 6.0.0-alpha.65
+    devDependencies:
+      '@effect/vitest':
+        specifier: 4.0.1
+        version: 4.0.1(effect@4.0.1)(vitest@5.0.1(@types/node@24.13.6)(vite@8.3.2(@types/node@24.13.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)))
+      fast-check:
+        specifier: 4.10.2
+        version: 4.10.2
       vitest:
         specifier: 5.0.1
         version: 5.0.1(@types/node@24.13.6)(vite@8.3.2(@types/node@24.13.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))

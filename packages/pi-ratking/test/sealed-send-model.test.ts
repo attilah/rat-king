@@ -12,6 +12,11 @@ import {
   seal as publicSealMessage,
   sendSealed as publicSendSealed,
 } from "@rat-king/mailbox-client";
+import { Settings } from "@rat-king/ratking-client/config";
+import { Directory, UnknownName } from "@rat-king/ratking-client/directory";
+import { didFor } from "@rat-king/ratking-client/name";
+import { PayloadJson } from "@rat-king/ratking-client/payload";
+import { SecretStore } from "@rat-king/ratking-client/secrets";
 import {
   Effect,
   Layer,
@@ -41,11 +46,6 @@ import { base64url } from "../../mailbox-client/src/auth.ts";
 import { importSigning } from "../../mailbox-client/src/identity.ts";
 import * as Tid from "../../mailbox-client/src/tid.ts";
 import { document, identity } from "../../mailbox-client/test/identity.ts";
-import { Settings } from "../src/config.ts";
-import { Directory, UnknownName } from "../src/directory.ts";
-import { didFor } from "../src/name.ts";
-import { PayloadJson } from "../src/payload.ts";
-import { SecretStore } from "../src/secrets.ts";
 
 const TEMPLATE = "did:web:{agent}.agents.example.invalid";
 

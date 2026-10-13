@@ -3,14 +3,14 @@ import { NodeServices } from "@effect/platform-node";
 import { it } from "@effect/vitest";
 import * as Defs from "@rat-king/lexicon/defs";
 import { layer, RatKingMailbox } from "@rat-king/mailbox-client";
+import { Directory } from "@rat-king/ratking-client/directory";
+import { PayloadJson } from "@rat-king/ratking-client/payload";
+import { RatKing } from "@rat-king/ratking-client/ratking";
 import { Effect, FileSystem, Option, Predicate, Schema } from "effect";
 import { HttpClient, HttpClientResponse } from "effect/http";
 import { expect } from "vitest";
 
 import { document, identity } from "../../mailbox-client/test/identity.ts";
-import { Directory } from "../src/directory.ts";
-import { PayloadJson } from "../src/payload.ts";
-import { RatKing } from "../src/ratking.ts";
 import { harness } from "./harness.ts";
 
 it.live.prop(

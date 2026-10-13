@@ -12,6 +12,10 @@ import {
   prepare,
   RatKingMailbox,
 } from "@rat-king/mailbox-client";
+import { Directory } from "@rat-king/ratking-client/directory";
+import { LexiconRecord, PayloadJson } from "@rat-king/ratking-client/payload";
+import { RelayHandled } from "@rat-king/ratking-client/relay";
+import { SecretStore } from "@rat-king/ratking-client/secrets";
 import {
   Arbitrary,
   ConfigProvider,
@@ -32,7 +36,6 @@ import { expect } from "vitest";
 
 import { WebSocketPort } from "../../mailbox-client/src/watch.ts";
 import { document, identity } from "../../mailbox-client/test/identity.ts";
-import { Directory } from "../src/directory.ts";
 import type { PiHost, SessionStart } from "../src/extension.ts";
 import {
   collectFacts,
@@ -47,10 +50,7 @@ import {
   SEND_EVENT,
   SEND_RESULT_EVENT,
 } from "../src/extension.ts";
-import { LexiconRecord, PayloadJson } from "../src/payload.ts";
 import { shownIds } from "../src/pending.ts";
-import { RelayHandled } from "../src/relay.ts";
-import { SecretStore } from "../src/secrets.ts";
 import { harness } from "./harness.ts";
 
 const PEER = "did:web:peer.agents.example.invalid";

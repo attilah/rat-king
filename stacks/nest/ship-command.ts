@@ -7,7 +7,7 @@ import {
   SecretStore,
   secretStoreLayer,
 } from "../../apps/mailbox/cli/secrets.ts";
-import { writePrivateJson } from "../../packages/pi-ratking/src/directory.ts";
+import { writePrivateJson } from "../../packages/ratking-client/src/directory.ts";
 import {
   RestartEvent,
   Sha,

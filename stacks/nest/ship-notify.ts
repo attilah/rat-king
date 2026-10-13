@@ -13,13 +13,13 @@ import {
   loadSettings,
   NotConfigured,
   Settings,
-} from "../../packages/pi-ratking/src/config.ts";
+} from "../../packages/ratking-client/src/config.ts";
 import {
   Directory,
   directoryLayer,
   UnknownName,
-} from "../../packages/pi-ratking/src/directory.ts";
-import { encodePayload } from "../../packages/pi-ratking/src/payload.ts";
+} from "../../packages/ratking-client/src/directory.ts";
+import { encodePayload } from "../../packages/ratking-client/src/payload.ts";
 import { FleetError } from "./stage-config.ts";
 import type { StageConfigValue } from "./stage-config.ts";
 

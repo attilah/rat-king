@@ -25,10 +25,10 @@ import {
 import {
   loadSettings,
   Settings,
-} from "../../packages/pi-ratking/src/config.ts";
-import { directoryLayer } from "../../packages/pi-ratking/src/directory.ts";
-import { reasonOf } from "../../packages/pi-ratking/src/errors.ts";
-import { secretStoreLayer } from "../../packages/pi-ratking/src/secrets.ts";
+} from "../../packages/ratking-client/src/config.ts";
+import { directoryLayer } from "../../packages/ratking-client/src/directory.ts";
+import { reasonOf } from "../../packages/ratking-client/src/errors.ts";
+import { secretStoreLayer } from "../../packages/ratking-client/src/secrets.ts";
 import {
   leaseScriptIdentity,
   oneLine,

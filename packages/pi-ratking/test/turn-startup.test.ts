@@ -1,11 +1,11 @@
 import { NodeServices } from "@effect/platform-node";
 import { it } from "@effect/vitest";
 import { Turn } from "@rat-king/lexicon/turns";
+import { RatKing, ReaderState } from "@rat-king/ratking-client/ratking";
 import { Effect, FileSystem, Layer, Option, Schema } from "effect";
 import { HttpClient } from "effect/http";
 import { expect } from "vitest";
 
-import { RatKing, ReaderState } from "../src/ratking.ts";
 import { turnReporter } from "../src/turn-record.ts";
 import { harness } from "./harness.ts";
 

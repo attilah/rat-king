@@ -1,7 +1,4 @@
 import { it } from "@effect/vitest";
-import { Arbitrary, Effect, Option, Result, Schema } from "effect";
-import { expect } from "vitest";
-
 import {
   AgentName,
   canonicalName,
@@ -10,8 +7,10 @@ import {
   provisionLabel,
   secretName,
   verifiedSender,
-} from "../src/name.ts";
-import type { ReservedValue } from "../src/name.ts";
+} from "@rat-king/ratking-client/name";
+import type { ReservedValue } from "@rat-king/ratking-client/name";
+import { Arbitrary, Effect, Option, Result, Schema } from "effect";
+import { expect } from "vitest";
 
 const reserved: ReservedValue = {
   "fleet-owner": {

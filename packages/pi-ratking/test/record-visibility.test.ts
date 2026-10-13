@@ -1,6 +1,9 @@
 import { NodeServices } from "@effect/platform-node";
 import { it } from "@effect/vitest";
 import { readerCannotRender, recordType } from "@rat-king/mailbox-client";
+import { Directory } from "@rat-king/ratking-client/directory";
+import { RatKing } from "@rat-king/ratking-client/ratking";
+import { recordNotice } from "@rat-king/ratking-client/record-visibility";
 import {
   Arbitrary,
   Effect,
@@ -14,9 +17,6 @@ import { HttpClient, HttpClientResponse } from "effect/http";
 import { expect } from "vitest";
 
 import { document, identity } from "../../mailbox-client/test/identity.ts";
-import { Directory } from "../src/directory.ts";
-import { RatKing } from "../src/ratking.ts";
-import { recordNotice } from "../src/record-visibility.ts";
 import { notDeliveredText } from "../src/tool.ts";
 import { harness } from "./harness.ts";
 

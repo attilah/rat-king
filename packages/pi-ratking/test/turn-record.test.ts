@@ -3,6 +3,9 @@ import { NodeServices } from "@effect/platform-node";
 import { it } from "@effect/vitest";
 import { Turn } from "@rat-king/lexicon/turns";
 import type { TurnValue } from "@rat-king/lexicon/turns";
+import { resolveTurnRecords } from "@rat-king/ratking-client/config";
+import { RatKing, ReaderState } from "@rat-king/ratking-client/ratking";
+import type { Deliver } from "@rat-king/ratking-client/ratking";
 import {
   Arbitrary,
   Clock,
@@ -19,11 +22,8 @@ import { asyncModelRun } from "fast-check";
 import type { AsyncCommand } from "fast-check";
 import { expect } from "vitest";
 
-import { resolveTurnRecords } from "../src/config.ts";
 import { ratkingExtension, RECORD_EVENT } from "../src/extension.ts";
 import type { PiHost, SessionStart } from "../src/extension.ts";
-import { RatKing, ReaderState } from "../src/ratking.ts";
-import type { Deliver } from "../src/ratking.ts";
 import { harness } from "./harness.ts";
 
 const Case = Schema.Struct({

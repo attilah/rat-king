@@ -3,6 +3,9 @@ import { NodeServices } from "@effect/platform-node";
 import { it } from "@effect/vitest";
 import * as Defs from "@rat-king/lexicon/defs";
 import { MailboxClientError } from "@rat-king/mailbox-client";
+import { Directory } from "@rat-king/ratking-client/directory";
+import { QuarantineRecord, recover } from "@rat-king/ratking-client/quarantine";
+import { RatKing, ReaderState } from "@rat-king/ratking-client/ratking";
 import {
   Arbitrary,
   Duration,
@@ -19,9 +22,6 @@ import { expect } from "vitest";
 
 import { sealed } from "../../envelope/test/helpers.ts";
 import { document, identity } from "../../mailbox-client/test/identity.ts";
-import { Directory } from "../src/directory.ts";
-import { QuarantineRecord, recover } from "../src/quarantine.ts";
-import { RatKing, ReaderState } from "../src/ratking.ts";
 import { statusText } from "../src/tool.ts";
 import { harness } from "./harness.ts";
 

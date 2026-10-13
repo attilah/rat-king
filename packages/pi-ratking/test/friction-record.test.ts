@@ -1,10 +1,9 @@
 import { it } from "@effect/vitest";
 import * as Friction from "@rat-king/lexicon/agentgraph.friction";
+import { validateRecord } from "@rat-king/ratking-client/agentgraph";
+import { recordNotice } from "@rat-king/ratking-client/record-visibility";
 import { Arbitrary, Effect, Option, Schema } from "effect";
 import { expect } from "vitest";
-
-import { validateRecord } from "../src/agentgraph.ts";
-import { recordNotice } from "../src/record-visibility.ts";
 
 const valid = {
   $type: "sh.mschf.agentgraph.friction",

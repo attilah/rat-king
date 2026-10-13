@@ -3,6 +3,10 @@
 import { NodeServices } from "@effect/platform-node";
 import { it } from "@effect/vitest";
 import * as Defs from "@rat-king/lexicon/defs";
+import { Directory } from "@rat-king/ratking-client/directory";
+import { AgentName } from "@rat-king/ratking-client/name";
+import { PresenceTimeout } from "@rat-king/ratking-client/presence";
+import { RatKing } from "@rat-king/ratking-client/ratking";
 import {
   Arbitrary,
   Clock,
@@ -21,10 +25,6 @@ import * as fc from "fast-check";
 import { expect } from "vitest";
 
 import { document, identity } from "../../mailbox-client/test/identity.ts";
-import { Directory } from "../src/directory.ts";
-import { AgentName } from "../src/name.ts";
-import { PresenceTimeout } from "../src/presence.ts";
-import { RatKing } from "../src/ratking.ts";
 import { notDeliveredText } from "../src/tool.ts";
 import { harness } from "./harness.ts";
 

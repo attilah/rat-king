@@ -1,16 +1,16 @@
 import { it } from "@effect/vitest";
-import { Effect, Schema } from "effect";
-import { expect } from "vitest";
-
 import {
   PayloadJson,
   SUMMARY_HARD_MAX,
   SUMMARY_MAX,
   SUMMARY_WIRE_MAX,
-} from "../src/payload.ts";
-import type { LexiconRecordValue } from "../src/payload.ts";
-import { RatKing } from "../src/ratking.ts";
-import { normalizeSummary } from "../src/summary.ts";
+} from "@rat-king/ratking-client/payload";
+import type { LexiconRecordValue } from "@rat-king/ratking-client/payload";
+import { RatKing } from "@rat-king/ratking-client/ratking";
+import { normalizeSummary } from "@rat-king/ratking-client/summary";
+import { Effect, Schema } from "effect";
+import { expect } from "vitest";
+
 import { runAction } from "../src/tool.ts";
 import type { ToolParamsValue } from "../src/tool.ts";
 

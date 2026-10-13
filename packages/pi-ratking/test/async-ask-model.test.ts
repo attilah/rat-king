@@ -1,13 +1,12 @@
 /* oxlint-disable typescript/promise-function-async, effect-tests/no-manual-effect-runtime-in-tests -- fast-check commands bridge the owning Effect test context. */
 import { it } from "@effect/vitest";
+import { AskJournal, openAsks } from "@rat-king/ratking-client/asks";
+import type { AsksApi, PendingAskValue } from "@rat-king/ratking-client/asks";
+import type { Inbound } from "@rat-king/ratking-client/payload";
 import { Effect, Option, Schema } from "effect";
 import { asyncModelRun } from "fast-check";
 import type { AsyncCommand } from "fast-check";
 import { expect } from "vitest";
-
-import { AskJournal, openAsks } from "../src/asks.ts";
-import type { AsksApi, PendingAskValue } from "../src/asks.ts";
-import type { Inbound } from "../src/payload.ts";
 
 const Step = Schema.Literals([
   "ask",

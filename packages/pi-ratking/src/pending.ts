@@ -1,7 +1,6 @@
+import { Verdicts } from "@rat-king/ratking-client/attend";
+import type { Verdict } from "@rat-king/ratking-client/attend";
 import { Data, Option, Schema } from "effect";
-
-import { Verdicts } from "./attend.ts";
-import type { Verdict } from "./attend.ts";
 
 export const MAIL_MESSAGE = "ratking_message";
 
@@ -194,10 +193,4 @@ export const inbox = (host: MailHost) => {
   };
 };
 
-export const digestFor = (
-  table: Readonly<Record<string, number>>,
-  name: string
-): Option.Option<number> =>
-  Option.orElse(Option.fromNullishOr(table[name]), () =>
-    Option.fromNullishOr(table[name.split("/")[0] ?? name])
-  );
+export { digestFor } from "@rat-king/ratking-client/digest";

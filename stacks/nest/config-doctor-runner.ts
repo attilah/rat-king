@@ -13,16 +13,16 @@ import {
 import type { ChildProcessSpawner } from "effect/process";
 
 import { Identity } from "../../packages/mailbox-client/src/identity.ts";
-import { inspectConfig } from "../../packages/pi-ratking/src/config-doctor.ts";
+import { inspectConfig } from "../../packages/ratking-client/src/config-doctor.ts";
 import {
   PiConfig,
   settingsLayer,
-} from "../../packages/pi-ratking/src/config.ts";
-import { runCommand } from "../../packages/pi-ratking/src/process.ts";
+} from "../../packages/ratking-client/src/config.ts";
+import { runCommand } from "../../packages/ratking-client/src/process.ts";
 import {
   SecretStore,
   secretStoreLayer,
-} from "../../packages/pi-ratking/src/secrets.ts";
+} from "../../packages/ratking-client/src/secrets.ts";
 
 const program = Effect.gen(function* doctor() {
   const fs = yield* FileSystem.FileSystem;

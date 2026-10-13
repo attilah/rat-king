@@ -22,10 +22,10 @@ import { Alerts, RETENTION } from "../../apps/billing-ingress/contracts.ts";
 import {
   loadSettings,
   Settings,
-} from "../../packages/pi-ratking/src/config.ts";
-import { directoryLayer } from "../../packages/pi-ratking/src/directory.ts";
-import { AgentName } from "../../packages/pi-ratking/src/name.ts";
-import { secretStoreLayer } from "../../packages/pi-ratking/src/secrets.ts";
+} from "../../packages/ratking-client/src/config.ts";
+import { directoryLayer } from "../../packages/ratking-client/src/directory.ts";
+import { AgentName } from "../../packages/ratking-client/src/name.ts";
+import { secretStoreLayer } from "../../packages/ratking-client/src/secrets.ts";
 import {
   billingBody,
   BillingRelay,

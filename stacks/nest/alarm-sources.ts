@@ -1,7 +1,7 @@
 import { DateTime, Schema } from "effect";
 
-import { readerVerdict } from "../../packages/pi-ratking/src/reader-health.ts";
-import type { ReaderHeartbeatValue } from "../../packages/pi-ratking/src/reader-health.ts";
+import { readerVerdict } from "../../packages/ratking-client/src/reader-health.ts";
+import type { ReaderHeartbeatValue } from "../../packages/ratking-client/src/reader-health.ts";
 import { SessionsBackupFact, sessionsBackupReading } from "./alarm-backups.ts";
 import { AlarmKey, AlarmReading } from "./alarm-config.ts";
 import type { AlarmReadingValue } from "./alarm-config.ts";

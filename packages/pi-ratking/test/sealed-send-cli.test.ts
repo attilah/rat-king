@@ -6,6 +6,7 @@ import { NodeServices } from "@effect/platform-node";
 import { it } from "@effect/vitest";
 import { canonical } from "@rat-king/envelope/canonical";
 import * as Send from "@rat-king/lexicon/mailbox.send";
+import { Entries } from "@rat-king/ratking-client/directory";
 import { Effect, FileSystem, Schema, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { expect } from "vitest";
@@ -13,7 +14,6 @@ import { expect } from "vitest";
 import { EnvelopeJson, SealedJson } from "../../../stacks/nest/seal.ts";
 import { base64url } from "../../mailbox-client/src/auth.ts";
 import { document, identity } from "../../mailbox-client/test/identity.ts";
-import { Entries } from "../src/directory.ts";
 
 const SECRET_ENTRY = "example_job_identity";
 

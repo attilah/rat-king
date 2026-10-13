@@ -1,6 +1,17 @@
 import { it } from "@effect/vitest";
 import * as Prefs from "@rat-king/lexicon/attention.prefs";
 import * as Status from "@rat-king/lexicon/attention.status";
+import {
+  attend,
+  forwardNames,
+  Reasons,
+  Verdicts,
+} from "@rat-king/ratking-client/attend";
+import {
+  decimalPreferences,
+  ToolPreferences,
+  wirePreferences,
+} from "@rat-king/ratking-client/attention";
 import { Arbitrary, DateTime, Option, Predicate, Schema } from "effect";
 import { expect } from "vitest";
 
@@ -10,12 +21,6 @@ import {
   fromBasisPoints,
   toBasisPoints,
 } from "../../mailbox-client/src/attention.ts";
-import { attend, forwardNames, Reasons, Verdicts } from "../src/attend.ts";
-import {
-  decimalPreferences,
-  ToolPreferences,
-  wirePreferences,
-} from "../src/attention.ts";
 
 const PreferencesSample = Schema.Struct({
   ...Prefs.Main.schema.fields,

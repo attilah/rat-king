@@ -1,15 +1,17 @@
 /* oxlint-disable promise/prefer-await-to-callbacks -- Effect layer test adapters. */
 import { NodeServices } from "@effect/platform-node";
+import { Settings } from "@rat-king/ratking-client/config";
+import type { RelaySettingValue } from "@rat-king/ratking-client/config";
+import { Directory, directoryLayer } from "@rat-king/ratking-client/directory";
+import { Issuer, IssuerError } from "@rat-king/ratking-client/issuer";
+import type { ReservedValue } from "@rat-king/ratking-client/name";
+import {
+  ratKingLayer,
+  AdmissionBackoff,
+} from "@rat-king/ratking-client/ratking";
+import { SecretStore } from "@rat-king/ratking-client/secrets";
 import { Effect, Layer, Option, Redacted, Duration } from "effect";
 import { HttpClient } from "effect/http";
-
-import { Settings } from "../src/config.ts";
-import type { RelaySettingValue } from "../src/config.ts";
-import { Directory, directoryLayer } from "../src/directory.ts";
-import { Issuer, IssuerError } from "../src/issuer.ts";
-import type { ReservedValue } from "../src/name.ts";
-import { ratKingLayer, AdmissionBackoff } from "../src/ratking.ts";
-import { SecretStore } from "../src/secrets.ts";
 
 const secrets = (values: Map<string, string>) =>
   Layer.sync(SecretStore, () =>
