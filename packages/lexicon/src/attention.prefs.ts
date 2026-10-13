@@ -2,6 +2,33 @@ import { Schema } from "effect";
 
 import * as Runtime from "./runtime.ts";
 
+export const Name = Runtime.lexString({
+  maxLength: 128,
+  minLength: 1,
+  type: "string",
+}).check(Schema.isPattern(/^[a-z][a-z0-9_-]*(?:\/[a-z][a-z0-9_-]*)*$/u));
+
+export type NameValue = typeof Name.Type;
+
+export const Digest = Schema.StructWithRest(
+  Schema.Struct({
+    minutes: Schema.Int.check(
+      Schema.isGreaterThanOrEqualTo(1),
+      Schema.isLessThanOrEqualTo(1440)
+    ),
+    name: Name,
+  }),
+  [Schema.Record(Schema.String, Runtime.Data)]
+).check(
+  Schema.makeFilter(
+    (value) =>
+      Object.keys(value).every((key) => ["minutes", "name"].includes(key)),
+    { expected: "only allowed keys: minutes, name" }
+  )
+);
+
+export type DigestValue = typeof Digest.Type;
+
 export const Group = Schema.StructWithRest(
   Schema.Struct({
     group: Runtime.lexString({ maxLength: 256, minLength: 1, type: "string" }),
@@ -44,14 +71,6 @@ export const Jev = Schema.StructWithRest(
 );
 
 export type JevValue = typeof Jev.Type;
-
-export const Name = Runtime.lexString({
-  maxLength: 128,
-  minLength: 1,
-  type: "string",
-}).check(Schema.isPattern(/^[a-z][a-z0-9_-]*(?:\/[a-z][a-z0-9_-]*)*$/u));
-
-export type NameValue = typeof Name.Type;
 
 export const Model = Schema.StructWithRest(
   Schema.Struct({
@@ -101,6 +120,9 @@ export const Main = Schema.StructWithRest(
     allow: Schema.Array(Name).check(
       Schema.isMinLength(0),
       Schema.isMaxLength(256)
+    ),
+    digest: Schema.optionalKey(
+      Schema.Array(Digest).check(Schema.isMinLength(0), Schema.isMaxLength(256))
     ),
     forward: Schema.Array(Name).check(
       Schema.isMinLength(0),
@@ -165,6 +187,7 @@ export const Main = Schema.StructWithRest(
       Object.keys(value).every((key) =>
         [
           "allow",
+          "digest",
           "forward",
           "log",
           "model",
@@ -175,7 +198,7 @@ export const Main = Schema.StructWithRest(
       ),
     {
       expected:
-        "only allowed keys: allow, forward, log, model, mute, refuse, version",
+        "only allowed keys: allow, digest, forward, log, model, mute, refuse, version",
     }
   )
 );

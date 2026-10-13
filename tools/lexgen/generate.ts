@@ -29,7 +29,9 @@ const namespace = "sh.mschf.ratking.";
 const quote = (value: string) => JSON.stringify(value);
 
 const number = (value: number) =>
-  String(value).replaceAll(/\B(?=(?:\d{3})+(?!\d))/gu, "_");
+  Math.abs(value) < 10_000
+    ? String(value)
+    : String(value).replaceAll(/\B(?=(?:\d{3})+(?!\d))/gu, "_");
 
 const sortedString = (field: LexString) =>
   JSON.stringify(

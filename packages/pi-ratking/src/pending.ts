@@ -47,6 +47,8 @@ export type DigestVariant = "cc" | "wake";
 
 export interface PendingMail {
   readonly coalesce?: boolean;
+  readonly watch?: string;
+  readonly wake?: boolean;
   readonly content: string;
   readonly deliverAs?: Hold;
   readonly details: unknown;
@@ -134,7 +136,7 @@ export const inbox = (host: MailHost) => {
         return;
       }
 
-      if (due.length === 1 && due[0] !== undefined) {
+      if (due.length === 1 && due[0] !== undefined && due[0].wake !== true) {
         host.show(due[0], "nextTurn");
       } else {
         host.digest(due, "wake");
@@ -162,6 +164,7 @@ export const inbox = (host: MailHost) => {
         !(hold === "nextTurn" && mail.coalesce === true)
       ) {
         host.show(mail, hold);
+        digested.add(mail.id);
       }
     },
     tick: (now: number) => {
@@ -188,7 +191,21 @@ export const inbox = (host: MailHost) => {
         digested.add(mail.id);
       }
 
-      host.digest(due.toReversed());
+      host.digest(
+        due.toReversed(),
+        due.every((mail) => mail.wake === true) ? "wake" : "cc"
+      );
+    },
+    withdraw: (watch: string): readonly string[] => {
+      const ids = [...pending.values()].flatMap((mail) =>
+        mail.watch === watch && !digested.has(mail.id) ? [mail.id] : []
+      );
+
+      for (const id of ids) {
+        pending.delete(id);
+      }
+
+      return ids;
     },
   };
 };

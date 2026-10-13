@@ -1829,7 +1829,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
           }
 
           yield* deliver(
-            "record" in inbound ? inbound : { ...inbound, levers },
+            { ...inbound, levers },
             settled,
             ack ?? displayAck(inbound.id)
           );

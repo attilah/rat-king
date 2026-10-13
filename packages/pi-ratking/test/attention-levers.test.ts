@@ -24,6 +24,9 @@ import {
 
 const PreferencesSample = Schema.Struct({
   ...Prefs.Main.schema.fields,
+  digest: Schema.optionalKey(
+    Schema.Array(Schema.Struct(Prefs.Digest.schema.fields))
+  ),
   model: Schema.Struct({
     ...Prefs.Model.schema.fields,
     jev: Schema.optionalKey(Schema.Struct(Prefs.Jev.schema.fields)),

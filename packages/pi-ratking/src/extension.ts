@@ -83,6 +83,7 @@ import type { ToolText } from "./tool.ts";
 import type { Labels } from "./tui.ts";
 import { stopReason, turnReporter } from "./turn-record.ts";
 import type { TurnReporter } from "./turn-record.ts";
+import { flushWake, receiveWake, WAKE_RECORD } from "./wake-record.ts";
 
 export const SEND_EVENT = "ratking/send";
 
@@ -153,8 +154,13 @@ export const renderDigest = (
         `**🐀 while you were away** · ${mails.length}`,
         ...mails.map(wakeLine),
         "",
-        COPY_NOTE,
-        `To reply: ${tool}({ action: "reply", replyTo: "<id>", summary: "...", message: "..." })`,
+        ...mails.flatMap((mail) => (mail.wake === true ? [mail.content] : [])),
+        ...(mails.every((mail) => mail.wake === true)
+          ? []
+          : [
+              COPY_NOTE,
+              `To reply: ${tool}({ action: "reply", replyTo: "<id>", summary: "...", message: "..." })`,
+            ]),
       ].join("\n")
     : [
         `**🐀 cc digest** · ${mails.length} cc'd since the last digest, newest first`,
@@ -721,11 +727,11 @@ export const ratkingExtension = (options: ExtensionOptions) =>
       }
     };
 
+    let busy = false;
+
     pi.onAgentStart?.(async () => {
+      busy = true;
       await reportTurn(turns?.working());
-    });
-    pi.onAgentEnd?.(async (messages) => {
-      await reportTurn(turns?.done(stopReason(messages)));
     });
     pi.onApproval?.(async () => {
       await reportTurn(turns?.approval());
@@ -763,7 +769,45 @@ export const ratkingExtension = (options: ExtensionOptions) =>
       },
     });
 
+    const wakes = inbox({
+      digest: (mails) => {
+        flushWake(
+          pi,
+          {
+            content: renderDigest(tool, mails, "wake"),
+            customType: DIGEST_MESSAGE,
+            details: {
+              ...digestDetails(mails, "wake"),
+              messages: mails.map((held) => held.details),
+            },
+          },
+          mails.map((held) => held.id).join(":")
+        );
+      },
+      show: (pending, deliverAs) => {
+        pi.sendMessage(
+          {
+            content: renderDigest(tool, [pending], "wake"),
+            customType: DIGEST_MESSAGE,
+            details: {
+              ...digestDetails([pending], "wake"),
+              messages: [pending.details],
+            },
+            display: true,
+          },
+          { deliverAs, triggerTurn: true }
+        );
+      },
+    });
+
+    pi.onAgentEnd?.(async (messages) => {
+      busy = false;
+      wakes.flushNext();
+      await reportTurn(turns?.done(stopReason(messages)));
+    });
+
     pi.onBeforeAgentStart?.(() => {
+      busy = true;
       mail.flushNext();
     });
 
@@ -778,6 +822,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
 
     pi.onMessageShown?.((id) => {
       mail.shown(id);
+      wakes.shown(id);
       consume(id);
     });
 
@@ -785,6 +830,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
       Effect.flatMap((now) =>
         Effect.sync(() => {
           mail.tick(now);
+          wakes.tick(now);
         })
       ),
       Effect.repeat(Schedule.spaced(DIGEST_TICK)),
@@ -809,6 +855,21 @@ export const ratkingExtension = (options: ExtensionOptions) =>
         }
 
         if ("record" in inbound) {
+          if (inbound.record.$type === WAKE_RECORD) {
+            receiveWake(
+              { consume, take: wakes.take, withdraw: wakes.withdraw },
+              inbound,
+              settled,
+              now
+            );
+
+            if (!busy) {
+              wakes.flushNext();
+            }
+
+            return;
+          }
+
           if (
             inbound.record.$type === "sh.mschf.agentgraph.turn" &&
             Option.isNone(
@@ -835,8 +896,10 @@ export const ratkingExtension = (options: ExtensionOptions) =>
           const body = JSON.stringify(inbound.record);
 
           if (!settled && Option.isSome(decodeAgentGraphBody(body))) {
+            const { levers: _levers, ...recordInbound } = inbound;
+
             const message: Inbound = {
-              ...inbound,
+              ...recordInbound,
               body,
               cc: false,
               kind: "data",
@@ -1189,6 +1252,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
       await stop();
 
       mail.clear();
+      wakes.clear();
       acknowledgments.clear();
 
       const collected = await Effect.runPromise(
