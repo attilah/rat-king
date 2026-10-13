@@ -36,6 +36,7 @@ export const turnReporter = (
   let n = initial;
   let lastAt = -1;
   let announced = false;
+  let open = false;
 
   const emit = Effect.fn("RatKing.emitTurn")(
     function* emit(
@@ -92,12 +93,17 @@ export const turnReporter = (
   return {
     approval: () =>
       emit("blocked", n, { reason: "Pi is waiting for approval" }),
-    done: (reason: StopReason) => emit("done", n, { stopReason: reason }),
+    done: (reason: StopReason) =>
+      Effect.suspend(() => {
+        open = false;
+
+        return emit("done", n, { stopReason: reason });
+      }),
     idle: () =>
       Effect.gen(function* idle() {
         if (!announced) {
           announced = true;
-          yield* emit("idle", initial);
+          yield* emit(open ? "working" : "idle", n);
         }
       }),
     waitForReply: <A, E, R>(reply: Effect.Effect<A, E, R>) =>
@@ -108,6 +114,7 @@ export const turnReporter = (
     working: () =>
       Effect.gen(function* working() {
         n += 1;
+        open = true;
         remember?.(n);
         yield* emit("working", n);
       }),
