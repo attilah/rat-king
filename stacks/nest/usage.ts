@@ -5,6 +5,7 @@ import {
   FileSystem,
   Option,
   Schema,
+  SchemaTransformation,
   Stream,
 } from "effect";
 
@@ -140,6 +141,14 @@ const percentile = (sorted: readonly number[], percent: number) =>
     : (sorted[Math.ceil(sorted.length * percent) - 1] ?? null);
 
 const senderName = (did: string) => {
+  if (did.startsWith("did:web:") && did.endsWith(".ratking-fleet.invalid")) {
+    return did
+      .slice("did:web:".length, -".ratking-fleet.invalid".length)
+      .replace(/\.pi$/u, "")
+      .split(".")
+      .join("/");
+  }
+
   const match = /^did:web:(?<project>[^.]+)\.(?<row>[^.]+)\.pi\./u.exec(did);
 
   return match?.groups === undefined
@@ -153,7 +162,6 @@ export const usageDigest = Effect.fn("Usage.digest")(function* usageDigest<
 >(day: string, events: Stream.Stream<TrafficEvent, E, R>, restarts = 0) {
   const { start, end } = yield* dayBounds(day);
   const pairs = new Map<string, Pair>();
-  const recipients = new Map<string, Set<string>>();
   const senders = new Map<string, number>();
   let sent = 0;
   let delivered = 0;
@@ -188,9 +196,6 @@ export const usageDigest = Effect.fn("Usage.digest")(function* usageDigest<
           pair.acceptedToday = true;
           sent += 1;
           senders.set(event.senderDid, (senders.get(event.senderDid) ?? 0) + 1);
-          const targets = recipients.get(event.messageId) ?? new Set<string>();
-          targets.add(event.recipientDid);
-          recipients.set(event.messageId, targets);
         }
       } else if (event.state === "delivered") {
         pair.delivered = Math.min(pair.delivered ?? time, time);
@@ -235,11 +240,9 @@ export const usageDigest = Effect.fn("Usage.digest")(function* usageDigest<
       p95: percentile(latencies, 0.95),
     },
     acked,
-    ccRatio:
-      recipients.size === 0
-        ? 0
-        : [...recipients.values()].filter((targets) => targets.size > 1)
-            .length / recipients.size,
+    ccRatio: Unavailable.make({
+      source: "traffic export gives each cc copy its own messageId",
+    }),
     day,
     delivered,
     refusals: Unavailable.make({
@@ -247,6 +250,7 @@ export const usageDigest = Effect.fn("Usage.digest")(function* usageDigest<
     }),
     replays,
     replaysPerRestart: restarts === 0 ? null : replays / restarts,
+    restarts,
     sent,
     topSenders: [...senders]
       .toSorted(
@@ -273,7 +277,15 @@ const fileLines = (fs: FileSystem.FileSystem, path: string) =>
 
 const RestartMetadata = Schema.Struct({
   celldRestarted: Schema.NullOr(Schema.Boolean),
-  end: Schema.Finite,
+  end: Schema.Finite.pipe(
+    Schema.decodeTo(
+      Schema.Finite,
+      SchemaTransformation.transform({
+        decode: (seconds) => seconds * 1000,
+        encode: (milliseconds) => milliseconds / 1000,
+      })
+    )
+  ),
 });
 
 const countRestarts = Effect.fn("Usage.countRestarts")(function* countRestarts(

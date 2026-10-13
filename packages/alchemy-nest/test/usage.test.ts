@@ -48,14 +48,14 @@ const lines = (events: readonly TrafficEvent[]) =>
   ).pipe(Stream.mapEffect(decodeTrafficLine));
 
 const fixture = [
-  event("cc", "one", "accepted", at(0)),
-  event("cc", "two", "accepted", at(0)),
-  event("cc", "one", "queued", at(10)),
-  event("cc", "one", "delivered", at(20)),
-  event("cc", "two", "delivered", at(30)),
-  event("cc", "one", "acked", at(100)),
-  event("cc", "two", "acked", at(200)),
-  event("cc", "one", "delivered", at(250)),
+  event("cc-one", "one", "accepted", at(0)),
+  event("cc-two", "two", "accepted", at(0)),
+  event("cc-one", "one", "queued", at(10)),
+  event("cc-one", "one", "delivered", at(20)),
+  event("cc-two", "two", "delivered", at(30)),
+  event("cc-one", "one", "acked", at(100)),
+  event("cc-two", "two", "acked", at(200)),
+  event("cc-one", "one", "delivered", at(250)),
   event("pending", "one", "accepted", at(300)),
   event("pending", "one", "delivered", "2026-10-13T00:00:00Z"),
 ];
@@ -63,7 +63,9 @@ const fixture = [
 const expected = {
   ackLatency: { p50: 100, p95: 200 },
   acked: 2,
-  ccRatio: 0.5,
+  ccRatio: Unavailable.make({
+    source: "traffic export gives each cc copy its own messageId",
+  }),
   day,
   delivered: 3,
   refusals: Unavailable.make({
@@ -71,6 +73,7 @@ const expected = {
   }),
   replays: 1,
   replaysPerRestart: 1,
+  restarts: 1,
   sent: 3,
   topSenders: [{ count: 3, did: senderDid, name: "fixture/sender" }],
   trims: Unavailable.make({
@@ -84,7 +87,7 @@ it.effect(
   () =>
     Effect.gen(function* fixtureDigest() {
       const output: string[] = [];
-      const start = Date.parse(`${day}T00:00:00Z`);
+      const start = Date.parse(`${day}T00:00:00Z`) / 1000;
 
       const files = new Map([
         [
@@ -100,11 +103,23 @@ it.effect(
           [
             {
               celldRestarted: true,
-              end: start,
+              end: 1_791_847_436.46,
+              restartSeconds: 56.818179,
+              result: "success",
+              sha: "0123456789abcdef0123456789abcdef01234567",
+              start: 1_791_847_269.549,
               stderrTail: "private receipt details",
             },
             { celldRestarted: false, end: start + 1 },
-            { celldRestarted: true, end: start + 86_400_000 },
+            { celldRestarted: true, end: start + 86_400 },
+            {
+              celldRestarted: true,
+              end: 1_791_854_500.5,
+              restartSeconds: 12.4,
+              result: "success",
+              sha: "0123456789abcdef0123456789abcdef01234567",
+              start: 1_791_854_480.1,
+            },
           ]
             .map((value) => JSON.stringify(value))
             .join("\n"),
@@ -197,7 +212,7 @@ it.effect.prop(
     Effect.gen(function* lifecycleLaws() {
       const events = scenarios.flatMap((scenario, index) =>
         Array.from({ length: scenario.recipients }, (_, recipient) => {
-          const messageId = `message-${index}`;
+          const messageId = `message-${index}-${recipient}`;
           const target = `recipient-${recipient}`;
 
           return [
@@ -251,12 +266,7 @@ it.effect.prop(
           0
         )
       );
-      expect(digest.ccRatio).toBe(
-        scenarios.length === 0
-          ? 0
-          : scenarios.filter((scenario) => scenario.recipients > 1).length /
-              scenarios.length
-      );
+      expect(digest.ccRatio).toEqual(expected.ccRatio);
       expect(digest.replaysPerRestart).toBeNull();
 
       if (digest.ackLatency.p50 !== null && digest.ackLatency.p95 !== null) {
