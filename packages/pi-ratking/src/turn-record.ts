@@ -37,6 +37,7 @@ export const turnReporter = (
   let lastAt = -1;
   let announced = false;
   let open = false;
+  let lastStop: StopReason = "stop";
 
   const emit = Effect.fn("RatKing.emitTurn")(
     function* emit(
@@ -96,6 +97,7 @@ export const turnReporter = (
     done: (reason: StopReason) =>
       Effect.suspend(() => {
         open = false;
+        lastStop = reason;
 
         return emit("done", n, { stopReason: reason });
       }),
@@ -103,7 +105,14 @@ export const turnReporter = (
       Effect.gen(function* idle() {
         if (!announced) {
           announced = true;
-          yield* emit(open ? "working" : "idle", n);
+
+          if (open) {
+            yield* emit("working", n);
+          } else if (n > initial) {
+            yield* emit("done", n, { stopReason: lastStop });
+          } else {
+            yield* emit("idle", n);
+          }
         }
       }),
     waitForReply: <A, E, R>(reply: Effect.Effect<A, E, R>) =>

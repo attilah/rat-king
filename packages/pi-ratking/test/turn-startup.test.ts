@@ -29,8 +29,8 @@ const startups: readonly Startup[] = [
     steps: ["working", "live", "done"],
   },
   {
-    expected: ["idle:4"],
-    name: "a turn finished before live is announced as idle after it",
+    expected: ["done:4"],
+    name: "a turn finished before live is announced as done when live",
     steps: ["working", "done", "live"],
   },
 ];
