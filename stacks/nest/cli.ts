@@ -29,6 +29,7 @@ import { mintHost } from "./mint-host.ts";
 import { sealCommand, sealedSendCommand } from "./seal.ts";
 import { sendCommand } from "./send.ts";
 import { launchdPlist, shipCommand } from "./ship-command.ts";
+import { shipJudgeCommand } from "./ship-judge.ts";
 import { FleetError, loadStageConfig, stageProvider } from "./stage-config.ts";
 import { usageCommand } from "./usage.ts";
 
@@ -232,6 +233,16 @@ const program = Effect.gen(function* launcher() {
 const scriptCommand = () => {
   if (process.argv[2] === "usage") {
     return usageCommand(process.argv.slice(3));
+  }
+
+  if (process.argv[2] === "ship-judge") {
+    return shipJudgeCommand(process.argv.slice(3)).pipe(
+      Effect.tap((code) =>
+        Effect.sync(() => {
+          process.exitCode = code;
+        })
+      )
+    );
   }
 
   if (process.argv[2] === "billing-relay") {

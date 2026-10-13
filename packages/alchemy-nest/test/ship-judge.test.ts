@@ -1,0 +1,620 @@
+import { NodeServices } from "@effect/platform-node";
+import { it } from "@effect/vitest";
+import {
+  Console,
+  DateTime,
+  Effect,
+  FileSystem,
+  Match,
+  Path,
+  Schema,
+  Stream,
+} from "effect";
+import { TestClock } from "effect/testing";
+import { expect } from "vitest";
+
+import {
+  classifyShip,
+  gitIn,
+  judgeShip,
+  OneWay,
+  Revertible,
+  revertibility,
+  shipJudgeCommand,
+  ShipLimits,
+  ShipVerdict,
+  shipWindows,
+} from "../../../stacks/nest/ship-judge.ts";
+import type {
+  JudgeHealth,
+  WindowFacts,
+} from "../../../stacks/nest/ship-judge.ts";
+import { usageDigest, usageWindow } from "../../../stacks/nest/usage.ts";
+import type { TrafficEvent } from "../../../stacks/nest/usage.ts";
+
+const Small = (maximum: number) =>
+  Schema.Int.check(Schema.isBetween({ maximum, minimum: 0 }));
+
+const iso = (ms: number) => DateTime.formatIso(DateTime.makeUnsafe(ms));
+
+const event = (
+  messageId: string,
+  state: TrafficEvent["state"],
+  time: number
+): TrafficEvent => ({
+  messageId,
+  recipientDid: "did:web:fixture.recipient.pi.fleet.invalid",
+  recipientSeq: 1,
+  senderDid: "did:web:fixture.sender.pi.fleet.invalid",
+  seq: 1,
+  state,
+  time: iso(time),
+});
+
+const Lifecycle = Schema.Struct({
+  ack: Schema.Boolean,
+  deliveries: Small(3),
+  latency: Small(5000),
+  offset: Small(600_000),
+});
+
+it.effect.prop(
+  "a window over one day folds exactly like the day digest",
+  [Schema.Array(Lifecycle)],
+  ([lifecycles]) =>
+    Effect.gen(function* windowParity() {
+      const day = "2026-10-12";
+      const start = Date.parse(`${day}T00:00:00Z`);
+
+      const events = lifecycles.flatMap((step, index) => [
+        event(`m-${index}`, "accepted", start + step.offset),
+        ...Array.from({ length: step.deliveries }, (_, replay) =>
+          event(`m-${index}`, "delivered", start + step.offset + replay + 1)
+        ),
+        ...(step.ack
+          ? [event(`m-${index}`, "acked", start + step.offset + step.latency)]
+          : []),
+      ]);
+
+      const window = yield* usageWindow(
+        { end: start + 86_400_000, start },
+        Stream.fromIterable(events)
+      );
+
+      const digest = yield* usageDigest(day, Stream.fromIterable(events));
+
+      expect(window).toMatchObject({
+        ackLatency: digest.ackLatency,
+        acked: digest.acked,
+        delivered: digest.delivered,
+        replays: digest.replays,
+        sent: digest.sent,
+        undelivered: digest.undelivered,
+      });
+    })
+);
+
+const facts = (input: {
+  readonly acked: number;
+  readonly p95: number | null;
+  readonly sent: number;
+  readonly undelivered: number;
+}): WindowFacts => ({
+  ackLatency: { p50: input.p95, p95: input.p95 },
+  acked: input.acked,
+  delivered: Math.max(0, input.sent - input.undelivered),
+  end: "",
+  replays: 0,
+  sent: input.sent,
+  start: "",
+  undelivered: input.undelivered,
+});
+
+const Baseline = Schema.Struct({
+  acked: Small(200),
+  p95: Small(5000),
+  sent: Schema.Int.check(Schema.isBetween({ maximum: 200, minimum: 20 })),
+  undelivered: Small(20),
+});
+
+const Degradation = Schema.Struct({
+  delta: Schema.Int.check(Schema.isBetween({ maximum: 30, minimum: -30 })),
+  kind: Schema.Literals([
+    "AckRateDrop",
+    "LatencyRegression",
+    "Undelivered",
+    "ListenersMissing",
+    "HealthStatus",
+  ]),
+});
+
+const statusFor = (delta: number): JudgeHealth["status"] => {
+  if (delta === 0) {
+    return "ok";
+  }
+
+  return delta > 0 ? "fail" : "warn";
+};
+
+const okHealth = {
+  listeners: { count: 10, expected: 10 },
+  status: "ok",
+} as const;
+
+it.effect.prop(
+  "an unchanged ship passes, and each degradation fails with only its own tag once it crosses its named limit",
+  [Baseline, Degradation],
+  ([sample, { delta, kind }]) =>
+    Effect.sync(() => {
+      const acked = Math.min(sample.acked, sample.sent);
+      const baseline = facts({ ...sample, acked });
+      const sha = "a".repeat(40);
+
+      expect(
+        judgeShip({ after: baseline, baseline, health: okHealth, sha })._tag
+      ).toBe("Pass");
+
+      const latencyEdge =
+        ShipLimits.latencyFactor * sample.p95 + ShipLimits.latencySlackMs;
+
+      const lost = Math.max(
+        0,
+        Math.min(
+          acked,
+          Math.floor(
+            (sample.sent * (ShipLimits.ackRateDropPoints + delta / 10)) / 100
+          )
+        )
+      );
+
+      const changed = Match.value(kind).pipe(
+        Match.when("AckRateDrop", () => ({
+          after: facts({ ...sample, acked: acked - lost }),
+          crossed: (lost / sample.sent) * 100 > ShipLimits.ackRateDropPoints,
+          health: okHealth,
+        })),
+        Match.when("LatencyRegression", () => ({
+          after: facts({ ...sample, acked, p95: latencyEdge + delta }),
+          crossed: delta > 0,
+          health: okHealth,
+        })),
+        Match.when("Undelivered", () => {
+          const undelivered = Math.max(
+            0,
+            sample.undelivered + ShipLimits.undeliveredSlack + delta
+          );
+
+          return {
+            after: facts({ ...sample, acked, undelivered }),
+            crossed:
+              undelivered > sample.undelivered + ShipLimits.undeliveredSlack,
+            health: okHealth,
+          };
+        }),
+        Match.when("ListenersMissing", () => ({
+          after: baseline,
+          crossed: delta > 0,
+          health: {
+            ...okHealth,
+            listeners: { count: 10 - Math.max(0, delta), expected: 10 },
+          },
+        })),
+        Match.when("HealthStatus", () => ({
+          after: baseline,
+          crossed: delta !== 0,
+          health: {
+            ...okHealth,
+            status: statusFor(delta),
+          },
+        })),
+        Match.exhaustive
+      );
+
+      const verdict = judgeShip({
+        after: changed.after,
+        baseline,
+        health: changed.health,
+        sha,
+      });
+
+      expect(verdict._tag).toBe(changed.crossed ? "Fail" : "Pass");
+      expect(verdict.reasons.map((reason) => reason._tag)).toEqual(
+        changed.crossed ? [kind] : []
+      );
+    })
+);
+
+const Quiet = Schema.Struct({
+  afterSent: Small(200),
+  baselineSent: Small(200),
+  health: Schema.Literals(["absent", "noListeners", "ok", "down"]),
+});
+
+it.effect.prop(
+  "a quiet window or missing health is Unknown even when a failure is visible",
+  [Quiet],
+  ([{ afterSent, baselineSent, health }]) =>
+    Effect.sync(() => {
+      const gate: JudgeHealth | null = Match.value(health).pipe(
+        Match.when("absent", () => null),
+        Match.when("noListeners", () => ({
+          listeners: null,
+          status: "ok" as const,
+        })),
+        Match.when("ok", () => okHealth),
+        Match.when("down", () => ({
+          listeners: { count: 0, expected: 10 },
+          status: "fail" as const,
+        })),
+        Match.exhaustive
+      );
+
+      const unknown =
+        Math.min(afterSent, baselineSent) < ShipLimits.minimumSent ||
+        gate === null ||
+        gate.listeners === null;
+
+      const verdict = judgeShip({
+        after: facts({ acked: 0, p95: null, sent: afterSent, undelivered: 0 }),
+        baseline: facts({
+          acked: baselineSent,
+          p95: 10,
+          sent: baselineSent,
+          undelivered: 0,
+        }),
+        health: gate,
+        sha: "b".repeat(40),
+      });
+
+      if (unknown) {
+        expect(verdict._tag).toBe("Unknown");
+      } else {
+        expect(verdict._tag).not.toBe("Unknown");
+      }
+    })
+);
+
+const shippedAt = Date.parse("2026-10-13T20:00:00.000Z");
+
+const trafficFor = (
+  mode: "good" | "dropThirdAck" | "slowDelivery",
+  perWindow: number
+) => {
+  const windows = shipWindows(shippedAt, ShipLimits.windowMinutes);
+  const gap = Math.floor(400_000 / perWindow);
+
+  return [
+    { bad: false, start: windows.baseline.start, tag: "base" },
+    { bad: mode !== "good", start: windows.after.start, tag: "after" },
+  ].flatMap(({ bad, start, tag }) =>
+    Array.from({ length: perWindow }, (_, index) => {
+      const id = `${tag}-${index}`;
+      const at = start + index * gap;
+      const delay = bad && mode === "slowDelivery" ? 1000 : 0;
+      const dropped = bad && mode === "dropThirdAck" && index % 3 === 2;
+
+      return [
+        event(id, "accepted", at),
+        event(id, "delivered", at + 20 + delay),
+        ...(dropped ? [] : [event(id, "acked", at + 40 + delay)]),
+      ];
+    }).flat()
+  );
+};
+
+const noTags: readonly string[] = [];
+
+const runCommand = (args: readonly string[]) =>
+  Effect.gen(function* captured() {
+    const output: string[] = [];
+
+    const code = yield* shipJudgeCommand(args).pipe(
+      Effect.provideService(Console.Console, {
+        ...console,
+        error: () => {},
+        log: (...values: readonly unknown[]) => {
+          output.push(values.join(" "));
+        },
+      })
+    );
+
+    return { code, output };
+  });
+
+it.effect.prop(
+  "planted bad builds fail with their own tag and a good ship passes through the CLI contract",
+  [
+    Schema.Literals(["good", "dropThirdAck", "slowDelivery"]),
+    Schema.Int.check(Schema.isBetween({ maximum: 80, minimum: 20 })),
+  ],
+  ([mode, perWindow]) =>
+    Effect.gen(function* plantedShip() {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const directory = yield* fs.makeTempDirectoryScoped();
+      const traffic = path.join(directory, "traffic.jsonl");
+      const health = path.join(directory, "health.json");
+
+      yield* fs.writeFileString(
+        traffic,
+        trafficFor(mode, perWindow)
+          .map((line) => JSON.stringify({ ...line, ciphertextSize: 1439 }))
+          .join("\n")
+      );
+
+      yield* fs.writeFileString(
+        health,
+        JSON.stringify({ ...okHealth, storage: { slots: { free: 9 } } })
+      );
+
+      yield* TestClock.setTime(shippedAt + 11 * 60_000);
+      const sha = "c".repeat(40);
+
+      const { code, output } = yield* runCommand([
+        "--sha",
+        sha,
+        "--shipped-at",
+        iso(shippedAt),
+        "--input",
+        traffic,
+        "--health",
+        health,
+      ]);
+
+      const verdict = yield* Schema.decodeEffect(
+        Schema.fromJsonString(ShipVerdict)
+      )(output.join(""));
+
+      const expected = Match.value(mode).pipe(
+        Match.when("good", () => ({ code: 0, tags: noTags })),
+        Match.when("dropThirdAck", () => ({ code: 1, tags: ["AckRateDrop"] })),
+        Match.when("slowDelivery", () => ({
+          code: 1,
+          tags: ["LatencyRegression"],
+        })),
+        Match.exhaustive
+      );
+
+      expect(code).toBe(expected.code);
+      expect(verdict.sha).toBe(sha);
+      expect(verdict._tag).toBe(code === 0 ? "Pass" : "Fail");
+      expect(verdict.reasons.map((reason) => reason._tag)).toEqual(
+        expected.tags
+      );
+    }).pipe(Effect.provide(NodeServices.layer)),
+  { arbitrary: { runs: 30 } }
+);
+
+it.effect.prop(
+  "every refused input exits with the refusal code and prints no verdict, so no error can read as Fail",
+  [
+    Schema.Literals([
+      "badSha",
+      "badTime",
+      "openWindow",
+      "forbiddenLine",
+      "missingInput",
+      "malformedHealth",
+      "missingHealth",
+      "unknownFlag",
+      "badRange",
+      "zeroWindow",
+    ]),
+  ],
+  ([mutation]) =>
+    Effect.gen(function* refusal() {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const directory = yield* fs.makeTempDirectoryScoped();
+      const traffic = path.join(directory, "traffic.jsonl");
+      const health = path.join(directory, "health.json");
+      const lines = trafficFor("good", 30);
+
+      yield* fs.writeFileString(
+        traffic,
+        [
+          ...lines.map((line) => JSON.stringify(line)),
+          ...(mutation === "forbiddenLine"
+            ? [JSON.stringify({ ...lines[0], body: "PRIVATE" })]
+            : []),
+        ].join("\n")
+      );
+
+      yield* fs.writeFileString(
+        health,
+        mutation === "malformedHealth" ? "{" : JSON.stringify(okHealth)
+      );
+
+      yield* TestClock.setTime(
+        mutation === "openWindow" ? shippedAt + 60_000 : shippedAt + 3_600_000
+      );
+
+      const flags = new Map([
+        [
+          "--health",
+          mutation === "missingHealth" ? path.join(directory, "none") : health,
+        ],
+        [
+          "--input",
+          mutation === "missingInput" ? path.join(directory, "gone") : traffic,
+        ],
+        ["--sha", mutation === "badSha" ? "HEAD" : "d".repeat(40)],
+        [
+          "--shipped-at",
+          mutation === "badTime" ? "2026-10-13 20:00" : iso(shippedAt),
+        ],
+      ]);
+
+      if (mutation === "zeroWindow") {
+        flags.set("--window-minutes", "0");
+      }
+
+      if (mutation === "unknownFlag") {
+        flags.set("--force", "yes");
+      }
+
+      const args =
+        mutation === "badRange"
+          ? ["--revertible", "main..HEAD", "--repo", directory]
+          : [...flags].flat();
+
+      const { code, output } = yield* runCommand(args);
+
+      expect(code).toBe(3);
+      expect(output).toEqual([]);
+    }).pipe(Effect.provide(NodeServices.layer))
+);
+
+const twoWayPaths = [
+  "stacks/nest/usage.ts",
+  "apps/mailbox/src/worker.ts",
+  "README.md",
+  "packages/alchemy-nest/src/celld.ts",
+];
+
+const oneWayPaths = [
+  "lexicons/sh/mailbox/send.json",
+  "apps/mailbox/src/bindings.ts",
+  "apps/mailbox/src/sqlite.ts",
+  "stacks/nest/migrations/0002-cursor.sql",
+  "packages/store/src/migration-v3.ts",
+];
+
+it.effect.prop(
+  "a ship is revertible only when no path is one-way and no commit carries a One-way trailer",
+  [
+    Schema.Array(Small(twoWayPaths.length - 1)),
+    Schema.Array(Small(oneWayPaths.length - 1)),
+    Schema.Array(Schema.Literal("e".repeat(40))),
+  ],
+  ([twoWay, oneWay, trailerCommits]) =>
+    Effect.sync(() => {
+      const touched = oneWay.map((index) => oneWayPaths[index] ?? "");
+
+      const answer = classifyShip({
+        oneWayCommits: trailerCommits,
+        paths: [...twoWay.map((index) => twoWayPaths[index] ?? ""), ...touched],
+      });
+
+      if (touched.length === 0 && trailerCommits.length === 0) {
+        expect(answer).toEqual(Revertible.make({}));
+      } else {
+        expect(answer).toEqual(
+          OneWay.make({ commits: trailerCommits, paths: touched })
+        );
+      }
+    })
+);
+
+const Step = Schema.Literals([
+  "mergeTwoWay",
+  "mergeLexicon",
+  "mergeTrailer",
+  "revertTip",
+]);
+
+interface MergeModel {
+  readonly base: string;
+  readonly oneWay: boolean;
+  readonly sha: string;
+}
+
+const gitConfig = [
+  "-c",
+  "user.name=fixture",
+  "-c",
+  "user.email=fixture",
+  "-c",
+  "commit.gpgsign=false",
+  "-c",
+  "core.hooksPath=/dev/null",
+];
+
+it.effect.prop(
+  "revertible answers follow a model of the tip merge across merges, one-way ships and reverts",
+  [Schema.Array(Step).check(Schema.isMaxLength(5))],
+  ([plan]) =>
+    Effect.gen(function* gitModel() {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const directory = yield* fs.makeTempDirectoryScoped();
+      const git = yield* gitIn(directory);
+      const run = (args: readonly string[]) => git.run([...gitConfig, ...args]);
+
+      yield* run(["init", "-q", "-b", "main"]);
+      yield* fs.writeFileString(path.join(directory, "seed.ts"), "0\n");
+      yield* run(["add", "seed.ts"]);
+      yield* run(["commit", "-q", "-m", "seed"]);
+
+      const merges: MergeModel[] = [];
+      let tipMerge: MergeModel | null = null;
+
+      for (const [index, step] of plan.entries()) {
+        const head = (yield* run(["rev-parse", "HEAD"])).trim();
+
+        if (step === "revertTip") {
+          yield* run(
+            tipMerge === null
+              ? ["revert", "--no-edit", "HEAD"]
+              : ["revert", "--no-edit", "-m", "1", "HEAD"]
+          );
+          tipMerge = null;
+        } else {
+          const branch = `lane-${index}`;
+
+          const file =
+            step === "mergeLexicon"
+              ? `lexicons/l${index}.json`
+              : `src/change-${index}.ts`;
+
+          yield* run(["checkout", "-q", "-b", branch]);
+          yield* fs.makeDirectory(path.join(directory, path.dirname(file)), {
+            recursive: true,
+          });
+          yield* fs.writeFileString(path.join(directory, file), `${index}\n`);
+          yield* run(["add", file]);
+
+          yield* run([
+            "commit",
+            "-q",
+            "-m",
+            step === "mergeTrailer"
+              ? `change ${index}\n\nOne-way: fixture storage contract`
+              : `change ${index}`,
+          ]);
+
+          yield* run(["checkout", "-q", "main"]);
+          yield* run([
+            "merge",
+            "-q",
+            "--no-ff",
+            "-m",
+            `merge ${index}`,
+            branch,
+          ]);
+
+          tipMerge = {
+            base: head,
+            oneWay: step !== "mergeTwoWay",
+            sha: (yield* run(["rev-parse", "HEAD"])).trim(),
+          };
+
+          merges.push(tipMerge);
+        }
+
+        for (const merge of merges) {
+          const answer = yield* revertibility(
+            git,
+            `${merge.base}..${merge.sha}`
+          );
+
+          if (merge === tipMerge) {
+            expect(answer._tag).toBe(merge.oneWay ? "OneWay" : "Revertible");
+          } else {
+            expect(answer._tag).toBe("NotTipMerge");
+          }
+        }
+      }
+    }).pipe(Effect.provide(NodeServices.layer)),
+  { arbitrary: { runs: 12 } }
+);
