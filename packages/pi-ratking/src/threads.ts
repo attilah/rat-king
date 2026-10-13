@@ -1,5 +1,6 @@
 import { Context, Deferred, Effect, Layer, Option } from "effect";
 
+import type { PendingAskValue } from "./asks.ts";
 import type { Inbound } from "./payload.ts";
 
 export interface Reply {
@@ -16,6 +17,7 @@ export interface Received {
   readonly did: string;
   readonly ask: boolean;
   readonly answered: boolean;
+  readonly outbound?: PendingAskValue;
   readonly preview: string;
   readonly ccNames?: readonly string[];
   readonly to?: string;

@@ -437,7 +437,7 @@ const parameters = Type.Object({
     ].map((action) => Type.Literal(action)),
     {
       description:
-        "send, ask (waits for the reply), reply, handled (confirm a relayed original id), pending, list, status, retire (retire this Pi's own name, optionally naming a successor, and stop its reader). handover and cancel are refused on Rat King.",
+        "send, ask (returns immediately; the reply arrives as a message), reply, handled (confirm a relayed original id), pending, list, status, retire (retire this Pi's own name, optionally naming a successor, and stop its reader). handover and cancel are refused on Rat King.",
     }
   ),
   attachments: Type.Optional(
@@ -470,6 +470,12 @@ const parameters = Type.Object({
   ),
   cwd: Type.Optional(
     Type.String({ description: "Not supported: Rat King addresses by name." })
+  ),
+  dueBy: Type.Optional(
+    Type.Number({
+      description:
+        "Optional ask deadline as Unix milliseconds. One quiet nudge; the ask stays open.",
+    })
   ),
   encrypt: Type.Optional(
     Type.Boolean({
@@ -519,9 +525,22 @@ const parameters = Type.Object({
   supersedes: Type.Optional(
     Type.String({ description: "Accepted for compatibility; unused." })
   ),
+  timeoutSeconds: Type.Optional(
+    Type.Number({
+      description: "Bound for explicit wait: true, in seconds; default 600.",
+      maximum: 600,
+      minimum: 1,
+    })
+  ),
   to: Type.Optional(Type.String({ description: "Target Rat King name." })),
   type: Type.Optional(
     Type.String({ description: "Agent-graph NSID for action record." })
+  ),
+  wait: Type.Optional(
+    Type.Boolean({
+      description:
+        "Only for scripts: explicitly block for a reply. Use the default async ask for agents.",
+    })
   ),
 });
 
