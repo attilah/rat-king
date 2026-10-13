@@ -52,6 +52,8 @@ export const RelaySource = Schema.Struct({
 });
 
 export interface Inbound {
+  readonly askSummary?: string;
+  readonly noReply?: boolean;
   readonly relay?: typeof RelaySource.Type;
   readonly sentBy?: string;
   readonly id: string;
@@ -119,6 +121,10 @@ const copyBody = (inbound: Inbound) => {
 };
 
 export const renderInbound = (tool: string, inbound: Inbound) => {
+  if (inbound.noReply === true) {
+    return inbound.body;
+  }
+
   if (inbound.sentBy !== undefined) {
     return renderSent(inbound, inbound.sentBy);
   }
@@ -133,6 +139,7 @@ export const renderInbound = (tool: string, inbound: Inbound) => {
   });
 
   const label = inbound.cc ? "🐀 cc" : "🐀";
+  const heading = inbound.kind === "reply" ? "🐀 reply" : label;
 
   const thread = Option.match(inbound.replyTo, {
     onNone: () => "",
@@ -140,7 +147,12 @@ export const renderInbound = (tool: string, inbound: Inbound) => {
   });
 
   return [
-    `**${label} from ${sender}** · id ${inbound.id}${thread}${inbound.relay === undefined ? "" : ` · via ${inbound.relay.name}`} · ${deliveryReason(inbound)}`,
+    `**${heading} from ${sender}** · id ${inbound.id}${thread}${inbound.relay === undefined ? "" : ` · via ${inbound.relay.name}`} · ${deliveryReason(inbound)}`,
+    ...(inbound.askSummary === undefined
+      ? []
+      : [
+          `This is the answer to your ask ${Option.getOrElse(inbound.replyTo, () => "")}. Original summary: ${JSON.stringify(inbound.askSummary)}`,
+        ]),
     ...((inbound.ccNames?.length ?? 0) > 0
       ? [`cc: ${(inbound.ccNames ?? []).join(", ")}`]
       : []),

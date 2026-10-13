@@ -43,6 +43,8 @@ import {
 import type { Scope } from "effect";
 import { HttpClient } from "effect/http";
 
+import { AskJournal, askAge, openAsks } from "./asks.ts";
+import type { AsksApi, PendingAskValue } from "./asks.ts";
 import { AskAimedAtCc, ccLint, ccRefusal } from "./cc-lint.ts";
 import { Settings } from "./config.ts";
 import { recipientLevels } from "./delivery.ts";
@@ -214,6 +216,19 @@ export interface SendOptions {
   readonly thread?: string;
 }
 
+export type AskOptions = Pick<
+  SendOptions,
+  "ccOnPurpose" | "encrypt" | "cc" | "summary"
+> & {
+  readonly dueBy?: number;
+  readonly wait?: boolean;
+};
+
+export interface Asked {
+  readonly delivered: Delivered;
+  readonly reply?: Reply;
+}
+
 interface RelayRoute {
   readonly message: (
     inbound: Inbound,
@@ -254,12 +269,9 @@ export class RatKing extends Context.Service<
     readonly ask: (
       to: string,
       body: string,
-      timeout: Duration.Input,
-      options?: Pick<SendOptions, "ccOnPurpose" | "encrypt" | "cc" | "summary">
-    ) => Effect.Effect<
-      { readonly delivered: Delivered; readonly reply: Reply },
-      NotDelivered | AskFailed
-    >;
+      timeout?: Duration.Input,
+      options?: AskOptions
+    ) => Effect.Effect<Asked, NotDelivered | AskFailed>;
     readonly reply: (
       id: string,
       body: string | LexiconRecordValue,
@@ -310,6 +322,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
   const store = yield* SecretStore;
   const issuer = yield* Issuer;
   const threads = yield* Threads;
+  const asks = yield* Deferred.make<AsksApi<NotDelivered>>();
 
   const state = yield* Ref.make<ReaderState>(
     ReaderState.Starting({ reason: "Rat King is starting" })
@@ -657,6 +670,38 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
               verified: inbound.verified,
             });
           } else {
+            const journal = yield* Deferred.await(asks);
+            const original = yield* journal.match(inbound);
+
+            if (Option.isSome(original)) {
+              Object.assign(inbound, {
+                askSummary: original.value.summary,
+                copy: false,
+                kind: "reply",
+              });
+              const acknowledgment = acknowledgments.get(inbound.id);
+
+              if (acknowledgment !== undefined) {
+                acknowledgments.set(
+                  inbound.id,
+                  acknowledgment.pipe(
+                    Effect.andThen(
+                      journal
+                        .ack(original.value.id)
+                        .pipe(
+                          Effect.catchTag("NotDelivered", (failure) =>
+                            Effect.logWarning(
+                              "Rat King ask acknowledgment not saved",
+                              failure
+                            )
+                          )
+                        )
+                    )
+                  )
+                );
+              }
+            }
+
             const settled = yield* threads.settle(inbound);
 
             yield* threads.remember(inbound);
@@ -920,7 +965,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
     to: string,
     body: string | LexiconRecordValue,
     options: SendOptions,
-    before: (id: string, did: string) => Effect.Effect<B>
+    before: (id: string, did: string) => Effect.Effect<B, NotDelivered>
   ) {
     const own = yield* awaitSelf;
 
@@ -1341,6 +1386,12 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       return {
         message: (inbound, settled, encrypted, redelivered) =>
           Effect.gen(function* routeMessage() {
+            if (inbound.noReply === true || inbound.askSummary !== undefined) {
+              yield* deliver(inbound, settled);
+
+              return;
+            }
+
             const record = yield* relay.receive(
               inbound,
               settled,
@@ -1445,6 +1496,45 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       }).pipe(services)
     );
 
+    const file = path.join(
+      settings.state,
+      "asks",
+      `${provisionLabel(own.name)}.json`
+    );
+
+    const journal = yield* supervise(
+      Option.some(own.name),
+      openAsks({
+        load: fs.exists(file).pipe(
+          Effect.flatMap((exists) =>
+            exists
+              ? fs
+                  .readFileString(file)
+                  .pipe(
+                    Effect.flatMap(
+                      Schema.decodeEffect(Schema.fromJsonString(AskJournal))
+                    )
+                  )
+              : Effect.succeed([])
+          ),
+          Effect.mapError((error) =>
+            refused("NotAttempted")(`Ask journal: ${reasonOf(error)}`)
+          )
+        ),
+        now: Clock.currentTimeMillis,
+        save: (entries) =>
+          Schema.encodeEffect(Schema.fromJsonString(AskJournal))(entries).pipe(
+            Effect.flatMap((json) => writePrivateJson(file, json)),
+            Effect.provideService(FileSystem.FileSystem, fs),
+            Effect.provideService(Path.Path, path),
+            Effect.mapError((error) =>
+              refused("NotAttempted")(`Ask journal: ${reasonOf(error)}`)
+            )
+          ),
+      })
+    );
+
+    yield* Deferred.succeed(asks, journal);
     yield* Ref.set(established, Option.some(own));
     yield* Deferred.succeed(self, own);
 
@@ -1463,6 +1553,43 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       routing(own, (inbound, settled, ack) =>
         deliver(inbound, settled, ack ?? displayAck(inbound.id))
       )
+    );
+
+    yield* journal.nudges.pipe(
+      Effect.flatMap((overdue) =>
+        Effect.forEach(
+          overdue,
+          (ask) =>
+            Clock.currentTimeMillis.pipe(
+              Effect.flatMap((now) =>
+                deliver(
+                  {
+                    body: `🐀 no reply from ${ask.to} · ${ask.id.slice(0, 8)} · ${askAge(ask, now)}\nThe ask remains open; a late reply still arrives.`,
+                    cc: false,
+                    copy: true,
+                    did: ask.did,
+                    from: ask.to,
+                    id: `no-reply:${ask.id}`,
+                    kind: "message",
+                    label: Option.none(),
+                    noReply: true,
+                    replyTo: Option.some(ask.id),
+                    summary: Option.none(),
+                    verified: true,
+                  },
+                  false
+                )
+              )
+            ),
+          { discard: true }
+        )
+      ),
+      Effect.tapError((error) =>
+        Effect.logWarning("Rat King ask nudge failed", error)
+      ),
+      Effect.ignore,
+      Effect.repeat(Schedule.spaced("1 minute")),
+      Effect.forkScoped
     );
 
     return yield* supervise(
@@ -1640,6 +1767,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       yield* awaitLive;
 
       const pending = yield* Ref.make(Option.none<string>());
+      const journal = yield* Deferred.await(asks);
 
       return yield* Effect.gen(function* askAndWait() {
         const { delivered, extra, sent } = yield* transmit(
@@ -1647,22 +1775,58 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
           body,
           { ...options, kind: "ask" },
           (id, did) =>
-            Ref.set(pending, Option.some(id)).pipe(
-              Effect.andThen(threads.wait(id, did))
-            )
+            Effect.gen(function* registerAsk() {
+              const entry: PendingAskValue = {
+                did,
+                id,
+                sentAt: yield* Clock.currentTimeMillis,
+                state: "pending",
+                summary: oneLineSummary(options?.summary ?? body),
+                to: canonicalName(settings.reserved, to),
+              };
+
+              if (options?.dueBy !== undefined) {
+                Object.assign(entry, { dueBy: options.dueBy });
+              }
+
+              yield* journal.record(entry);
+              yield* Ref.set(pending, Option.some(id));
+
+              if (options?.wait !== true) {
+                return Option.none<Deferred.Deferred<Reply>>();
+              }
+
+              return Option.some(yield* threads.wait(id, did));
+            })
         );
 
         yield* copyOut(delivered, sent);
         yield* closeLoops(sent);
 
-        const reply = yield* Deferred.await(extra).pipe(
+        if (Option.isNone(extra)) {
+          return { delivered };
+        }
+
+        const bound = Duration.millis(
+          Math.min(
+            600_000,
+            Math.max(
+              1,
+              Duration.toMillis(
+                Duration.fromInputUnsafe(timeout ?? "10 minutes")
+              )
+            )
+          )
+        );
+
+        const reply = yield* Deferred.await(extra.value).pipe(
           Effect.timeoutOrElse({
-            duration: timeout,
+            duration: bound,
             orElse: () =>
               Effect.fail(
                 new AskFailed({
                   code: "NoReply",
-                  reason: `No reply from ${delivered.to} to ${delivered.id} within ${Duration.format(Duration.fromInputUnsafe(timeout))}. The ask was delivered; a late answer arrives as a normal message.${delivered.presence === undefined ? "" : ` ${delivered.presence}`}`,
+                  reason: `No reply from ${delivered.to} to ${delivered.id} within ${Duration.format(Duration.fromInputUnsafe(bound))}. The ask was delivered; a late answer arrives as a normal message.${delivered.presence === undefined ? "" : ` ${delivered.presence}`}`,
                 })
               ),
           })
@@ -1670,6 +1834,33 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
 
         return { delivered, reply };
       }).pipe(
+        Effect.tapError((failure) => {
+          if (
+            !Schema.is(NotDelivered)(failure) ||
+            failure.code === "Partial" ||
+            failure.code === "Uncertain"
+          ) {
+            return Effect.void;
+          }
+
+          return Ref.get(pending).pipe(
+            Effect.flatMap((id) =>
+              Option.match(id, {
+                onNone: () => Effect.void,
+                onSome: (value) =>
+                  journal.ack(value).pipe(
+                    Effect.tapError((error) =>
+                      Effect.logWarning(
+                        "Rat King rejected ask not closed",
+                        error
+                      )
+                    ),
+                    Effect.ignore
+                  ),
+              })
+            )
+          );
+        }),
         Effect.ensuring(
           Ref.get(pending).pipe(
             Effect.flatMap((id) =>
@@ -1710,7 +1901,27 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
 
       return yield* directory.list;
     }),
-    pending: threads.pending,
+    pending: Effect.gen(function* pendingAsks() {
+      if (Option.isNone(yield* Ref.get(established))) {
+        return yield* threads.pending;
+      }
+
+      const journal = yield* Deferred.await(asks);
+      const outbound = yield* journal.pending;
+
+      return [
+        ...(yield* threads.pending),
+        ...outbound.map((entry): Received => ({
+          answered: false,
+          ask: true,
+          did: entry.did,
+          from: entry.to,
+          id: entry.id,
+          outbound: entry,
+          preview: entry.summary,
+        })),
+      ];
+    }),
     reply: Effect.fn("RatKing.reply")(function* reply(id, body, options) {
       const stored = yield* threads.lookup(id);
 

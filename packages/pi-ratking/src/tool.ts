@@ -1,4 +1,4 @@
-import { Effect, Match, Option, Schema } from "effect";
+import { Clock, DateTime, Effect, Match, Option, Schema } from "effect";
 import type { Duration } from "effect";
 
 import {
@@ -6,12 +6,14 @@ import {
   recordSummary,
   validateRecord,
 } from "./agentgraph.ts";
+import { askAge } from "./asks.ts";
 import { ccRefusalPrompt } from "./cc-lint.ts";
 import type { NotConfigured } from "./config.ts";
 import { recipientLines } from "./delivery.ts";
 import type { RecipientLevelValue } from "./delivery.ts";
 import { RatKing, ReaderState } from "./ratking.ts";
 import type {
+  AskOptions,
   Delivered,
   NotDelivered,
   SendOptions,
@@ -47,6 +49,7 @@ export const ToolParams = Schema.Struct({
   cc: Schema.optionalKey(Schema.Array(Schema.String)),
   ccOnPurpose: Schema.optionalKey(Schema.Boolean),
   cwd: Schema.optionalKey(Schema.String),
+  dueBy: Schema.optionalKey(Schema.Finite),
   encrypt: Schema.optionalKey(Schema.Boolean),
   focus: Schema.optionalKey(Schema.Boolean),
   message: Schema.optionalKey(Schema.String),
@@ -59,8 +62,12 @@ export const ToolParams = Schema.Struct({
   successor: Schema.optionalKey(Schema.String),
   summary: Schema.optionalKey(Schema.String),
   supersedes: Schema.optionalKey(Schema.String),
+  timeoutSeconds: Schema.optionalKey(
+    Schema.Finite.check(Schema.isBetween({ maximum: 600, minimum: 1 }))
+  ),
   to: Schema.optionalKey(Schema.String),
   type: Schema.optionalKey(Schema.String),
+  wait: Schema.optionalKey(Schema.Boolean),
 });
 
 export type ToolParamsValue = typeof ToolParams.Type;
@@ -136,15 +143,15 @@ Usage:
   ${tool}({ action: "send", to: "name", summary: "...", message: "..." }) → Deliver a message
   ${tool}({ action: "send", to: "name", message: "...", encrypt: true }) → Deliver an encrypted message
   ${tool}({ action: "record", to: "name", type: "sh.mschf.agentgraph.checkin", record: { ... } }) → Validate then send typed data
-  ${tool}({ action: "ask", to: "name", summary: "...", message: "..." }) → Ask and wait for the threaded reply
+  ${tool}({ action: "ask", to: "name", summary: "...", message: "..." }) → Ask and get the reply as a message; your turn is not blocked
   ${tool}({ action: "reply", replyTo: "<id>", summary: "...", message: "..." }) → Answer a message by its id
-  ${tool}({ action: "pending" })                                     → Unanswered inbound asks
+  ${tool}({ action: "pending" })                                     → Unanswered inbound asks and open outbound asks
   ${tool}({ action: "list" })                                        → The Rat King directory
   ${tool}({ action: "status" })                                      → This Pi's name and reader
   ${tool}({ action: "retire", successor: "name" })                   → Retire this Pi's own name; mail to it is refused naming the successor, and this reader stops`;
 
 export const promptSnippet = (tool: string) =>
-  `Message other agents over Rat King with ${tool}: send, ask and wait, reply by id, list the directory.`;
+  `Message other agents over Rat King with ${tool}: send, async ask, reply by id, list the directory.`;
 
 const readerText = (reader: ReaderState) =>
   ReaderState.$match(reader, {
@@ -301,18 +308,32 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
     ),
     Match.when("pending", () =>
       ratking.pending.pipe(
-        Effect.map((asks) =>
-          asks.length === 0
-            ? ok("No unresolved inbound asks.")
-            : ok(
-                [
-                  "**Pending asks:**",
-                  ...asks.map(
-                    (ask) => `- ${ask.from} · ${ask.id} · ${ask.preview}`
-                  ),
-                ].join("\n"),
-                { pending: asks.length }
-              )
+        Effect.flatMap((asks) =>
+          Clock.currentTimeMillis.pipe(
+            Effect.map((now) =>
+              asks.length === 0
+                ? ok("No unresolved inbound or outbound asks.")
+                : ok(
+                    [
+                      "**Inbound unanswered asks:**",
+                      ...asks
+                        .filter((ask) => ask.outbound === undefined)
+                        .map(
+                          (ask) => `- ${ask.from} · ${ask.id} · ${ask.preview}`
+                        ),
+                      "**Outbound open asks:**",
+                      ...asks.flatMap((ask) =>
+                        ask.outbound === undefined
+                          ? []
+                          : [
+                              `- to ${ask.outbound.to} · ${ask.id} · ${ask.outbound.summary} · ${askAge(ask.outbound, now)} · dueBy ${ask.outbound.dueBy === undefined ? "none" : DateTime.formatIso(DateTime.makeUnsafe(ask.outbound.dueBy))}`,
+                            ]
+                      ),
+                    ].join("\n"),
+                    { pending: asks.length }
+                  )
+            )
+          )
         )
       )
     ),
@@ -340,7 +361,10 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
     Match.when("reply", () =>
       Effect.gen(function* reply() {
         const message = yield* needMessage(params, lead);
-        const pending = yield* ratking.pending;
+
+        const pending = (yield* ratking.pending).filter(
+          (ask) => ask.outbound === undefined
+        );
 
         const target =
           params.replyTo ?? (pending.length === 1 ? pending[0]?.id : undefined);
@@ -419,12 +443,37 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
         const to = yield* needTo(params);
         const message = yield* needMessage(params, lead);
 
+        const askOptions: AskOptions = {
+          ...encryption,
+          cc: params.cc ?? [],
+        };
+
+        if (params.dueBy !== undefined) {
+          Object.assign(askOptions, { dueBy: params.dueBy });
+        }
+
+        if (params.wait !== undefined) {
+          Object.assign(askOptions, { wait: params.wait });
+        }
+
         const { delivered, reply } = yield* ratking.ask(
           to,
           message,
-          askTimeout,
-          { ...encryption, cc: params.cc ?? [] }
+          params.wait === true
+            ? `${params.timeoutSeconds ?? 600} seconds`
+            : askTimeout,
+          askOptions
         );
+
+        if (reply === undefined) {
+          return ok(
+            withPresence(
+              `✓ asked ${delivered.to} · ${delivered.id.slice(0, 8)}\nThe reply arrives as a message; your turn is not blocked.`,
+              delivered
+            ),
+            { id: delivered.id, recipients: recipientsOf(delivered) }
+          );
+        }
 
         return ok(
           [
