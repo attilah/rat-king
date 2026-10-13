@@ -7,12 +7,13 @@ import { decodeTrafficLine, fileLines, usageWindow } from "./usage.ts";
 import type { WindowBounds } from "./usage.ts";
 
 export const ShipLimits = {
-  ackRateDropPoints: 2,
+  deliveryRateDropPoints: 2,
+  distinctRecipients: 2,
+  evidenceFloor: 3,
   latencyFactor: 2,
   latencySlackMs: 250,
   minimumSent: 20,
   restartSkipMs: 60_000,
-  undeliveredSlack: 5,
   windowMinutes: 10,
 } as const;
 
@@ -23,11 +24,11 @@ const Observed = Schema.NullOr(Schema.Union([Schema.Finite, Schema.String]));
 const observation = <const Tag extends string>(tag: Tag) =>
   Schema.TaggedStruct(tag, { limit: Observed, value: Observed });
 
-export const AckRateDrop = observation("AckRateDrop");
+export const DeliveryRateDrop = observation("DeliveryRateDrop");
 
-export const LatencyRegression = observation("LatencyRegression");
-
-export const Undelivered = observation("Undelivered");
+export const DeliveryLatencyRegression = observation(
+  "DeliveryLatencyRegression"
+);
 
 export const ListenersMissing = observation("ListenersMissing");
 
@@ -37,14 +38,22 @@ export const InsufficientTraffic = observation("InsufficientTraffic");
 
 export const HealthMissing = observation("HealthMissing");
 
+export const ThinEvidence = observation("ThinEvidence");
+
+export const SingleRecipient = Schema.TaggedStruct("SingleRecipient", {
+  count: Count,
+  did: Schema.String,
+});
+
 export const ShipReason = Schema.Union([
-  AckRateDrop,
-  LatencyRegression,
-  Undelivered,
+  DeliveryRateDrop,
+  DeliveryLatencyRegression,
   ListenersMissing,
   HealthStatus,
   InsufficientTraffic,
   HealthMissing,
+  ThinEvidence,
+  SingleRecipient,
 ]);
 
 export type Reason = typeof ShipReason.Type;
@@ -58,18 +67,24 @@ export const ShipHealth = Schema.Struct({
 
 export type JudgeHealth = typeof ShipHealth.Type;
 
+const Latency = Schema.Struct({
+  p50: Schema.NullOr(Schema.Finite),
+  p95: Schema.NullOr(Schema.Finite),
+});
+
 export const ShipWindow = Schema.Struct({
-  ackLatency: Schema.Struct({
-    p50: Schema.NullOr(Schema.Finite),
-    p95: Schema.NullOr(Schema.Finite),
-  }),
+  ackLatency: Latency,
   acked: Count,
   delivered: Count,
+  deliveryLatency: Latency,
   end: Schema.String,
   replays: Count,
   sent: Count,
   start: Schema.String,
   undelivered: Count,
+  undeliveredRecipients: Schema.Array(
+    Schema.Struct({ count: Count, did: Schema.String })
+  ),
 });
 
 export type WindowFacts = typeof ShipWindow.Type;
@@ -114,43 +129,50 @@ export const shipWindows = (
   } satisfies Record<string, WindowBounds>;
 };
 
-const trafficReasons = (baseline: WindowFacts, after: WindowFacts) => {
-  const reasons: Reason[] = [];
+const deliveryReasons = (baseline: WindowFacts, after: WindowFacts) => {
+  const failures: Reason[] = [];
+  const unknowns: Reason[] = [];
 
   const lostPoints =
-    100 * (baseline.acked * after.sent - after.acked * baseline.sent);
+    100 *
+    (after.undelivered * baseline.sent - baseline.undelivered * after.sent);
 
   const scale = baseline.sent * after.sent;
+  const excess = after.undelivered - baseline.undelivered;
+  const [top] = after.undeliveredRecipients;
 
-  if (lostPoints > ShipLimits.ackRateDropPoints * scale) {
-    reasons.push(
-      AckRateDrop.make({
-        limit: ShipLimits.ackRateDropPoints,
-        value: lostPoints / scale,
-      })
-    );
+  if (lostPoints > ShipLimits.deliveryRateDropPoints * scale) {
+    if (excess < ShipLimits.evidenceFloor) {
+      unknowns.push(
+        ThinEvidence.make({ limit: ShipLimits.evidenceFloor, value: excess })
+      );
+    } else if (
+      after.undeliveredRecipients.length < ShipLimits.distinctRecipients &&
+      top !== undefined
+    ) {
+      unknowns.push(SingleRecipient.make({ count: top.count, did: top.did }));
+    } else {
+      failures.push(
+        DeliveryRateDrop.make({
+          limit: ShipLimits.deliveryRateDropPoints,
+          value: lostPoints / scale,
+        })
+      );
+    }
   }
 
-  const before = baseline.ackLatency.p95;
-  const now = after.ackLatency.p95;
+  const before = baseline.deliveryLatency.p95;
+  const now = after.deliveryLatency.p95;
 
   if (before !== null && now !== null) {
     const limit = ShipLimits.latencyFactor * before + ShipLimits.latencySlackMs;
 
     if (now > limit) {
-      reasons.push(LatencyRegression.make({ limit, value: now }));
+      failures.push(DeliveryLatencyRegression.make({ limit, value: now }));
     }
   }
 
-  const undeliveredLimit = baseline.undelivered + ShipLimits.undeliveredSlack;
-
-  if (after.undelivered > undeliveredLimit) {
-    reasons.push(
-      Undelivered.make({ limit: undeliveredLimit, value: after.undelivered })
-    );
-  }
-
-  return reasons;
+  return { failures, unknowns };
 };
 
 const healthReasons = ({ listeners, status }: JudgeHealth) => [
@@ -177,6 +199,10 @@ export const judgeShip = (input: {
   const quietest = Math.min(baseline.sent, after.sent);
   const judgeable = quietest >= ShipLimits.minimumSent;
 
+  const delivery = judgeable
+    ? deliveryReasons(baseline, after)
+    : { failures: [], unknowns: [] };
+
   const unknownCauses = [
     ...(judgeable
       ? []
@@ -189,10 +215,11 @@ export const judgeShip = (input: {
     ...(health === null || health.listeners === null
       ? [HealthMissing.make({ limit: null, value: null })]
       : []),
+    ...delivery.unknowns,
   ];
 
   const failures = [
-    ...(judgeable ? trafficReasons(baseline, after) : []),
+    ...delivery.failures,
     ...(health === null ? [] : healthReasons(health)),
   ];
 
