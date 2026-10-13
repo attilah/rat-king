@@ -129,7 +129,7 @@ it.effect.prop(
       );
 
       for (const view of [call, result, statusView]) {
-        expect(view).toContain("🐀");
+        expect(view.includes("🐀")).toBe(view === call);
         expect(view).not.toMatch(
           /Rat King (?:send|ask|reply|status|cc|record|message)|🐀 Rat King/u
         );
@@ -201,9 +201,8 @@ it.effect.prop(
       expect(content).toContain(hint);
 
       if (sample.cc) {
-        expect(collapsed).toContain(
-          sample.kind === "ask" ? "cc · woken" : "cc · quiet"
-        );
+        expect(collapsed).toContain("🐀 cc from");
+        expect(collapsed.includes("quiet")).toBe(sample.kind !== "ask");
 
         if (sample.kind !== "ask") {
           expect(expanded).toContain(COPY_NOTE);

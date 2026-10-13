@@ -15,6 +15,7 @@ import {
   party,
   ratKingTitle,
   noLabels,
+  recordType,
   short,
   terminalStyles,
 } from "./tui.ts";
@@ -51,15 +52,29 @@ const border = (value: InboundView) => {
   return value.sentBy === undefined ? "borderMuted" : "dim";
 };
 
+const actionOf = (value: InboundView) => {
+  if (value.sentBy !== undefined) {
+    return "sent to";
+  }
+
+  if (value.cc) {
+    return "cc from";
+  }
+
+  if (value.kind === "message") {
+    return "from";
+  }
+
+  return `${value.kind === "data" ? `record ${recordType(value.body)}` : value.kind} from`;
+};
+
 const sender = (
   theme: Paint,
   value: InboundView,
-  _withName: boolean,
+  expanded: boolean,
   labels: Labels = noLabels
 ) => {
-  const mark = value.verified
-    ? theme.fg("success", "✓")
-    : theme.fg("warning", "⚠");
+  const mark = value.verified ? "" : `${theme.fg("warning", "⚠")} `;
 
   const name =
     value.sentBy === undefined ? value.from : (value.to ?? "unknown");
@@ -67,10 +82,17 @@ const sender = (
   const label =
     value.sentBy === undefined ? (value.label ?? labels(name)) : labels(name);
 
-  const title = `${value.sentBy === undefined ? "" : "📤 to "}${party(theme, name, label)}`;
-  const action = value.sentBy === undefined ? value.kind : "sent";
+  const action = actionOf(value);
 
-  return `${mark} ${ratKingTitle(theme, action)} ${title}`;
+  const reply =
+    value.kind === "reply" && value.replyTo !== undefined
+      ? theme.fg(
+          "muted",
+          ` · ↩ ${expanded ? oneLine(value.replyTo) : short(value.replyTo)}`
+        )
+      : "";
+
+  return `${mark}${ratKingTitle(theme, action)} ${party(theme, name, label)}${reply}`;
 };
 
 const senderLine = (
@@ -79,37 +101,22 @@ const senderLine = (
   withName: boolean,
   width: number,
   labels: Labels = noLabels
-) => {
-  const [mark = "", ...rest] = sender(theme, value, withName, labels).split(
-    " "
-  );
-
-  return width < 3
-    ? mark
-    : `${mark} ${truncateToWidth(rest.join(" "), width - 2, "…")}`;
-};
+) =>
+  !value.verified && width < 3
+    ? theme.fg("warning", "⚠")
+    : truncateToWidth(sender(theme, value, withName, labels), width, "…");
 
 const tag = (theme: Paint, value: InboundView) => {
-  if (value.sentBy !== undefined) {
-    return theme.fg("dim", "sent");
-  }
+  const held = value.reason?.startsWith("held:") === true;
 
-  const parts = [
-    ...(value.cc
-      ? [
-          theme.fg(
-            "dim",
-            value.reason?.startsWith("woken:") === true
-              ? "cc · woken"
-              : "cc · quiet"
-          ),
-        ]
-      : []),
-    ...(value.kind === "ask" ? [theme.fg("warning", "ask")] : []),
-    ...(value.kind === "reply" ? [theme.fg("muted", "reply")] : []),
-  ];
+  const quiet =
+    value.cc &&
+    value.kind !== "ask" &&
+    value.reason?.startsWith("woken:") !== true;
 
-  return parts.length === 0 ? undefined : parts.join(theme.fg("dim", " · "));
+  const nondefault = value.sentBy === undefined && (held || quiet);
+
+  return nondefault ? theme.fg("dim", held ? "held" : "quiet") : undefined;
 };
 
 const ccText = (value: InboundView, theme: Paint, labels: Labels) =>
@@ -124,16 +131,10 @@ const meta = (
   labels: Labels
 ) =>
   [
-    ...(value.verified ? [] : [theme.fg("warning", "unverified")]),
     ...(value.sentBy === undefined
       ? []
       : [
           `${theme.fg("muted", "sent by")} ${party(theme, value.sentBy, labels(value.sentBy))}`,
-        ]),
-    ...(value.relay === undefined
-      ? []
-      : [
-          `${theme.fg("muted", "via")} ${party(theme, value.relay.name, labels(value.relay.name))}`,
         ]),
     ...(ccText(value, theme, labels) === undefined
       ? []
@@ -141,6 +142,12 @@ const meta = (
     ...(value.replyTo === undefined
       ? []
       : [theme.fg("muted", `↩ ${short(value.replyTo)}`)]),
+    ...(value.relay === undefined
+      ? []
+      : [
+          `${theme.fg("muted", "via")} ${party(theme, value.relay.name, labels(value.relay.name))}`,
+        ]),
+    ...(value.verified ? [] : [theme.fg("warning", "unverified")]),
     ...(hint === undefined ? [] : [theme.fg("dim", hint)]),
   ].join(theme.fg("dim", " · "));
 

@@ -842,7 +842,8 @@ export const ratkingExtension = (options: ExtensionOptions) =>
       name: tool,
       parameters,
       promptSnippet: promptSnippet(tool),
-      renderCall: (args, theme) => callView(tool, args, theme, labels),
+      renderCall: (args, theme, context) =>
+        callView(tool, args, theme, labels, context),
       renderResult: (result, { expanded, isPartial }, theme, context) =>
         resultView(
           {
@@ -856,7 +857,8 @@ export const ratkingExtension = (options: ExtensionOptions) =>
               .join("\n"),
           },
           theme,
-          labels
+          labels,
+          context
         ),
     });
 

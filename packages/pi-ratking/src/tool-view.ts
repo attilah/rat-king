@@ -1,8 +1,9 @@
 import type { ThemeColor } from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
 import { truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
-import { Schema } from "effect";
+import { Match, Schema } from "effect";
 
+import { Recipients } from "./delivery.ts";
 import {
   clean,
   clip,
@@ -35,13 +36,13 @@ const ACTION_COLOURS = new Map<string, ThemeColor>([
 ]);
 
 const lines = (render: (width: number) => readonly string[]): Component => {
-  let cache: { width: number; lines: string[] } | undefined;
+  let cache: { lines: string[]; width: number } | undefined;
 
   return {
     invalidate() {
       cache = undefined;
     },
-    render(width: number) {
+    render(width) {
       if (width <= 0) {
         return [];
       }
@@ -116,12 +117,61 @@ export const callLines = (
   ];
 };
 
+interface CallInput {
+  readonly call: CallArgs;
+  readonly labels: Labels;
+  readonly theme: Paint;
+  readonly tool: string;
+}
+
+class CallShell implements Component {
+  input: CallInput;
+  readonly view: Component;
+
+  constructor(input: CallInput) {
+    this.input = input;
+    this.view = lines((width) => {
+      const { call, labels, theme, tool } = this.input;
+
+      return callLines(tool, call, theme, width, labels);
+    });
+  }
+
+  invalidate() {
+    this.view.invalidate();
+  }
+
+  render(width: number) {
+    return this.view.render(width);
+  }
+}
+
+interface CallState {
+  shell?: CallShell;
+}
+
+interface CallContext {
+  readonly state: CallState;
+}
+
 export const callView = (
   tool: string,
   call: CallArgs,
   theme: Paint,
-  labels: Labels = noLabels
-) => lines((width) => callLines(tool, call, theme, width, labels));
+  labels: Labels = noLabels,
+  context?: CallContext
+): Component => {
+  const input: CallInput = { call, labels, theme, tool };
+  const shell = context?.state.shell ?? new CallShell(input);
+  shell.input = input;
+  shell.invalidate();
+
+  if (context !== undefined) {
+    context.state.shell = shell;
+  }
+
+  return shell;
+};
 
 export interface ResultInput {
   readonly action: string;
@@ -153,6 +203,75 @@ const receiptParty = (text: string, theme: Paint, labels: Labels) =>
     }
   );
 
+const ReceiptDetails = Schema.Struct({
+  id: Schema.String,
+  recipients: Schema.optionalKey(Recipients),
+  to: Schema.optionalKey(Schema.String),
+});
+
+type ReceiptDetailsValue = typeof ReceiptDetails.Type;
+
+const compactReceipt = (
+  input: ResultInput,
+  theme: Paint,
+  labels: Labels
+): readonly string[] | undefined => {
+  if (!Schema.is(ReceiptDetails)(input.details)) {
+    return undefined;
+  }
+
+  const details: ReceiptDetailsValue = input.details;
+
+  const recipients =
+    details.recipients ??
+    (details.to === undefined ? [] : [{ level: "wake", name: details.to }]);
+
+  if (recipients.length === 0) {
+    return undefined;
+  }
+
+  const prefix = Match.value(input.action).pipe(
+    Match.when("ask", () => "asked "),
+    Match.when("record", () => "record → "),
+    Match.orElse(() => "")
+  );
+
+  const trimmed = /^summary trimmed to /mu.test(clean(input.text))
+    ? theme.fg("dim", " · summary trimmed")
+    : "";
+
+  return recipients.map((recipient, index) => {
+    const level = recipient.level === "wake" ? "woken" : "quiet";
+    const fact = recipients.length === 1 ? short(details.id) : level;
+
+    return `${recipients.length === 1 ? prefix : ""}${party(theme, recipient.name, labels(recipient.name))}${theme.fg("dim", ` · ${fact}`)}${index === 0 ? trimmed : ""}`;
+  });
+};
+
+const askReply = (
+  text: string,
+  theme: Paint,
+  width: number,
+  labels: Labels
+) => {
+  const match =
+    /\*\*Reply from (?<name>[^\n]+?)\*\* \(id (?<id>[^)]+)\):\n(?<body>[\s\S]*)/u.exec(
+      text
+    );
+
+  if (match?.groups === undefined) {
+    return [];
+  }
+
+  return [
+    `${theme.fg("success", "↩")} ${party(theme, match.groups.name ?? "", labels(match.groups.name ?? ""))}${theme.fg("dim", ` · ${short(match.groups.id ?? "")}`)}`,
+    ...paragraphs(
+      (match.groups.body ?? "").replace(/\nsummary trimmed to [^\n]*$/u, ""),
+      width - 2
+    ),
+  ];
+};
+
 export const resultLines = (
   input: ResultInput,
   theme: Paint,
@@ -163,31 +282,59 @@ export const resultLines = (
     return [
       theme.fg(
         "warning",
-        `${ratKingTitle(theme, input.action)} · ${input.action === "ask" ? "⋯ waiting for the reply" : "⋯ sending"}`
+        input.action === "ask" ? "⋯ waiting for the reply" : "⋯ sending"
       ),
     ];
   }
 
   const [first = "", ...rest] = clean(input.text).trim().split("\n");
-  const receipt = receiptParty(first.replaceAll("**", ""), theme, labels);
 
-  const head =
-    input.action === "status"
-      ? receipt.replace("🐀 status:", `${ratKingTitle(theme, "status")}:`)
-      : `${ratKingTitle(theme, input.action)} · ${receipt}`;
+  const head = receiptParty(first.replaceAll("**", ""), theme, labels).replace(
+    /^🐀 status: /u,
+    ""
+  );
 
   if (failed(input)) {
     return [
       ...headed(theme.fg("error", "✗"), theme.fg("error", head), width),
-      ...paragraphs(rest.join("\n"), width - 2).map(
-        (line) => `  ${theme.fg("dim", line)}`
+      ...(input.expanded
+        ? paragraphs(rest.join("\n"), width - 2).map(
+            (line) => `  ${theme.fg("dim", line)}`
+          )
+        : []),
+    ];
+  }
+
+  const compact = input.expanded
+    ? undefined
+    : compactReceipt(input, theme, labels);
+
+  if (compact !== undefined) {
+    return [
+      ...compact.flatMap((line) =>
+        headed(theme.fg("success", "✓"), line, width)
       ),
+      ...(input.action === "ask"
+        ? clip(
+            theme,
+            askReply(clean(input.text), theme, width, labels).flatMap((line) =>
+              wrapTextWithAnsi(line, Math.max(1, width - 2)).map(
+                (wrapped) => `  ${wrapped}`
+              )
+            ),
+            PREVIEW_LINES,
+            width
+          )
+        : []),
     ];
   }
 
   if (input.action === "ask") {
-    const body = paragraphs(rest.join("\n"), width - 2).map(
-      (line) => `  ${theme.fg("text", line)}`
+    const body = rest.flatMap((line) =>
+      wrapTextWithAnsi(
+        receiptParty(line.replaceAll("**", ""), theme, labels),
+        Math.max(1, width - 2)
+      ).map((wrapped) => `  ${wrapped}`)
     );
 
     return [
@@ -239,5 +386,15 @@ export const resultLines = (
 export const resultView = (
   input: ResultInput,
   theme: Paint,
-  labels: Labels = noLabels
-) => lines((width) => resultLines(input, theme, width, labels));
+  labels: Labels = noLabels,
+  context?: CallContext
+): Component => {
+  const shell = context?.state.shell;
+
+  if (shell !== undefined) {
+    shell.input = { ...shell.input, labels, theme };
+    shell.invalidate();
+  }
+
+  return lines((width) => resultLines(input, theme, width, labels));
+};

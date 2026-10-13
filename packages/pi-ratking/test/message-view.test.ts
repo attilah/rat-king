@@ -34,7 +34,7 @@ const Hostile = Schema.Struct({
 });
 
 it.effect.prop(
-  "every inbound line, and every sent copy, fits its width from 1 to 200 columns, collapsed stays within four lines, the verified or unverified mark always shows, a sent copy never offers a reply, and no sender escape or control reaches the terminal",
+  "every inbound line, and every sent copy, fits its width from 1 to 200 columns, collapsed stays within four lines, only the unverified warning mark shows, a sent copy never offers a reply, and no sender escape or control reaches the terminal",
   [Arbitrary.schema(Hostile)],
   ([sample]) =>
     Effect.sync(() => {
@@ -74,9 +74,12 @@ it.effect.prop(
         expect((lines ?? []).length).toBeLessThanOrEqual(4);
       }
 
-      expect(stripTerminalSequences(lines?.[0] ?? "")).toContain(
-        sample.verified ? "✓" : "⚠"
-      );
+      const header = stripTerminalSequences(lines?.[0] ?? "");
+      expect(header).not.toContain("✓");
+
+      if (!sample.verified) {
+        expect(header).toContain("⚠");
+      }
 
       if (sample.sentBy !== undefined) {
         expect((lines ?? []).join("\n")).not.toContain("action:");
@@ -144,7 +147,11 @@ it.effect.prop(
       const all = collapsed.join("\n");
 
       expect(collapsed[0]).toContain((sample.label ?? "peer").slice(0, 8));
-      expect(collapsed[0]).toContain(sample.verified ? "✓" : "⚠");
+      expect(collapsed[0]).not.toContain("✓");
+
+      if (!sample.verified) {
+        expect(collapsed[0]).toContain("⚠");
+      }
 
       const lead = (sample.summary ?? sample.body).slice(0, 20).trim();
       expect(squash(collapsed[1] ?? "")).toContain(squash(lead));
