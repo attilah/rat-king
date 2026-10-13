@@ -154,7 +154,7 @@ it.effect.prop(
                 }).join("\n")
               );
 
-              expect(shown[0]).toContain("📤 to person");
+              expect(shown[0]).toContain("🐀 sent to person");
               expect(shown[0]).toContain("sent by desk");
               expect(shown[1]).not.toContain('action: "reply"');
             } else if (accepted) {

@@ -15,7 +15,7 @@ export const clean = (text: string) =>
   stripTerminalSequences(text).replaceAll("\t", "  ").replaceAll(CONTROLS, "");
 
 export const terminalStyles = (text: string) =>
-  text.replaceAll("\u001B[1;38;", "\u001B[1m\u001B[38;");
+  `${text.replaceAll("\u001B[1;38;", "\u001B[1m\u001B[38;")}${text.includes("\u001B[") ? "\u001B[0m" : ""}`;
 
 export const oneLine = (text: string) =>
   clean(text).replaceAll(/\s+/gu, " ").trim();
@@ -84,6 +84,12 @@ export const ratKingTitle = (
   `${theme.fg("toolTitle", theme.bold("🐀"))} ${theme.fg(colour, oneLine(action))}`;
 
 export const short = (id: string) => oneLine(id).slice(0, 8);
+
+export const recordType = (text: string) =>
+  (/(?<type>[\w-]+(?:\.[\w-]+)+)/u.exec(clean(text))?.groups?.type ?? "unknown")
+    .split(".")
+    .slice(-2)
+    .join(".");
 
 export const FRAME_MIN = 16;
 

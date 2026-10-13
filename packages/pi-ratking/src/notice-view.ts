@@ -3,11 +3,16 @@ import { truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { Option, Schema } from "effect";
 
 import {
+  FRAME_MIN,
+  clip,
+  frame,
   noLabels,
   oneLine,
   paragraphs,
   party,
   ratKingTitle,
+  recordType,
+  short,
   terminalStyles,
 } from "./tui.ts";
 import type { Labels, Paint } from "./tui.ts";
@@ -15,6 +20,7 @@ import type { Labels, Paint } from "./tui.ts";
 const PartyDetails = Schema.Struct({
   body: Schema.optional(Schema.String),
   from: Schema.String,
+  id: Schema.optional(Schema.String),
   label: Schema.optional(Schema.String),
   summary: Schema.optional(Schema.String),
 });
@@ -89,12 +95,18 @@ export const digestView = (input: NoticeInput): Component =>
         ).map((line) => input.theme.fg("dim", line))
       : [];
 
-    return [
-      ratKingTitle(input.theme, "cc digest"),
-      input.theme.fg("dim", "cc · quiet · held: cc digest"),
-      ...entries,
-      ...hints,
-    ];
+    const count = Option.match(decoded, {
+      onNone: () => entries.length,
+      onSome: ({ messages }) => messages.length,
+    });
+
+    const header = `${ratKingTitle(input.theme, "cc digest")}${input.theme.fg("dim", ` · ${count}`)}`;
+
+    const body = input.expanded
+      ? [...entries, ...hints]
+      : clip(input.theme, entries, 2, width);
+
+    return [header, ...body];
   });
 
 export const recordView = (input: NoticeInput): Component =>
@@ -105,13 +117,36 @@ export const recordView = (input: NoticeInput): Component =>
     const sender = Option.match(value, {
       onNone: () => "",
       onSome: (details) =>
-        ` ${party(input.theme, details.from, details.label ?? labels(details.from))}`,
+        ` from ${party(input.theme, details.from, details.label ?? labels(details.from))}`,
     });
 
-    return [
-      `${ratKingTitle(input.theme, "record")}${sender}`,
-      ...paragraphs(input.content, width).map((line) =>
-        input.theme.fg("dim", line)
-      ),
-    ];
+    const header = `${ratKingTitle(input.theme, `record ${recordType(input.content)}`)}${sender}`;
+    const box = frame(input.theme, width, "borderMuted");
+    const inner = width < FRAME_MIN ? width : box.inner;
+
+    const body = paragraphs(
+      input.expanded ? input.content : "Not rendered by this reader",
+      inner
+    ).map((line) => input.theme.fg("dim", line));
+
+    const id = Option.match(value, {
+      onNone: () => "",
+      onSome: (details) =>
+        details.id === undefined
+          ? ""
+          : `${input.expanded ? oneLine(details.id) : short(details.id)} · `,
+    });
+
+    return width < FRAME_MIN
+      ? [header, ...body]
+      : [
+          box.top(header),
+          ...body.map(box.row),
+          box.bottom(
+            input.theme.fg(
+              "dim",
+              `${id}${input.expanded ? "" : "ctrl+o expands"}`
+            )
+          ),
+        ];
   });
