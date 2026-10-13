@@ -109,7 +109,7 @@ const Readable = Schema.Struct({
 });
 
 it.effect.prop(
-  "collapsed shows the sender, the summary first, and every marker that changes how to answer; expanded shows the whole body and summary",
+  "collapsed puts summaries in the sender header and bodies in the preview, preserving answer markers; expanded keeps whole content",
   [Arbitrary.schema(Readable)],
   ([sample]) =>
     Effect.sync(() => {
@@ -154,7 +154,9 @@ it.effect.prop(
       }
 
       const lead = (sample.summary ?? sample.body).slice(0, 20).trim();
-      expect(squash(collapsed[1] ?? "")).toContain(squash(lead));
+      expect(
+        squash(collapsed[sample.summary === undefined ? 1 : 0] ?? "")
+      ).toContain(squash(lead));
 
       if (!sample.verified) {
         expect(all).toContain("unverified");

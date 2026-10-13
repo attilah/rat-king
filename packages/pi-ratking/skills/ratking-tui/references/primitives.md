@@ -53,13 +53,13 @@ import { Party } from '../../../src/ui/party.ts';
 ### 40 columns
 
 ```text
-🔮 Merlin sample/desk
+🔮 Merlin
 ```
 
 ### 80 columns
 
 ```text
-🔮 Merlin sample/desk
+🔮 Merlin
 ```
 
 ## Header
@@ -76,19 +76,20 @@ Don't: Add another header to a delivery result.
 
 ```
 import { Header } from '../../../src/ui/header.ts';
+import { Party } from '../../../src/ui/party.ts';
 [Header({ party: Party({ name: 'sample/desk', theme }), theme, variant: 'inbound', verb: 'from' })]
 ```
 
 ### 40 columns
 
 ```text
-🐀 from 🔮 Merlin sample/desk
+🐀 from 🔮 Merlin
 ```
 
 ### 80 columns
 
 ```text
-🐀 from 🔮 Merlin sample/desk
+🐀 from 🔮 Merlin
 ```
 
 ## Tag
@@ -153,29 +154,30 @@ import { ShortId } from '../../../src/ui/short-id.ts';
 
 Mark each delivered recipient without another rat header.
 
-Props: lines, theme, width.
+Props: Receipt: lines, theme, width; CompactReceipt: id, parties (party and level), summary?, theme, trimmed, width.
 
-Variants: none.
+Variants: single recipient: party · summary · id8; multiple: one summary · id8 row, then party · woken|quiet rows.
 
 Pattern: [detail-fold](https://pi-tui.ratstack.sh/patterns/detail-fold.md).
 
 Don't: Put a delivery tick on inbound mail.
 
 ```
-import { Receipt } from '../../../src/ui/receipt.ts';
-Receipt({ lines: [Party({ name: 'sample/desk', theme }) + ' · ' + ShortId({ id: '3abcdefghijk' })], theme, width })
+import { CompactReceipt } from '../../../src/ui/receipt.ts';
+import { Party } from '../../../src/ui/party.ts';
+CompactReceipt({ id: '3abcdefghijk', parties: [{ level: 'woken', party: Party({ label: '🔮 Merlin', name: 'sample/desk', theme }) }], summary: 'The gate is clear', theme, trimmed: false, width })
 ```
 
 ### 40 columns
 
 ```text
-✓ 🔮 Merlin sample/desk · 3abcdefg
+✓ 🔮 Merlin · The gate is cl[0m…[0m · 3abcdefg
 ```
 
 ### 80 columns
 
 ```text
-✓ 🔮 Merlin sample/desk · 3abcdefg
+✓ 🔮 Merlin · The gate is clear · 3abcdefg
 ```
 
 ## Fault
@@ -227,13 +229,15 @@ Don't: Hand-draw borders or measure ANSI text with string length.
 
 ```
 import { Box } from '../../../src/ui/box.ts';
+import { Party } from '../../../src/ui/party.ts';
+import { Header } from '../../../src/ui/header.ts';
 Box({ body: ['The gate is clear.'], border: 'borderMuted', header: Header({ party: Party({ name: 'sample/desk', theme }), theme, variant: 'inbound', verb: 'from' }), theme, width })
 ```
 
 ### 40 columns
 
 ```text
-╭─ 🐀 from 🔮 Merlin sample/desk ──────╮
+╭─ 🐀 from 🔮 Merlin ──────────────────╮
 │ The gate is clear.                   │
 ╰─ ctrl+o expands ─────────────────────╯
 ```
@@ -241,7 +245,7 @@ Box({ body: ['The gate is clear.'], border: 'borderMuted', header: Header({ part
 ### 80 columns
 
 ```text
-╭─ 🐀 from 🔮 Merlin sample/desk ──────────────────────────────────────────────╮
+╭─ 🐀 from 🔮 Merlin ──────────────────────────────────────────────────────────╮
 │ The gate is clear.                                                           │
 ╰─ ctrl+o expands ─────────────────────────────────────────────────────────────╯
 ```

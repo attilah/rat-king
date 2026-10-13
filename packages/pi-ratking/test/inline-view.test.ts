@@ -7,7 +7,7 @@ import { describe, expect } from "vitest";
 import { inboundLines } from "../src/message-view.ts";
 import { digestView, recordView } from "../src/notice-view.ts";
 import { callView, resultView } from "../src/tool-view.ts";
-import { party } from "../src/tui.ts";
+import { Party } from "../src/ui/party.ts";
 import {
   digest,
   labels,
@@ -205,11 +205,12 @@ it.effect.prop(
           const top = stripTerminalSequences(lines[0] ?? "");
           expect(top).toMatch(/^╭─ 🐀 (?:from|cc from|reply from|sent to) /u);
           expect(top).toContain(
-            party(
-              { bold: (text) => text, fg: (_colour, text) => text },
-              "peer",
-              labels("peer")
-            )
+            Party({
+              label: labels("peer"),
+              name: "peer",
+              theme: { bold: (text) => text, fg: (_colour, text) => text },
+              variant: sample.expanded ? "expanded" : "collapsed",
+            })
           );
           expect(top).not.toContain("✓");
           expect(top).not.toContain("message");
@@ -240,7 +241,9 @@ it.effect.prop(
         );
 
         expect(recordHeader).toContain(
-          "🐀 record example.notice from 🔮 Merlin · Desk peer"
+          sample.expanded
+            ? "🐀 record example.notice from 🔮 Merlin · Desk (peer)"
+            : "🐀 record example.notice from 🔮 Merlin · Desk"
         );
         expect(recordHeader).not.toContain("✓");
 

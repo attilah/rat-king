@@ -25,6 +25,7 @@ import { Box } from "./ui/box.ts";
 import { Fold } from "./ui/fold.ts";
 import { Footer } from "./ui/footer.ts";
 import { Header } from "./ui/header.ts";
+import { Party } from "./ui/party.ts";
 import { Tag } from "./ui/tag.ts";
 
 const Details = Schema.Struct({
@@ -98,7 +99,7 @@ const sender = (
         )
       : "";
 
-  return `${mark}${Header({ party: party(theme, name, label), theme, variant: "inbound", verb: action })}${reply}`;
+  return `${mark}${Header({ party: Party({ label, name, theme, variant: expanded ? "expanded" : "collapsed" }), theme, variant: "inbound", verb: action })}${!expanded && value.summary !== undefined ? theme.fg("dim", ` · ${oneLine(value.summary)}`) : ""}${reply}`;
 };
 
 const senderLine = (
@@ -164,7 +165,7 @@ const meta = (
         ? undefined
         : `${theme.fg("muted", "via")} ${party(theme, value.relay.name, labels(value.relay.name))}`,
     reply:
-      value.replyTo === undefined
+      value.replyTo === undefined || value.kind === "reply"
         ? undefined
         : theme.fg("muted", `↩ ${short(value.replyTo)}`),
     sentBy:
@@ -175,6 +176,18 @@ const meta = (
     warning: value.verified ? undefined : theme.fg("warning", "unverified"),
   });
 
+const startsWithSummary = (value: InboundView) =>
+  value.summary !== undefined &&
+  clean(value.body).trimStart().startsWith(clean(value.summary).trim());
+
+const previewBody = (value: InboundView) =>
+  startsWithSummary(value)
+    ? clean(value.body)
+        .trimStart()
+        .slice(clean(value.summary ?? "").trim().length)
+        .trimStart()
+    : value.body;
+
 const preview = (theme: Paint, value: InboundView, width: number) => [
   ...(value.kind === "data" && Option.isSome(compactRecord(value.body))
     ? wrapTextWithAnsi(
@@ -182,15 +195,11 @@ const preview = (theme: Paint, value: InboundView, width: number) => [
         width
       ).map((line) => theme.bold(line))
     : []),
-  ...(value.summary === undefined
-    ? []
-    : wrapTextWithAnsi(oneLine(value.summary), width).map((line) =>
-        theme.bold(line)
-      )),
+
   ...paragraphs(
     value.kind === "data" && Option.isSome(compactRecord(value.body))
       ? ""
-      : value.body,
+      : previewBody(value),
     width
   )
     .filter((line) => line !== "")
@@ -273,7 +282,7 @@ const expanded = (
   ];
 
   const summary =
-    value.summary === undefined
+    value.summary === undefined || startsWithSummary(value)
       ? []
       : [
           ...wrapTextWithAnsi(oneLine(value.summary), inner).map((line) =>

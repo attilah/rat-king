@@ -1,7 +1,7 @@
 import type { ThemeColor } from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
 import { truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
-import { Match, Schema } from "effect";
+import { Schema } from "effect";
 
 import { Recipients } from "./delivery.ts";
 import {
@@ -19,7 +19,8 @@ import { BRAND } from "./ui/brand.ts";
 import { Fault } from "./ui/fault.ts";
 import { Preview } from "./ui/fold.ts";
 import { Header } from "./ui/header.ts";
-import { Receipt, headed } from "./ui/receipt.ts";
+import { Party } from "./ui/party.ts";
+import { CompactReceipt, headed } from "./ui/receipt.ts";
 
 export interface CallArgs {
   readonly action?: string | undefined;
@@ -188,6 +189,7 @@ export interface ResultInput {
   readonly expanded: boolean;
   readonly isError: boolean;
   readonly isPartial: boolean;
+  readonly summary?: string | undefined;
   readonly text: string;
 }
 
@@ -197,19 +199,30 @@ const failed = (input: ResultInput) =>
   input.isError ||
   Schema.is(Schema.Struct({ error: Schema.Literal(true) }))(input.details);
 
-const receiptParty = (text: string, theme: Paint, labels: Labels) =>
+const receiptParty = (
+  text: string,
+  theme: Paint,
+  labels: Labels,
+  expanded = false
+) =>
   text.replaceAll(
     /(?<=[Dd]elivered to |confirmed to |Reply from |status: )(?<recipient>[^\n]+?)(?= over Rat King| \(id| \(did:)|^(?<copy>[^:]+)(?=: (?:woken|quiet))/gmu,
     (_match, recipient: string | undefined, copy: string | undefined) => {
       const name = recipient ?? copy ?? "";
 
-      return party(theme, name, labels(name));
+      return Party({
+        label: labels(name),
+        name,
+        theme,
+        variant: expanded ? "expanded" : "collapsed",
+      });
     }
   );
 
 const ReceiptDetails = Schema.Struct({
   id: Schema.String,
   recipients: Schema.optionalKey(Recipients),
+  summary: Schema.optionalKey(Schema.String),
   to: Schema.optionalKey(Schema.String),
 });
 
@@ -218,7 +231,8 @@ type ReceiptDetailsValue = typeof ReceiptDetails.Type;
 const compactReceipt = (
   input: ResultInput,
   theme: Paint,
-  labels: Labels
+  labels: Labels,
+  width: number
 ): readonly string[] | undefined => {
   if (!Schema.is(ReceiptDetails)(input.details)) {
     return undefined;
@@ -234,21 +248,16 @@ const compactReceipt = (
     return undefined;
   }
 
-  const prefix = Match.value(input.action).pipe(
-    Match.when("ask", () => "asked "),
-    Match.when("record", () => "record → "),
-    Match.orElse(() => "")
-  );
-
-  const trimmed = /^summary trimmed to /mu.test(clean(input.text))
-    ? theme.fg("dim", " · summary trimmed")
-    : "";
-
-  return recipients.map((recipient, index) => {
-    const level = recipient.level === "wake" ? "woken" : "quiet";
-    const fact = recipients.length === 1 ? short(details.id) : level;
-
-    return `${recipients.length === 1 ? prefix : ""}${party(theme, recipient.name, labels(recipient.name))}${theme.fg("dim", ` · ${fact}`)}${index === 0 ? trimmed : ""}`;
+  return CompactReceipt({
+    id: details.id,
+    parties: recipients.map((recipient) => ({
+      level: recipient.level === "wake" ? "woken" : "quiet",
+      party: party(theme, recipient.name, labels(recipient.name)),
+    })),
+    summary: input.summary ?? details.summary,
+    theme,
+    trimmed: /^summary trimmed to /mu.test(clean(input.text)),
+    width,
   });
 };
 
@@ -276,6 +285,24 @@ const askReply = (
   ];
 };
 
+const pendingLines = (text: string, theme: Paint, width: number) => {
+  const sections = clean(text)
+    .replaceAll("**", "")
+    .split(/(?=^(?:Inbound unanswered|Outbound open) asks:)/mu);
+
+  const populated = sections.filter((section) =>
+    section.split("\n").some((line) => line.startsWith("- "))
+  );
+
+  return (
+    populated.length === 0
+      ? ["No open asks"]
+      : populated.flatMap((section) => section.trim().split("\n"))
+  ).flatMap((line) =>
+    wrapTextWithAnsi(theme.fg("text", line), Math.max(1, width))
+  );
+};
+
 export const resultLines = (
   input: ResultInput,
   theme: Paint,
@@ -291,12 +318,18 @@ export const resultLines = (
     ];
   }
 
+  if (input.action === "pending" && !failed(input)) {
+    return pendingLines(input.text, theme, width);
+  }
+
   const [first = "", ...rest] = clean(input.text).trim().split("\n");
 
-  const head = receiptParty(first.replaceAll("**", ""), theme, labels).replace(
-    new RegExp(`^${BRAND} status: `, "u"),
-    ""
-  );
+  const head = receiptParty(
+    first.replaceAll("**", ""),
+    theme,
+    labels,
+    input.expanded
+  ).replace(new RegExp(`^${BRAND} status: `, "u"), "");
 
   if (failed(input)) {
     return Fault({
@@ -310,11 +343,11 @@ export const resultLines = (
 
   const compact = input.expanded
     ? undefined
-    : compactReceipt(input, theme, labels);
+    : compactReceipt(input, theme, labels, width);
 
   if (compact !== undefined) {
     return [
-      ...Receipt({ lines: compact, theme, width }),
+      ...compact,
       ...(input.action === "ask"
         ? clip(
             theme,
@@ -333,7 +366,7 @@ export const resultLines = (
   if (input.action === "ask") {
     const body = rest.flatMap((line) =>
       wrapTextWithAnsi(
-        receiptParty(line.replaceAll("**", ""), theme, labels),
+        receiptParty(line.replaceAll("**", ""), theme, labels, input.expanded),
         Math.max(1, width - 2)
       ).map((wrapped) => `  ${wrapped}`)
     );
@@ -356,7 +389,7 @@ export const resultLines = (
 
     return input.expanded
       ? [
-          ...headed(theme.fg("success", "✓"), theme.fg("text", self), width),
+          ...wrapTextWithAnsi(theme.fg("text", self), Math.max(1, width)),
           ...facts.flatMap((fact) =>
             wrapTextWithAnsi(fact, Math.max(1, width - 2)).map(
               (line) => `  ${theme.fg("dim", line)}`
@@ -364,14 +397,19 @@ export const resultLines = (
           ),
         ]
       : [
-          `${theme.fg("success", "✓")} ${theme.fg("text", self)}${theme.fg("dim", facts[0] === undefined ? "" : ` · ${facts[0]}`)}`,
+          `${theme.fg("text", self)}${theme.fg("dim", facts[0] === undefined ? "" : ` · ${facts[0]}`)}`,
         ];
   }
 
   const others = rest
     .filter((line) => line.trim() !== "")
     .map((line) => {
-      const plain = receiptParty(line.replaceAll("**", ""), theme, labels);
+      const plain = receiptParty(
+        line.replaceAll("**", ""),
+        theme,
+        labels,
+        input.expanded
+      );
 
       const colour = /no reader|not live|offline/iu.test(plain)
         ? "warning"
@@ -385,7 +423,9 @@ export const resultLines = (
   const tail = others.flat();
 
   return [
-    ...headed(theme.fg("success", "✓"), theme.fg("text", head), width),
+    ...(["send", "reply", "record", "handled"].includes(input.action)
+      ? headed(theme.fg("success", "✓"), theme.fg("text", head), width)
+      : wrapTextWithAnsi(theme.fg("text", head), Math.max(1, width))),
     ...Preview({
       expanded: input.expanded,
       lines: tail,
@@ -409,5 +449,10 @@ export const resultView = (
     shell.invalidate();
   }
 
-  return lines((width) => resultLines(input, theme, width, labels));
+  const summary =
+    input.summary ?? shell?.input.call.summary ?? shell?.input.call.message;
+
+  return lines((width) =>
+    resultLines({ ...input, summary }, theme, width, labels)
+  );
 };

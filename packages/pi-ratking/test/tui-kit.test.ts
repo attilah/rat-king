@@ -27,6 +27,19 @@ it.effect.prop(
       );
 
       expect(valid(source)).toBe(true);
+
+      const directory = new URL("../src/", import.meta.url).pathname;
+      const names = yield* fs.readDirectory(directory);
+
+      for (const name of names.filter(
+        (entry) => entry.endsWith("-view.ts") || entry === "tui.ts"
+      )) {
+        expect(
+          valid(yield* fs.readFileString(`${directory}${name}`)),
+          name
+        ).toBe(true);
+      }
+
       expect(valid(`${source}\nconst header = '${BRAND} from peer';`)).toBe(
         false
       );

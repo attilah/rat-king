@@ -7,7 +7,7 @@ import { Preview } from "../src/ui/fold.ts";
 import { Footer } from "../src/ui/footer.ts";
 import { Header } from "../src/ui/header.ts";
 import { Party } from "../src/ui/party.ts";
-import { Receipt } from "../src/ui/receipt.ts";
+import { CompactReceipt } from "../src/ui/receipt.ts";
 import { ShortId } from "../src/ui/short-id.ts";
 import { Tag } from "../src/ui/tag.ts";
 
@@ -30,6 +30,11 @@ interface Entry {
   readonly render: (width: number) => readonly string[];
   readonly variants: string;
 }
+
+const exampleNames = new Map([
+  ["Fold", "Preview"],
+  ["Receipt", "CompactReceipt"],
+]);
 
 const entries: readonly Entry[] = [
   {
@@ -86,18 +91,23 @@ const entries: readonly Entry[] = [
   {
     dont: "Put a delivery tick on inbound mail.",
     example:
-      "Receipt({ lines: [Party({ name: 'sample/desk', theme }) + ' · ' + ShortId({ id: '3abcdefghijk' })], theme, width })",
+      "CompactReceipt({ id: '3abcdefghijk', parties: [{ level: 'woken', party: Party({ label: '🔮 Merlin', name: 'sample/desk', theme }) }], summary: 'The gate is clear', theme, trimmed: false, width })",
     intent: "Mark each delivered recipient without another rat header.",
     name: "Receipt",
     pattern: "detail-fold",
-    props: "lines, theme, width",
+    props:
+      "Receipt: lines, theme, width; CompactReceipt: id, parties (party and level), summary?, theme, trimmed, width",
     render: (width) =>
-      Receipt({
-        lines: [`${party} · ${ShortId({ id: "3abcdefghijk" })}`],
+      CompactReceipt({
+        id: "3abcdefghijk",
+        parties: [{ level: "woken", party }],
+        summary: "The gate is clear",
         theme,
+        trimmed: false,
         width,
       }),
-    variants: "none",
+    variants:
+      "single recipient: party · summary · id8; multiple: one summary · id8 row, then party · woken|quiet rows",
   },
   {
     dont: "Hide the reason behind expanded diagnostics.",
@@ -198,7 +208,13 @@ export const frames = () =>
       `Don't: ${entry.dont}`,
       "",
       "```",
-      `import { ${entry.name === "Fold" ? "Preview" : entry.name} } from '../../../src/ui/${entry.name === "ShortId" ? "short-id" : entry.name.toLowerCase()}.ts';`,
+      `import { ${exampleNames.get(entry.name) ?? entry.name} } from '../../../src/ui/${entry.name === "ShortId" ? "short-id" : entry.name.toLowerCase()}.ts';`,
+      ...(["Header", "Receipt", "Box"].includes(entry.name)
+        ? ["import { Party } from '../../../src/ui/party.ts';"]
+        : []),
+      ...(entry.name === "Box"
+        ? ["import { Header } from '../../../src/ui/header.ts';"]
+        : []),
       entry.example,
       "```",
       "",

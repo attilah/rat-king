@@ -9,7 +9,6 @@ import {
   noLabels,
   oneLine,
   paragraphs,
-  party,
   recordType,
   short,
   terminalStyles,
@@ -18,6 +17,7 @@ import type { Labels, Paint } from "./tui.ts";
 import { Box } from "./ui/box.ts";
 import { Fold } from "./ui/fold.ts";
 import { Header } from "./ui/header.ts";
+import { Party } from "./ui/party.ts";
 
 const PartyDetails = Schema.Struct({
   body: Schema.optional(Schema.String),
@@ -79,7 +79,7 @@ export const digestView = (input: NoticeInput): Component =>
             onNone: () => [],
             onSome: (value) =>
               wrapTextWithAnsi(
-                `${party(input.theme, value.from, value.label ?? labels(value.from))} · ${oneLine(value.summary ?? value.body ?? "message").slice(0, 160)}`,
+                `${Party({ label: value.label ?? labels(value.from), name: value.from, theme: input.theme, variant: input.expanded ? "expanded" : "collapsed" })} · ${oneLine(value.summary ?? value.body ?? "message").slice(0, 160)}`,
                 width
               ),
           })
@@ -126,7 +126,7 @@ export const recordView = (input: NoticeInput): Component =>
     const sender = Option.match(value, {
       onNone: () => "",
       onSome: (details) =>
-        ` from ${party(input.theme, details.from, details.label ?? labels(details.from))}`,
+        ` from ${Party({ label: details.label ?? labels(details.from), name: details.from, theme: input.theme, variant: input.expanded ? "expanded" : "collapsed" })}`,
     });
 
     const header = `${Header({ theme: input.theme, variant: "record", verb: `record ${recordType(input.content)}` })}${sender}`;

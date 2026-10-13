@@ -10,9 +10,14 @@ export interface PartyProps {
   readonly variant?: PartyVariant;
 }
 
-export const Party = ({ label, name, theme }: PartyProps) => {
+export const Party = ({
+  label,
+  name,
+  theme,
+  variant = "collapsed",
+}: PartyProps) => {
   const title = oneLine(label ?? name);
   const colour = roleColour(roleOf(name, label));
 
-  return `${theme.fg(colour, theme.bold(title))}${label === undefined ? "" : theme.fg("dim", ` ${oneLine(name)}`)}`;
+  return `${theme.fg(colour, theme.bold(title))}${label === undefined || variant === "collapsed" ? "" : theme.fg("dim", ` (${oneLine(name)})`)}`;
 };

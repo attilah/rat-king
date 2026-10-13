@@ -1,0 +1,236 @@
+import { stripTerminalSequences, visibleWidth } from "@earendil-works/pi-tui";
+import { it } from "@effect/vitest";
+import { Arbitrary, Effect, Schema } from "effect";
+import { expect } from "vitest";
+
+import { inboundLines } from "../src/message-view.ts";
+import { callView, resultView } from "../src/tool-view.ts";
+import { Party } from "../src/ui/party.ts";
+import { mail, themes } from "./inline-fixtures.ts";
+import { plainTheme } from "./view-arbitraries.ts";
+
+const Sample = Schema.Struct({
+  known: Schema.Boolean,
+  role: Schema.Literals(["desk", "scout", "judge"]),
+  summary: Schema.String.check(Schema.isPattern(/^[a-z]{10,80}$/u)),
+});
+
+const plain = (lines: readonly string[]) => lines.map(stripTerminalSequences);
+
+const words = (text: string) =>
+  text
+    .toLowerCase()
+    .split(/[^a-z]+/u)
+    .filter((word) => word !== "");
+
+const unique = (text: string) =>
+  new Set(words(text)).size === words(text).length;
+
+it.effect.prop(
+  "compact parties never repeat callsign words in raw names; receipts spend spare width on one summary while reserving id8, and expansion restores the name",
+  [Arbitrary.schema(Sample)],
+  ([sample]) =>
+    Effect.sync(() => {
+      const name = `sample/sample-${sample.role}`;
+      const label = `💬 ${sample.role}`;
+      const lookup = () => (sample.known ? label : undefined);
+      const party = Party({ label, name, theme: plainTheme });
+
+      expect(unique(party)).toBe(true);
+      expect(unique(`${party} ${name}`)).toBe(false);
+      expect(
+        Party({ label, name, theme: plainTheme, variant: "expanded" })
+      ).toBe(`${label} (${name})`);
+      expect(Party({ name, theme: plainTheme })).toBe(name);
+
+      for (const { theme } of themes) {
+        for (const width of [40, 60, 80, 120]) {
+          const state = {};
+          callView(
+            "ratking",
+            { action: "send", summary: sample.summary, to: name },
+            theme,
+            lookup,
+            { state }
+          );
+
+          const input = Object.freeze({
+            action: "send",
+            details: { id: "3abcdefghijk", to: name },
+            expanded: false,
+            isError: false,
+            isPartial: false,
+            text: `Delivered to ${name} over Rat King (id 3abcdefghijk, seq 9).`,
+          });
+
+          const rendered = plain(
+            resultView(input, theme, lookup, { state }).render(width)
+          );
+
+          const line = rendered[0] ?? "";
+
+          expect(rendered).toHaveLength(1);
+          expect(visibleWidth(line)).toBeLessThanOrEqual(width);
+          expect(line).toMatch(/ · 3abcdefg$/u);
+          expect(line).toContain(sample.known ? label : name);
+
+          const anchor = sample.known ? label : name;
+          const room = width - visibleWidth(`✓ ${anchor} · 3abcdefg`) - 3;
+
+          if (room >= 10) {
+            expect(line).toContain(
+              sample.summary.slice(0, Math.min(room - 1, sample.summary.length))
+            );
+          }
+
+          if (sample.known) {
+            const identity = line.slice(2).split(" · ")[0] ?? "";
+
+            expect(unique(identity)).toBe(true);
+            expect(identity).not.toContain(name);
+          }
+
+          const expanded = plain(
+            resultView({ ...input, expanded: true }, theme, lookup, {
+              state,
+            }).render(120)
+          ).join("\n");
+
+          expect(expanded).toContain(name);
+          expect(input.text).toBe(
+            `Delivered to ${name} over Rat King (id 3abcdefghijk, seq 9).`
+          );
+        }
+      }
+    })
+);
+
+it.effect.prop(
+  "multiple recipients share one summary row then one wake-level receipt each",
+  [Arbitrary.schema(Sample)],
+  ([sample]) =>
+    Effect.sync(() => {
+      for (const { theme } of themes) {
+        for (const width of [40, 60, 80, 120]) {
+          const lines = plain(
+            resultView(
+              {
+                action: "send",
+                details: {
+                  id: "3abcdefghijk",
+                  recipients: [
+                    { level: "wake", name: "sample/desk" },
+                    { level: "quiet", name: "sample/scout" },
+                  ],
+                },
+                expanded: false,
+                isError: false,
+                isPartial: false,
+                summary: sample.summary,
+                text: "Delivered",
+              },
+              theme,
+              (name) => (name.endsWith("desk") ? "💬 desk" : "🦉 scout")
+            ).render(width)
+          );
+
+          expect(lines).toHaveLength(3);
+          expect(lines[0]).toMatch(/3abcdefg$/u);
+          expect(lines[0]).toContain(sample.summary.slice(0, 10));
+          expect(lines[1]).toBe("✓ 💬 desk · woken");
+          expect(lines[2]).toBe("✓ 🦉 scout · quiet");
+
+          for (const line of lines) {
+            expect(visibleWidth(line)).toBeLessThanOrEqual(width);
+          }
+        }
+      }
+    })
+);
+
+it.effect.prop(
+  "inbound headers spend compact space on summaries, repeated body prefixes render once, and reply ids stay only in the header/footer pair",
+  [
+    Arbitrary.schema(
+      Schema.Struct({ expanded: Schema.Boolean, remainder: Schema.Boolean })
+    ),
+  ],
+  ([sample]) =>
+    Effect.sync(() => {
+      const body = sample.remainder ? "pong\nThe gate is clear." : "pong";
+
+      const value = Object.freeze({
+        ...mail,
+        body,
+        from: "sample/sample-desk",
+        kind: "reply" as const,
+        label: "💬 desk",
+        replyTo: "3replyabcdef",
+        summary: "pong",
+      });
+
+      for (const { theme } of themes) {
+        for (const width of [40, 60, 80, 120]) {
+          const lines = plain(
+            inboundLines({
+              expanded: sample.expanded,
+              theme,
+              tool: "ratking",
+              value,
+              width,
+            })
+          );
+
+          const rendered = lines.join("\n");
+
+          expect(rendered.split("pong")).toHaveLength(2);
+          expect(lines[0]).toContain(
+            sample.expanded
+              ? "💬 desk (sample/sample-desk)".slice(0, 12)
+              : "💬 desk"
+          );
+          expect(lines.at(-1)).not.toContain("↩");
+          expect(rendered).not.toContain("✓");
+          expect(value.body).toBe(body);
+        }
+      }
+    })
+);
+
+it.effect.prop(
+  "pending omits empty sections and has no delivery tick, including the no-open-asks result",
+  [
+    Arbitrary.schema(
+      Schema.Struct({ inbound: Schema.Boolean, outbound: Schema.Boolean })
+    ),
+  ],
+  ([sample]) =>
+    Effect.sync(() => {
+      const text = `**Inbound unanswered asks:**\n${sample.inbound ? "- peer · inbound1 · ping\n" : ""}**Outbound open asks:**\n${sample.outbound ? "- to peer · outbound1 · pong" : ""}`;
+
+      for (const expanded of [false, true]) {
+        const rendered = plain(
+          resultView(
+            {
+              action: "pending",
+              details: {},
+              expanded,
+              isError: false,
+              isPartial: false,
+              text,
+            },
+            plainTheme
+          ).render(120)
+        ).join("\n");
+
+        expect(rendered.includes("Inbound unanswered asks:")).toBe(
+          sample.inbound
+        );
+        expect(rendered.includes("Outbound open asks:")).toBe(sample.outbound);
+        expect(rendered.includes("No open asks")).toBe(
+          !sample.inbound && !sample.outbound
+        );
+        expect(rendered).not.toContain("✓");
+      }
+    })
+);
