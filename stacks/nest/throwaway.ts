@@ -17,6 +17,7 @@ import {
   Layer,
   Path,
   Result,
+  Schedule,
   Schema,
 } from "effect";
 import {
@@ -598,20 +599,28 @@ export const runThrowaway = Effect.fn("Throwaway.run")(function* runThrowaway(
     const alpha = yield* readIdentity(home, "alpha");
     const bravo = yield* readIdentity(home, "bravo");
 
-    const leaseFor = Effect.gen(function* leaseFor() {
-      const now = yield* Clock.currentTimeMillis;
+    const sessionId = `throwaway-${yield* Clock.currentTimeMillis}`;
 
-      return yield* (yield* RatKingMailbox).lease.acquire({
-        did: dids.bravo,
-        expiresAt: DateTime.formatIso(DateTime.makeUnsafe(now + 240_000)),
-        harness: {
-          $type: "sh.mschf.ratking.runtime.lease#pi",
-          sessionId: `throwaway-${now}`,
-        },
-      });
-    }).pipe(Effect.provide(client(target, bravo, documents)));
+    const leaseFor = (held?: { generation: number; leaseId: string }) =>
+      Effect.gen(function* acquireLease() {
+        const now = yield* Clock.currentTimeMillis;
 
-    const lease = yield* leaseFor;
+        return yield* (yield* RatKingMailbox).lease.acquire({
+          did: dids.bravo,
+          expiresAt: DateTime.formatIso(DateTime.makeUnsafe(now + 240_000)),
+          harness: {
+            $type: "sh.mschf.ratking.runtime.lease#pi",
+            sessionId,
+          },
+          ...held,
+        });
+      }).pipe(Effect.provide(client(target, bravo, documents)));
+
+    const lease = yield* leaseFor().pipe(
+      Effect.retry(
+        Schedule.spaced("5 seconds").pipe(Schedule.upTo({ times: 60 }))
+      )
+    );
 
     const session = { lease, leasedAt: yield* Clock.currentTimeMillis };
     const tally = { acked: 0, failed: 0, sent: 0 };
@@ -619,7 +628,10 @@ export const runThrowaway = Effect.fn("Throwaway.run")(function* runThrowaway(
     const step = (index: number) =>
       Effect.gen(function* exchange() {
         if ((yield* Clock.currentTimeMillis) - session.leasedAt > 120_000) {
-          session.lease = yield* leaseFor;
+          session.lease = yield* leaseFor({
+            generation: session.lease.generation,
+            leaseId: session.lease.leaseId,
+          });
           session.leasedAt = yield* Clock.currentTimeMillis;
         }
 
