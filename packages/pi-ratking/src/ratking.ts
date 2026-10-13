@@ -3,6 +3,7 @@ import * as Defs from "@rat-king/lexicon/defs";
 import * as Retire from "@rat-king/lexicon/identity.retireName";
 import * as Runtime from "@rat-king/lexicon/runtime";
 import { Transport } from "@rat-king/lexicon/transport";
+import { signedTurn } from "@rat-king/lexicon/turns";
 import {
   ownIdentity,
   prepare,
@@ -249,6 +250,7 @@ export type Deliver = (
 ) => Effect.Effect<void>;
 
 export interface Status {
+  readonly openAsks?: number;
   readonly reader: ReaderState;
   readonly self: Option.Option<{ readonly name: string; readonly did: string }>;
   readonly endpoint: string;
@@ -356,6 +358,12 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
 
   const session = yield* Ref.make(Option.none<SessionFacts>());
 
+  const leaseHealth = yield* Ref.make({
+    acquisitionSince: 0,
+    generation: 0,
+    leaseUntil: Option.none<string>(),
+  });
+
   const heartbeat = yield* Ref.make(
     Option.none<{ readonly name: string; readonly startedAt: number }>()
   );
@@ -455,8 +463,11 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
         const now = yield* Clock.currentTimeMillis;
         const reader = yield* Ref.get(state);
         const current = yield* Ref.get(health);
+        const lease = yield* Ref.get(leaseHealth);
 
         const value: ReaderHeartbeatValue = {
+          acquisitionSince: instant(lease.acquisitionSince),
+          generation: lease.generation,
           lastConsumeOk: current.lastConsumeOk.pipe(
             Option.map(instant),
             Option.getOrNull
@@ -466,8 +477,14 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
             Option.map(instant),
             Option.getOrNull
           ),
+          leaseTtlMs: 300_000,
+          leaseUntil: lease.leaseUntil.pipe(
+            Option.map(DateTime.makeUnsafe),
+            Option.getOrNull
+          ),
           name: beat.value.name,
           pid: facts.value.pid,
+          session: facts.value.session,
           startedAt: instant(beat.value.startedAt),
           state: reader._tag,
           updatedAt: instant(now),
@@ -751,6 +768,11 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
 
   const consumeOnce = (own: Self, facts: SessionFacts, route: RelayRoute) =>
     Effect.gen(function* consumeLease() {
+      const acquisitionSince = yield* Clock.currentTimeMillis;
+      yield* Ref.update(leaseHealth, (current) => ({
+        ...current,
+        acquisitionSince,
+      }));
       yield* setState(ReaderState.Acquiring({ did: own.did, name: own.name }));
 
       const handle = yield* ownIdentity(own.identity);
@@ -795,6 +817,11 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
             ),
             Effect.andThen(
               Effect.all([
+                Ref.update(leaseHealth, (current) => ({
+                  ...current,
+                  generation: lease.generation,
+                  leaseUntil: Option.some(lease.expiresAt),
+                })),
                 Ref.set(attempts, 0),
                 Clock.currentTimeMillis.pipe(
                   Effect.flatMap((now) =>
@@ -995,6 +1022,16 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
     before: (id: string, did: string) => Effect.Effect<B, NotDelivered>
   ) {
     const own = yield* awaitSelf;
+
+    if (
+      !Schema.is(Schema.String)(body) &&
+      body.$type === "sh.mschf.agentgraph.turn" &&
+      Option.isNone(signedTurn(body, own.name, true))
+    ) {
+      return yield* refused("NotAttempted")(
+        "Turn record must decode and match the signed sender, unless operator"
+      );
+    }
 
     const names = [
       ...new Set(
@@ -2128,8 +2165,15 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
     status: Effect.gen(function* status() {
       const current = yield* Ref.get(established);
 
+      const pendingAsks = (yield* Deferred.isDone(asks))
+        ? yield* (yield* Deferred.await(asks)).pending
+        : [];
+
       return {
         endpoint: settings.endpoint,
+        openAsks: pendingAsks.filter(
+          (ask) => ask.state === "pending" || ask.state === "nudged"
+        ).length,
         quarantine: yield* Option.match(current, {
           onNone: () =>
             Effect.succeed<Quarantined>({ count: 0, latest: Option.none() }),

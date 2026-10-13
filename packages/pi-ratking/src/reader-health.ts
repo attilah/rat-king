@@ -13,12 +13,17 @@ const ErrorTag = Schema.String.check(
 );
 
 export const ReaderHeartbeat = Schema.Struct({
+  acquisitionSince: Schema.optionalKey(At),
+  generation: Schema.optionalKey(Schema.Int),
   lastConsumeOk: Schema.NullOr(At),
   lastError: Schema.NullOr(ErrorTag),
   leaseHeldSince: Schema.NullOr(At),
+  leaseTtlMs: Schema.optionalKey(Schema.Int),
+  leaseUntil: Schema.optionalKey(Schema.NullOr(At)),
   name: AgentName,
   owner: Schema.optionalKey(AgentName),
   pid: Schema.Int,
+  session: Schema.optionalKey(Schema.String),
   startedAt: At,
   state: Schema.Literals([
     "Starting",

@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/mailbox-client.ts",
+    "./turns": "./turns.ts",
     "./*": "./src/*.ts"
   },
   "dependencies": {

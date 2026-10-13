@@ -45,6 +45,7 @@ export const harness = (
   refuse: readonly string[] = [],
   overrides: {
     readonly reserved?: ReservedValue;
+    readonly turnRecords?: boolean;
     readonly relays?: readonly RelaySettingValue[];
     readonly documents?: readonly string[];
     readonly secrets?: Map<string, string>;

@@ -5,6 +5,7 @@ import type {
   ExtensionFactory,
 } from "@earendil-works/pi-coding-agent";
 import { NodeServices } from "@effect/platform-node";
+import { signedTurn } from "@rat-king/lexicon/turns";
 import {
   Cause,
   Clock,
@@ -18,6 +19,7 @@ import {
   Match,
   Option,
   Path,
+  Predicate,
   Schedule,
   Schema,
 } from "effect";
@@ -61,6 +63,8 @@ import {
 } from "./tool.ts";
 import type { ToolText } from "./tool.ts";
 import type { Labels } from "./tui.ts";
+import { stopReason, turnReporter } from "./turn-record.ts";
+import type { TurnReporter } from "./turn-record.ts";
 
 export const SEND_EVENT = "ratking/send";
 
@@ -262,6 +266,8 @@ type Services = Layer.Success<typeof appLayer>;
 type Runtime = ManagedRuntime.ManagedRuntime<Services, NotConfigured>;
 
 export interface SessionStart {
+  readonly turnCount?: number;
+  readonly rememberTurn?: (n: number) => void;
   readonly interactive?: boolean;
   readonly session: string;
   readonly sessionName?: () => string | undefined;
@@ -270,6 +276,11 @@ export interface SessionStart {
 }
 
 export interface PiHost {
+  readonly onAgentStart?: (handler: () => Promise<void>) => void;
+  readonly onAgentEnd?: (
+    handler: (messages: readonly unknown[]) => Promise<void>
+  ) => void;
+  readonly onApproval?: (handler: () => Promise<void>) => void;
   readonly events: EventBus;
   readonly onMessageShown?: (handler: (id: string) => void) => void;
   readonly registerMessageRenderer: ExtensionAPI["registerMessageRenderer"];
@@ -281,8 +292,23 @@ export interface PiHost {
   readonly onSessionEnd: (handler: () => Promise<void>) => void;
 }
 
-const piHost = (pi: ExtensionAPI): PiHost => ({
+export const piHost = (pi: ExtensionAPI): PiHost => ({
   events: pi.events,
+  onAgentEnd: (handler) => {
+    pi.on("agent_end", async (event) => {
+      await handler(event.messages);
+    });
+  },
+  onAgentStart: (handler) => {
+    pi.on("agent_start", handler);
+  },
+  onApproval: (handler) => {
+    pi.on("ui_prompt_start", async (event) => {
+      if (event.kind === "confirm") {
+        await handler();
+      }
+    });
+  },
   onMessageShown: (handler) => {
     pi.on("message_end", (event) => {
       for (const id of shownIds(event.message)) {
@@ -295,13 +321,31 @@ const piHost = (pi: ExtensionAPI): PiHost => ({
   },
   onSessionStart: (handler) => {
     pi.on("session_start", async (_event, ctx) => {
+      const Counter = Schema.Struct({ n: Schema.Int });
+
+      let turnCount = 0;
+
+      for (const entry of ctx.sessionManager.getEntries()) {
+        if (entry.type === "custom" && entry.customType === "ratking.turn") {
+          const data = Schema.decodeUnknownOption(Counter)(entry.data);
+
+          if (Option.isSome(data)) {
+            turnCount = Math.max(turnCount, data.value.n);
+          }
+        }
+      }
+
       await handler({
         interactive: ctx.hasUI,
+        rememberTurn: (n) => {
+          pi.appendEntry("ratking.turn", { n });
+        },
         session: ctx.sessionManager.getSessionId(),
         sessionName: () => pi.getSessionName(),
         status: (text) => {
           ctx.ui.setStatus("ratking", text);
         },
+        turnCount,
         warn: (message) => {
           ctx.ui.notify(message, "warning");
         },
@@ -318,6 +362,17 @@ const piHost = (pi: ExtensionAPI): PiHost => ({
     pi.sendMessage(message, delivery);
   },
 });
+
+type TurnAction = Pick<typeof ToolParams.Type, "action" | "wait">;
+
+export const withTurnWait = <A, E, R>(
+  turns: TurnReporter | undefined,
+  params: TurnAction,
+  action: Effect.Effect<A, E, R>
+) =>
+  params.action === "ask" && params.wait === true && turns !== undefined
+    ? turns.waitForReply(action)
+    : action;
 
 export interface ExtensionOptions {
   readonly layer: Layer.Layer<Services, NotConfigured>;
@@ -592,6 +647,25 @@ export const ratkingExtension = (options: ExtensionOptions) =>
     );
 
     let runtime = Option.none<Runtime>();
+    let turns: TurnReporter | undefined;
+
+    const reportTurn = async (
+      effect: Effect.Effect<void, never, RatKing | Settings> | undefined
+    ) => {
+      if (effect !== undefined && Option.isSome(runtime)) {
+        await runtime.value.runPromiseExit(effect);
+      }
+    };
+
+    pi.onAgentStart?.(async () => {
+      await reportTurn(turns?.working());
+    });
+    pi.onAgentEnd?.(async (messages) => {
+      await reportTurn(turns?.done(stopReason(messages)));
+    });
+    pi.onApproval?.(async () => {
+      await reportTurn(turns?.approval());
+    });
     const acknowledgments = new Map<string, Effect.Effect<void>>();
 
     const mail = inbox({
@@ -664,6 +738,17 @@ export const ratkingExtension = (options: ExtensionOptions) =>
         }
 
         if ("record" in inbound) {
+          if (
+            inbound.record.$type === "sh.mschf.agentgraph.turn" &&
+            Option.isNone(
+              signedTurn(inbound.record, inbound.from, inbound.verified)
+            )
+          ) {
+            consume(inbound.id);
+
+            return;
+          }
+
           pi.events.emit(RECORD_EVENT, {
             did: inbound.did,
             from: inbound.from,
@@ -844,7 +929,11 @@ export const ratkingExtension = (options: ExtensionOptions) =>
               status.self.pipe(Option.map((self) => self.name))
             );
 
-            return yield* runAction(tool, settings.askTimeoutMs, decoded);
+            return yield* withTurnWait(
+              turns,
+              decoded,
+              runAction(tool, settings.askTimeoutMs, decoded)
+            );
           }).pipe(
             Effect.orElseSucceed((): ToolText => ({
               details: { error: true },
@@ -1018,10 +1107,16 @@ export const ratkingExtension = (options: ExtensionOptions) =>
       ownName = undefined;
       ownLabel = collected.label ?? (() => collected.pane);
 
+      turns = turnReporter(collected, start.turnCount, start.rememberTurn);
+
       const facts: SessionFacts = {
         ...collected,
         onState: (reader) => {
           start.status?.(readerFooter(reader));
+
+          if (Predicate.isTagged(reader, "Live")) {
+            void reportTurn(turns?.idle());
+          }
         },
       };
 

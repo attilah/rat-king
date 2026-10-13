@@ -1,11 +1,13 @@
 {
   "effect": "4.0.1",
   "generatorVersion": "0.1.0",
-  "sourceDigest": "5bfb9e6708d677b3bee27cce323ce1801379c02ae81d7e9c58883a568e20e99b",
+  "sourceDigest": "3219794d497a63bfcc4a298b402b6767e684220648b3a009e32aab65278d0d9d",
   "sources": [
     "lexicons/sh/mschf/agentgraph/checkin.json",
+    "lexicons/sh/mschf/agentgraph/friction.json",
     "lexicons/sh/mschf/agentgraph/outcome.json",
     "lexicons/sh/mschf/agentgraph/plan.json",
+    "lexicons/sh/mschf/agentgraph/turn.json",
     "lexicons/sh/mschf/ratking/admin/putDidDocument.json",
     "lexicons/sh/mschf/ratking/agent/profile.json",
     "lexicons/sh/mschf/ratking/defs.json",

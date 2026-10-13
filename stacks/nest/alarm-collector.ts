@@ -23,6 +23,7 @@ import type { HealthDigest } from "./health.ts";
 import { ShipReceipt } from "./ship-config.ts";
 import { FleetError } from "./stage-config.ts";
 import type { StageConfigValue } from "./stage-config.ts";
+import { crashedReader } from "./turn-crash-record.ts";
 
 type CacheBreachValue = typeof CacheBreach.Type;
 
@@ -37,7 +38,9 @@ const HeartbeatLine = Schema.Union([
 
 export const READER_PROBE_LIMIT = "30 seconds";
 
-export const readHeartbeats = Effect.fn("Alarm.readHeartbeats")(
+export const collectReaderHeartbeats = Effect.fn(
+  "Alarm.collectReaderHeartbeats"
+)(
   function* readHeartbeats(source: {
     readonly dir: string;
     readonly host: string;
@@ -105,7 +108,16 @@ export const readHeartbeats = Effect.fn("Alarm.readHeartbeats")(
         : []
     );
 
-    return sightReaders(source.host, beats, now.now);
+    return {
+      crashes: beats.flatMap(({ beat }) => {
+        const record = crashedReader(beat, now.now);
+
+        return record === undefined || beat.owner === undefined
+          ? []
+          : [{ owner: beat.owner, record }];
+      }),
+      seen: sightReaders(source.host, beats, now.now),
+    };
   },
   Effect.scoped,
   (effect) =>
@@ -123,6 +135,12 @@ export const readHeartbeats = Effect.fn("Alarm.readHeartbeats")(
     )
 );
 
+export const readHeartbeats = (source: {
+  readonly dir: string;
+  readonly host: string;
+  readonly ssh?: string;
+}) => collectReaderHeartbeats(source).pipe(Effect.map((value) => value.seen));
+
 const observeReaders = (
   sources: NonNullable<StageConfigValue["alarm"]>["readerHeartbeats"]
 ) =>
@@ -130,7 +148,7 @@ const observeReaders = (
     ? Effect.succeed({ facts: null, failed: [] })
     : Effect.forEach(
         sources,
-        (source) => readHeartbeats(source).pipe(Effect.option),
+        (source) => collectReaderHeartbeats(source).pipe(Effect.option),
         { concurrency: "unbounded" }
       ).pipe(
         Effect.map((hosts) => {
@@ -139,7 +157,12 @@ const observeReaders = (
           return {
             facts: {
               complete,
-              seen: hosts.flatMap((host) => Option.getOrElse(host, () => [])),
+              seen: hosts.flatMap((host) =>
+                Option.match(host, {
+                  onNone: () => [],
+                  onSome: (value) => value.seen,
+                })
+              ),
             },
             failed: sources.flatMap((source, index) =>
               Option.isNone(hosts[index] ?? Option.none())
