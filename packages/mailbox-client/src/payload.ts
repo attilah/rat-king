@@ -6,6 +6,10 @@ export const AgentName = Schema.String.check(
 
 export const SUMMARY_MAX = 280;
 
+export const SUMMARY_HARD_MAX = 400;
+
+export const SUMMARY_WIRE_MAX = SUMMARY_MAX;
+
 export const Kind = Schema.Literals(["message", "ask", "reply", "data"]);
 
 export type KindValue = typeof Kind.Type;
@@ -18,7 +22,7 @@ export const Payload = Schema.Struct({
   label: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(256))),
   replyTo: Schema.optionalKey(Schema.String),
   summary: Schema.optionalKey(
-    Schema.String.check(Schema.isMaxLength(SUMMARY_MAX))
+    Schema.String.check(Schema.isMaxLength(SUMMARY_HARD_MAX))
   ),
   thread: Schema.optionalKey(Schema.String),
   to: Schema.optionalKey(AgentName),

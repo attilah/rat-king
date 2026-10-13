@@ -513,7 +513,7 @@ const parameters = Type.Object({
   summary: Type.Optional(
     Type.String({
       description:
-        "One-line concise summary of the message (at most 280 characters), shown first on phones and in compact views. Include it on every send, ask or reply; lead with the point or the ask.",
+        "One-line concise summary of the message (at most 280 characters; longer is trimmed and the full text leads the message), shown first on phones and in compact views. Include it on every send, ask or reply; lead with the point or the ask.",
     })
   ),
   supersedes: Type.Optional(

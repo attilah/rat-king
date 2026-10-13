@@ -4,7 +4,7 @@ export { authenticateClaims } from "./auth.js";
 export type { AuthenticateRequest } from "./auth.js";
 export { ReplayAuthority } from "./replay.js";
 export type { ReplayInterface } from "./replay.js";
-export { AgentName, encodePayload, Kind, Payload, PayloadJson, SUMMARY_MAX, } from "./payload.js";
+export { AgentName, encodePayload, Kind, Payload, PayloadJson, SUMMARY_HARD_MAX, SUMMARY_MAX, SUMMARY_WIRE_MAX, } from "./payload.js";
 export type { KindValue, PayloadValue } from "./payload.js";
 export { ownIdentity, prepare, PreparedMailbox, seal, sendSealed, SendOutcomes, } from "./prepare.js";
 export type { OwnIdentity, PeerDocument, PrepareOptions, SealOptions, SealedMessage, SendOutcome, SendResult, } from "./prepare.js";

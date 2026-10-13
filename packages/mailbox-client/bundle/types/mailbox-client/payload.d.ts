@@ -1,6 +1,8 @@
 import { Effect, Schema } from "effect";
 export declare const AgentName: Schema.String;
 export declare const SUMMARY_MAX = 280;
+export declare const SUMMARY_HARD_MAX = 400;
+export declare const SUMMARY_WIRE_MAX = 280;
 export declare const Kind: Schema.Literals<readonly ["message", "ask", "reply", "data"]>;
 export type KindValue = typeof Kind.Type;
 export declare const Payload: Schema.Struct<{

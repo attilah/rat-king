@@ -32,7 +32,9 @@ export {
   Kind,
   Payload,
   PayloadJson,
+  SUMMARY_HARD_MAX,
   SUMMARY_MAX,
+  SUMMARY_WIRE_MAX,
 } from "../../mailbox-client/src/payload.ts";
 
 export type {

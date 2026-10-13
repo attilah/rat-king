@@ -47,7 +47,9 @@ export {
   Kind,
   Payload,
   PayloadJson,
+  SUMMARY_HARD_MAX,
   SUMMARY_MAX,
+  SUMMARY_WIRE_MAX,
 } from "./payload.ts";
 
 export type { KindValue, PayloadValue } from "./payload.ts";
