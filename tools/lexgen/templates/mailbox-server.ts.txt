@@ -1,6 +1,10 @@
 import { Context, Effect, Layer, Schema } from "effect";
 
 import * as PutDidDocument from "./admin.putDidDocument.ts";
+import * as GetPreferences from "./attention.getPreferences.ts";
+import * as GetStatus from "./attention.getStatus.ts";
+import * as PutPreferences from "./attention.putPreferences.ts";
+import * as PutStatus from "./attention.putStatus.ts";
 import { MailboxHandlers } from "./mailbox-handlers.ts";
 import * as Ack from "./mailbox.ack.ts";
 import * as Deliver from "./mailbox.deliver.ts";
@@ -300,8 +304,64 @@ export const serverLayer = Layer.effect(
       path: PutDidDocument.Method.path,
     };
 
+    const getPreferences: Route = {
+      handle: Effect.fn("lexicon.route.getPreferences")(function* route(request) {
+        yield* validateRoute(request, GetPreferences.Method.nsid, GetPreferences.Method.method);
+
+        const params = yield* Schema.decodeUnknownEffect(GetPreferences.Params)(request.params);
+
+        const output = yield* handlers.getPreferences(params);
+
+        return { body: yield* Schema.encodeEffect(GetPreferences.Output)(output), kind: "json", status: 200 } satisfies Response;
+      }, Effect.catchTag("XrpcFailure", encodeFailure)),
+      method: GetPreferences.Method.method, nsid: GetPreferences.Method.nsid, path: GetPreferences.Method.path,
+    };
+
+    const getStatus: Route = {
+      handle: Effect.fn("lexicon.route.getStatus")(function* route(request) {
+        yield* validateRoute(request, GetStatus.Method.nsid, GetStatus.Method.method);
+
+        const params = yield* Schema.decodeUnknownEffect(GetStatus.Params)(request.params);
+
+        const output = yield* handlers.getStatus(params);
+
+        return { body: yield* Schema.encodeEffect(GetStatus.Output)(output), kind: "json", status: 200 } satisfies Response;
+      }, Effect.catchTag("XrpcFailure", encodeFailure)),
+      method: GetStatus.Method.method, nsid: GetStatus.Method.nsid, path: GetStatus.Method.path,
+    };
+
+    const putPreferences: Route = {
+      handle: Effect.fn("lexicon.route.putPreferences")(function* route(request) {
+        yield* validateRoute(request, PutPreferences.Method.nsid, PutPreferences.Method.method);
+
+        const input = yield* Schema.decodeUnknownEffect(PutPreferences.Input)(request.input);
+
+        const output = yield* handlers.putPreferences(input);
+
+        return { body: yield* Schema.encodeEffect(PutPreferences.Output)(output), kind: "json", status: 200 } satisfies Response;
+      }, Effect.catchTag("XrpcFailure", encodeFailure)),
+      method: PutPreferences.Method.method, nsid: PutPreferences.Method.nsid, path: PutPreferences.Method.path,
+    };
+
+    const putStatus: Route = {
+      handle: Effect.fn("lexicon.route.putStatus")(function* route(request) {
+        yield* validateRoute(request, PutStatus.Method.nsid, PutStatus.Method.method);
+
+        const input = yield* Schema.decodeUnknownEffect(PutStatus.Input)(request.input);
+
+        const output = yield* handlers.putStatus(input);
+
+        return { body: yield* Schema.encodeEffect(PutStatus.Output)(output), kind: "json", status: 200 } satisfies Response;
+      }, Effect.catchTag("XrpcFailure", encodeFailure)),
+      method: PutStatus.Method.method, nsid: PutStatus.Method.nsid, path: PutStatus.Method.path,
+    };
+
     return MailboxServer.of({
       routes: new Map([
+        [getPreferences.path, getPreferences],
+        [getStatus.path, getStatus],
+        [putPreferences.path, putPreferences],
+        [putStatus.path, putStatus],
         [acquireLease.path, acquireLease],
         [renewLease.path, renewLease],
         [releaseLease.path, releaseLease],

@@ -44,6 +44,7 @@ export const harness = (
   http: HttpClient.HttpClient,
   refuse: readonly string[] = [],
   overrides: {
+    readonly attentionLevers?: boolean;
     readonly reserved?: ReservedValue;
     readonly turnRecords?: boolean;
     readonly relays?: readonly RelaySettingValue[];

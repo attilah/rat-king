@@ -1,6 +1,10 @@
 import { Context } from "effect";
 import type { Effect } from "effect";
 import type * as PutDidDocument from "./admin.putDidDocument.js";
+import type * as GetPreferences from "./attention.getPreferences.js";
+import type * as GetStatus from "./attention.getStatus.js";
+import type * as PutPreferences from "./attention.putPreferences.js";
+import type * as PutStatus from "./attention.putStatus.js";
 import type * as Ack from "./mailbox.ack.js";
 import type * as Deliver from "./mailbox.deliver.js";
 import type * as List from "./mailbox.list.js";
@@ -11,6 +15,10 @@ import type * as RenewLease from "./runtime.renewLease.js";
 import type * as ResolveLease from "./runtime.resolveLease.js";
 import type { XrpcFailure } from "./xrpc-failure.js";
 export interface HandlerInterface {
+    readonly getPreferences: (params: GetPreferences.ParamsValue) => Effect.Effect<GetPreferences.OutputValue, XrpcFailure>;
+    readonly getStatus: (params: GetStatus.ParamsValue) => Effect.Effect<GetStatus.OutputValue, XrpcFailure>;
+    readonly putPreferences: (input: PutPreferences.InputValue) => Effect.Effect<PutPreferences.OutputValue, XrpcFailure>;
+    readonly putStatus: (input: PutStatus.InputValue) => Effect.Effect<PutStatus.OutputValue, XrpcFailure>;
     readonly acquireLease: (input: AcquireLease.InputValue) => Effect.Effect<AcquireLease.OutputValue, XrpcFailure>;
     readonly renewLease: (input: RenewLease.InputValue) => Effect.Effect<RenewLease.OutputValue, XrpcFailure>;
     readonly releaseLease: (input: ReleaseLease.InputValue) => Effect.Effect<ReleaseLease.OutputValue, XrpcFailure>;

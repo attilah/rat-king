@@ -1,0 +1,26 @@
+{
+  "defs": {
+    "main": {
+      "key": "any",
+      "record": {
+        "properties": {
+          "arrivalId": { "minLength": 1, "type": "string" },
+          "body": { "type": "string" },
+          "cc": { "items": { "ref": "sh.mschf.ratking.attention.prefs#name", "type": "ref" }, "type": "array" },
+          "from": { "ref": "sh.mschf.ratking.attention.prefs#name", "type": "ref" },
+          "intent": { "enum": ["to", "cc", "ask", "reply"], "type": "string" },
+          "kind": { "type": "string" },
+          "recordType": { "format": "nsid", "type": "string" },
+          "sentAt": { "format": "datetime", "type": "string" },
+          "thread": { "minLength": 1, "type": "string" },
+          "to": { "ref": "sh.mschf.ratking.attention.prefs#name", "type": "ref" }
+        },
+        "required": ["arrivalId", "cc", "from", "intent", "kind", "sentAt", "thread", "to"],
+        "type": "object"
+      },
+      "type": "record"
+    }
+  },
+  "id": "sh.mschf.ratking.triage.judge",
+  "lexicon": 1
+}

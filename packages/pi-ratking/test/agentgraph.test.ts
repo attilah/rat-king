@@ -199,6 +199,7 @@ it.effect.prop(
 
       const service = RatKing.of({
         ask: () => unavailable,
+        attention: () => unavailable,
         handled: () => unavailable,
         list: unavailable,
         pending: unavailable,

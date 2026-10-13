@@ -1,5 +1,7 @@
 export { RatKingMailbox, layer, Identity, PrivateJwk, importSigning, importAgreement, MailboxClientError, base64url, unbase64url, Claims, Document, Documents, documentResolver, DidResolver, staticResolver, serviceToken, tid, transportLayer, WebSocketPort, } from "./mailbox.js";
 export type { IdentityValue, ClaimsValue, DocumentsValue, ClientConfig, LeaseFence, Batch, OpenedMessage, SendOptions, FencedMessage, AcquireRequest, } from "./mailbox.js";
+export { attentionBytes, defaultPreferences, defaultStatus, fromBasisPoints, toBasisPoints, } from "./attention.js";
+export type { AttentionClient } from "./attention.js";
 export { authenticateClaims } from "./auth.js";
 export type { AuthenticateRequest } from "./auth.js";
 export { ReplayAuthority } from "./replay.js";

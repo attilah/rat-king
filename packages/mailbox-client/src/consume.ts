@@ -1,4 +1,5 @@
 /* oxlint-disable promise/prefer-await-to-then, promise/prefer-await-to-callbacks -- Effect.catch is typed failure handling, not a Promise callback. */
+import * as AttentionReceipt from "@rat-king/lexicon/attention.receipt";
 import * as Defs from "@rat-king/lexicon/defs";
 import type * as Lease from "@rat-king/lexicon/runtime.lease";
 import {
@@ -61,6 +62,9 @@ export interface Skipped {
 }
 
 export interface ConsumeOptions {
+  readonly onAttentionReceipt?: (
+    receipt: AttentionReceipt.MainValue
+  ) => Effect.Effect<void>;
   readonly ackOnReturn?: boolean;
   readonly harness: Lease.MainValue["harness"];
   readonly renders?: readonly string[];
@@ -265,6 +269,13 @@ export const consume = <E, R>(
             batch.events,
             (event) =>
               Effect.gen(function* accept() {
+                if (
+                  Schema.is(AttentionReceipt.Main)(event) &&
+                  options.onAttentionReceipt !== undefined
+                ) {
+                  yield* options.onAttentionReceipt(event);
+                }
+
                 if (!Schema.is(Defs.MessageEvent)(event)) {
                   return;
                 }

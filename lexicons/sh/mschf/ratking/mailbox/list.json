@@ -49,7 +49,8 @@
                 "type": "union",
                 "refs": [
                   "sh.mschf.ratking.defs#messageEvent",
-                  "sh.mschf.ratking.defs#receiptEvent"
+                  "sh.mschf.ratking.defs#receiptEvent",
+                  "sh.mschf.ratking.attention.receipt"
                 ],
                 "closed": false
               }

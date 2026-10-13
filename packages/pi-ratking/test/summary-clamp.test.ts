@@ -68,6 +68,7 @@ const harness = () => {
           reply: { body: "ok", did: delivered.did, from: "acme/desk", id: "r" },
         };
       }),
+    attention: () => Effect.die("Unexpected attention call"),
     handled: () => unavailable,
     list: unavailable,
     pending: Effect.succeed([]),

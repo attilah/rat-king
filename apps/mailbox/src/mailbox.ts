@@ -5,6 +5,7 @@ import * as Defs from "@rat-king/lexicon/defs";
 import { MailboxHandlers } from "@rat-king/lexicon/mailbox-handlers";
 import { Clock, DateTime, Effect, Layer, Schema } from "effect";
 
+import { attentionHandlers } from "./attention.ts";
 import { base64url, DidResolver, Document } from "./auth.ts";
 import { Caller } from "./caller.ts";
 import { decodeCursor, encodeCursor } from "./cursor.ts";
@@ -156,7 +157,10 @@ export const mailboxHandlers = (policy: MailboxPolicy) =>
       const senderFence = yield* SenderFence;
       const leases = yield* LeaseAuthority;
 
+      const attention = yield* attentionHandlers;
+
       return MailboxHandlers.of({
+        ...attention,
         ack: Effect.fn("Mailbox.ack")(function* ack(input) {
           if (caller.did !== input.recipientDid) {
             return yield* Effect.fail(failure("Forbidden", 403));

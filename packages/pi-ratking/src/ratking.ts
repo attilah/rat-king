@@ -46,9 +46,13 @@ import { HttpClient } from "effect/http";
 
 import { AskJournal, askAge, openAsks } from "./asks.ts";
 import type { AsksApi, PendingAskValue } from "./asks.ts";
+import { forwardNames } from "./attend.ts";
+import type { Levers } from "./attend.ts";
+import { attentionReader } from "./attention.ts";
+import type { AttentionApi } from "./attention.ts";
 import { AskAimedAtCc, ccLint, ccRefusal } from "./cc-lint.ts";
 import { Settings } from "./config.ts";
-import { recipientLevels } from "./delivery.ts";
+import { injects, recipientLevels } from "./delivery.ts";
 import type { RecipientLevelValue } from "./delivery.ts";
 import { Directory, writePrivateJson } from "./directory.ts";
 import type { Listed, Resolved } from "./directory.ts";
@@ -210,6 +214,7 @@ const oneLineSummary = (text: string) =>
 
 export interface SendOptions {
   readonly ccOnPurpose?: boolean;
+  readonly copyTo?: string;
   readonly encrypt?: boolean;
   readonly kind?: KindValue;
   readonly replyTo?: { readonly messageId: string; readonly senderDid: string };
@@ -260,6 +265,7 @@ export interface Status {
 export class RatKing extends Context.Service<
   RatKing,
   {
+    readonly attention: AttentionApi["change"];
     readonly run: (
       facts: SessionFacts,
       deliver: Deliver
@@ -666,6 +672,14 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
             verified,
           };
 
+          if (settings.attentionLevers === true) {
+            Object.assign(inbound, {
+              sender: Option.getOrElse(known, () =>
+                verified ? claimed : message.senderDid
+              ),
+            });
+          }
+
           if (Option.isSome(payload)) {
             if (payload.value.reply !== undefined) {
               Object.assign(inbound, { reply: payload.value.reply });
@@ -766,7 +780,12 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
         yield* Deferred.succeed(checkpoint, true);
       });
 
-  const consumeOnce = (own: Self, facts: SessionFacts, route: RelayRoute) =>
+  const consumeOnce = (
+    own: Self,
+    facts: SessionFacts,
+    route: RelayRoute,
+    refreshAttention: AttentionApi["refresh"]
+  ) =>
     Effect.gen(function* consumeLease() {
       const acquisitionSince = yield* Clock.currentTimeMillis;
       yield* Ref.update(leaseHealth, (current) => ({
@@ -799,6 +818,16 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
           $type: "sh.mschf.ratking.runtime.lease#pi",
           sessionId: facts.session,
         },
+        onAttentionReceipt: () =>
+          refreshAttention.pipe(
+            Effect.timeout("2 seconds"),
+            Effect.catchCause((cause) =>
+              Effect.logWarning(
+                "Rat King attention refresh failed; retained current levers",
+                cause
+              )
+            )
+          ),
         onLease: (lease) =>
           Ref.get(lastLease).pipe(
             Effect.tap((previous) =>
@@ -943,6 +972,22 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
           )
         ),
     })
+  );
+
+  const attention = yield* attentionReader(
+    settings.attentionLevers === true,
+    Effect.gen(function* attentionClient() {
+      const own = yield* awaitSelf;
+
+      const client = yield* prepare({
+        endpoint: settings.endpoint,
+        own: yield* ownIdentity(own.identity),
+        peers: [],
+        serviceDid: settings.serviceDid,
+      });
+
+      return client.mailbox;
+    }).pipe(Effect.scoped, Effect.provideService(HttpClient.HttpClient, http))
   );
 
   const refused = (code: typeof NotDeliveredCode.Type) => (reason: string) =>
@@ -1157,10 +1202,13 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
 
         const payload: PayloadValue = {
           body: Option.getOrElse(textBody, () => ""),
-          cc: targets.slice(1).map((target) => target.name),
+          cc:
+            options.copyTo === undefined
+              ? targets.slice(1).map((target) => target.name)
+              : targets.map((target) => target.name),
           from: own.name,
           thread: options.thread ?? id,
-          to: primary.name,
+          to: options.copyTo ?? primary.name,
         };
 
         const label = (own.label?.() ?? Option.none<string>()).pipe(
@@ -1610,6 +1658,15 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
     yield* Deferred.succeed(asks, journal);
     yield* Ref.set(established, Option.some(own));
     yield* Deferred.succeed(self, own);
+    yield* attention.refresh.pipe(
+      Effect.timeout("2 seconds"),
+      Effect.catchCause((cause) =>
+        Effect.logWarning(
+          "Rat King attention unavailable; retained current levers",
+          cause
+        )
+      )
+    );
 
     if (facts.reads === false) {
       return yield* setState(
@@ -1624,7 +1681,49 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
     const route = yield* supervise(
       Option.some(own.name),
       routing(own, (inbound, settled, ack) =>
-        deliver(inbound, settled, ack ?? displayAck(inbound.id))
+        Effect.gen(function* deliverAttention() {
+          const levers: Levers = { ...(yield* attention.levers) };
+          const owner = facts.owner ?? Option.none<string>();
+
+          if (Option.isSome(owner)) {
+            Object.assign(levers, { owner: owner.value });
+          }
+
+          yield* deliver(
+            "record" in inbound ? inbound : { ...inbound, levers },
+            settled,
+            ack ?? displayAck(inbound.id)
+          );
+
+          if (!("record" in inbound) && injects(inbound, settled)) {
+            const names = forwardNames(inbound, levers).filter(
+              (name) => name !== own.name && name !== inbound.from
+            );
+
+            yield* Effect.forEach(
+              names,
+              (name) =>
+                transmit(
+                  name,
+                  `Forwarded copy from ${inbound.from} (original ${inbound.id}):\n${inbound.body}`,
+                  {
+                    copyTo: own.name,
+                    encrypt: true,
+                    thread: inbound.thread ?? inbound.id,
+                  },
+                  () => Effect.void
+                ).pipe(
+                  Effect.catch((error) =>
+                    Effect.logWarning(
+                      "Rat King attention forward failed",
+                      error
+                    )
+                  )
+                ),
+              { discard: true }
+            ).pipe(Effect.forkIn(lifetime));
+          }
+        })
       )
     );
 
@@ -1667,7 +1766,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
 
     return yield* supervise(
       Option.some(own.name),
-      consumeOnce(own, facts, route).pipe(
+      consumeOnce(own, facts, route, attention.refresh).pipe(
         Effect.andThen(
           Effect.fail(
             new NotDelivered({
@@ -1946,6 +2045,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
         )
       );
     }),
+    attention: attention.change,
     handled: confirmHandled,
     list: Effect.gen(function* list() {
       const remote = yield* issuer.names.pipe(
@@ -2161,7 +2261,6 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
 
       return delivered;
     }),
-
     status: Effect.gen(function* status() {
       const current = yield* Ref.get(established);
 

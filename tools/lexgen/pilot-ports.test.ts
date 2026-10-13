@@ -103,6 +103,8 @@ it.effect.prop(
 
               return receipt;
             }),
+          getPreferences: unsupported,
+          getStatus: unsupported,
           list: unsupported,
           putDidDocument: (input) =>
             Effect.sync(() => {
@@ -110,6 +112,8 @@ it.effect.prop(
 
               return registered;
             }),
+          putPreferences: unsupported,
+          putStatus: unsupported,
           releaseLease: (input) =>
             Effect.sync<undefined>(() => {
               expect(input).toEqual(release);

@@ -8,6 +8,7 @@ import type * as Lease from "../lexicon/runtime.lease.js";
 import { Context, Effect, Layer } from "effect";
 import type { Stream } from "effect";
 import type { HttpClient } from "effect/http";
+import type { AttentionClient } from "./attention.js";
 import { DidResolver } from "./auth.js";
 import { MailboxClientError } from "./error.js";
 import type { IdentityValue } from "./identity.js";
@@ -70,6 +71,10 @@ export interface AcquireRequest {
     readonly generation?: number;
 }
 declare const RatKingMailbox_base: Context.ServiceClass<RatKingMailbox, "@rat-king/mailbox-client/RatKingMailbox", {
+    readonly getPreferences: AttentionClient["getPreferences"];
+    readonly getStatus: AttentionClient["getStatus"];
+    readonly putPreferences: AttentionClient["putPreferences"];
+    readonly putStatus: AttentionClient["putStatus"];
     readonly send: (to: string, body: string, opts?: SendOptions) => Effect.Effect<Send.OutputValue, MailboxClientError>;
     readonly list: (params: {
         readonly afterSeq?: number;

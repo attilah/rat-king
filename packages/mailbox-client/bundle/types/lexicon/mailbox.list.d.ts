@@ -73,6 +73,10 @@ export declare const Output: Schema.StructWithRest<Schema.Struct<{
         }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
         readonly seq: Schema.Int;
     }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>, Schema.StructWithRest<Schema.Struct<{
+        readonly $type: Schema.Literal<"sh.mschf.ratking.attention.receipt">;
+        readonly operation: Schema.compose<Schema.Literals<readonly ["putPreferences", "putStatus"]>, Schema.String>;
+        readonly seq: Schema.Int;
+    }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>, Schema.StructWithRest<Schema.Struct<{
         readonly $type: Schema.String;
     }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>]>>;
     readonly throughSeq: Schema.Int;
@@ -185,6 +189,10 @@ export declare const Method: {
                 readonly wakeReason: Schema.optionalKey<Schema.String>;
                 readonly woke: Schema.optionalKey<Schema.Boolean>;
             }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
+            readonly seq: Schema.Int;
+        }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>, Schema.StructWithRest<Schema.Struct<{
+            readonly $type: Schema.Literal<"sh.mschf.ratking.attention.receipt">;
+            readonly operation: Schema.compose<Schema.Literals<readonly ["putPreferences", "putStatus"]>, Schema.String>;
             readonly seq: Schema.Int;
         }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>, Schema.StructWithRest<Schema.Struct<{
             readonly $type: Schema.String;

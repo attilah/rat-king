@@ -26,6 +26,7 @@ import type { XrpcFailure } from "@rat-king/lexicon/xrpc-failure";
 import { DurableObject } from "cloudflare:workers";
 import { Clock, Effect, Layer, Schema } from "effect";
 
+import { attentionMethods, attentionRequest } from "./attention-http.ts";
 import { authenticate, authenticateClaims } from "./auth.ts";
 import type { Bindings } from "./bindings.ts";
 import { deskMethods } from "./desk.ts";
@@ -909,6 +910,7 @@ const methods = new Set<string>(
     Presence.Method,
     Subscribe.Method,
     SubscribeTraffic.Method,
+    ...attentionMethods,
     ...issuerMethods,
     ...deskMethods,
   ].map((method) => method.nsid)
@@ -1144,6 +1146,10 @@ const serviceRequest = (
   issuer: string,
   scope: FailureScope
 ) => {
+  if (attentionMethods.some((method) => method.nsid === nsid)) {
+    return attentionRequest(request, env, nsid, issuer, scope);
+  }
+
   if (issuerMethods.some((method) => method.nsid === nsid)) {
     return issuerRequest(request, env, nsid, issuer);
   }
@@ -1228,6 +1234,7 @@ const handleRequest = (
         Resolve.Method,
         Peer.Method,
         Presence.Method,
+        ...attentionMethods,
         ...issuerMethods,
         ...deskMethods,
       ].some((method) => method.nsid === nsid)

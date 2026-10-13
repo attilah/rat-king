@@ -72,12 +72,29 @@ export const Output = Schema.StructWithRest(
           }),
           [Schema.Record(Schema.String, Runtime.Data)]
         ),
+        Schema.StructWithRest(
+          Schema.Struct({
+            $type: Schema.Literal("sh.mschf.ratking.attention.receipt"),
+            operation: Runtime.lexString({
+              enum: ["putPreferences", "putStatus"],
+              type: "string",
+            }).pipe(
+              Schema.decodeTo(Schema.Literals(["putPreferences", "putStatus"]))
+            ),
+            seq: Schema.Int.check(
+              Schema.isGreaterThanOrEqualTo(1),
+              Schema.isLessThanOrEqualTo(9_007_199_254_740_991)
+            ),
+          }),
+          [Schema.Record(Schema.String, Runtime.Data)]
+        ),
         Runtime.TaggedMap.check(
           Schema.makeFilter(
             (value) =>
               ![
                 "sh.mschf.ratking.defs#messageEvent",
                 "sh.mschf.ratking.defs#receiptEvent",
+                "sh.mschf.ratking.attention.receipt",
               ].includes(value.$type),
             { expected: "unknown union tag only" }
           )

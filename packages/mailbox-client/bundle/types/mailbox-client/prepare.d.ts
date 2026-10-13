@@ -141,6 +141,10 @@ export declare const prepare: (options: PrepareOptions) => Effect.Effect<{
     consume: <E, R>(handler: (message: OpenedMessage, meta: MessageMeta) => Effect.Effect<void, E, R>, opts: ConsumeOptions) => Effect.Effect<void, E | MailboxClientError, R>;
     head: Effect.Effect<number, MailboxClientError, never>;
     mailbox: {
+        readonly getPreferences: import("./attention.js").AttentionClient["getPreferences"];
+        readonly getStatus: import("./attention.js").AttentionClient["getStatus"];
+        readonly putPreferences: import("./attention.js").AttentionClient["putPreferences"];
+        readonly putStatus: import("./attention.js").AttentionClient["putStatus"];
         readonly send: (to: string, body: string, opts?: SendOptions) => Effect.Effect<Send.OutputValue, MailboxClientError>;
         readonly list: (params: {
             readonly afterSeq?: number;

@@ -23,6 +23,8 @@ import { Clock, Context, Effect, Layer, Option, Schema } from "effect";
 import type { Stream } from "effect";
 import type { HttpClient } from "effect/http";
 
+import { attentionClient } from "./attention.ts";
+import type { AttentionClient } from "./attention.ts";
 import { DidResolver, staticResolver } from "./auth.ts";
 import { clientError, MailboxClientError } from "./error.ts";
 import { importSigning, importAgreement } from "./identity.ts";
@@ -150,6 +152,10 @@ export interface AcquireRequest {
 export class RatKingMailbox extends Context.Service<
   RatKingMailbox,
   {
+    readonly getPreferences: AttentionClient["getPreferences"];
+    readonly getStatus: AttentionClient["getStatus"];
+    readonly putPreferences: AttentionClient["putPreferences"];
+    readonly putStatus: AttentionClient["putStatus"];
     readonly send: (
       to: string,
       body: string,
@@ -247,6 +253,7 @@ export const layer = (
       });
 
       return RatKingMailbox.of({
+        ...attentionClient(client, identity),
         ack: Effect.fn("RatKingMailbox.ack")((input) =>
           Schema.decodeUnknownEffect(Schema.toType(Ack.Input))({
             ...input,

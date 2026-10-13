@@ -1,0 +1,18 @@
+{
+  "defs": {
+    "main": {
+      "key": "any",
+      "record": {
+        "properties": {
+          "operation": { "enum": ["putPreferences", "putStatus"], "type": "string" },
+          "seq": { "maximum": 9007199254740991, "minimum": 1, "type": "integer" }
+        },
+        "required": ["operation", "seq"],
+        "type": "object"
+      },
+      "type": "record"
+    }
+  },
+  "id": "sh.mschf.ratking.attention.receipt",
+  "lexicon": 1
+}

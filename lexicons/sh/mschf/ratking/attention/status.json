@@ -1,0 +1,20 @@
+{
+  "defs": {
+    "main": {
+      "key": "literal:self",
+      "record": {
+        "properties": {
+          "note": { "maxLength": 120, "type": "string" },
+          "state": { "enum": ["available", "busy", "dnd"], "type": "string" },
+          "until": { "format": "datetime", "type": "string" },
+          "version": { "const": "0.1", "type": "string" }
+        },
+        "required": ["state", "version"],
+        "type": "object"
+      },
+      "type": "record"
+    }
+  },
+  "id": "sh.mschf.ratking.attention.status",
+  "lexicon": 1
+}

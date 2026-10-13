@@ -1,6 +1,10 @@
 import { Context, Effect, Layer, Result, Schema } from "effect";
 
 import * as PutDidDocument from "./admin.putDidDocument.ts";
+import * as GetPreferences from "./attention.getPreferences.ts";
+import * as GetStatus from "./attention.getStatus.ts";
+import * as PutPreferences from "./attention.putPreferences.ts";
+import * as PutStatus from "./attention.putStatus.ts";
 import * as Ack from "./mailbox.ack.ts";
 import * as Deliver from "./mailbox.deliver.ts";
 import * as List from "./mailbox.list.ts";
@@ -52,6 +56,30 @@ const responseBody = Effect.fn("lexicon.responseBody")(function* responseBody(
 });
 
 export interface MailboxInterface {
+  readonly getPreferences: (
+    params: GetPreferences.ParamsValue
+  ) => Effect.Effect<
+    GetPreferences.OutputValue,
+    Schema.SchemaError | XrpcFailure | TransportFailure
+  >;
+  readonly getStatus: (
+    params: GetStatus.ParamsValue
+  ) => Effect.Effect<
+    GetStatus.OutputValue,
+    Schema.SchemaError | XrpcFailure | TransportFailure
+  >;
+  readonly putPreferences: (
+    input: PutPreferences.InputValue
+  ) => Effect.Effect<
+    PutPreferences.OutputValue,
+    Schema.SchemaError | XrpcFailure | TransportFailure
+  >;
+  readonly putStatus: (
+    input: PutStatus.InputValue
+  ) => Effect.Effect<
+    PutStatus.OutputValue,
+    Schema.SchemaError | XrpcFailure | TransportFailure
+  >;
   readonly acquireLease: (
     input: AcquireLease.InputValue
   ) => Effect.Effect<
@@ -161,6 +189,38 @@ export const clientLayer = Layer.effect(
           yield* responseBody(response)
         );
       }),
+      getPreferences: Effect.fn("lexicon.getPreferences")(
+        function* invoke(params) {
+          const encoded = yield* Schema.encodeEffect(GetPreferences.Params)(
+            params
+          );
+
+          const response = yield* transport.request({
+            input: undefined,
+            method: GetPreferences.Method.method,
+            nsid: GetPreferences.Method.nsid,
+            params: encoded,
+          });
+
+          return yield* Schema.decodeUnknownEffect(GetPreferences.Output)(
+            yield* responseBody(response)
+          );
+        }
+      ),
+      getStatus: Effect.fn("lexicon.getStatus")(function* invoke(params) {
+        const encoded = yield* Schema.encodeEffect(GetStatus.Params)(params);
+
+        const response = yield* transport.request({
+          input: undefined,
+          method: GetStatus.Method.method,
+          nsid: GetStatus.Method.nsid,
+          params: encoded,
+        });
+
+        return yield* Schema.decodeUnknownEffect(GetStatus.Output)(
+          yield* responseBody(response)
+        );
+      }),
       list: Effect.fn("lexicon.list")(function* invoke(params) {
         const encoded = yield* Schema.encodeEffect(List.Params)({
           ...List.Method.defaults,
@@ -196,6 +256,38 @@ export const clientLayer = Layer.effect(
           );
         }
       ),
+      putPreferences: Effect.fn("lexicon.putPreferences")(
+        function* invoke(input) {
+          const encoded = yield* Schema.encodeEffect(PutPreferences.Input)(
+            input
+          );
+
+          const response = yield* transport.request({
+            input: encoded,
+            method: PutPreferences.Method.method,
+            nsid: PutPreferences.Method.nsid,
+            params: undefined,
+          });
+
+          return yield* Schema.decodeUnknownEffect(PutPreferences.Output)(
+            yield* responseBody(response)
+          );
+        }
+      ),
+      putStatus: Effect.fn("lexicon.putStatus")(function* invoke(input) {
+        const encoded = yield* Schema.encodeEffect(PutStatus.Input)(input);
+
+        const response = yield* transport.request({
+          input: encoded,
+          method: PutStatus.Method.method,
+          nsid: PutStatus.Method.nsid,
+          params: undefined,
+        });
+
+        return yield* Schema.decodeUnknownEffect(PutStatus.Output)(
+          yield* responseBody(response)
+        );
+      }),
       releaseLease: Effect.fn("lexicon.releaseLease")(function* invoke(input) {
         const encoded = yield* Schema.encodeEffect(ReleaseLease.Input)(input);
 
