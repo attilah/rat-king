@@ -11,12 +11,17 @@ import { HttpClient, HttpClientResponse } from "effect/http";
 import { expect } from "vitest";
 
 import { document, identity } from "../../mailbox-client/test/identity.ts";
+import { runAction } from "../src/tool.ts";
 import { harness } from "./harness.ts";
 
 it.live.prop(
   "cc seals identical signed payloads rooted at the first id, resolving every recipient and refusing any self target before admission",
-  [Schema.Boolean, Schema.String],
-  ([encrypt, body]) =>
+  [
+    Schema.Boolean,
+    Schema.String.check(Schema.isPattern(/\S/u)),
+    Schema.Boolean,
+  ],
+  ([encrypt, body, quiet]) =>
     Effect.gen(function* ccProof() {
       const fs = yield* FileSystem.FileSystem;
       const state = yield* fs.makeTempDirectoryScoped();
@@ -95,6 +100,19 @@ it.live.prop(
           () => Effect.void
         );
 
+        for (const refusal of [
+          ratking
+            .send("missing", body, { kind: "ask", quiet: true })
+            .pipe(Effect.asVoid),
+          ratking
+            .ask("missing", body, undefined, { quiet: true })
+            .pipe(Effect.asVoid),
+        ]) {
+          const error = yield* refusal.pipe(Effect.flip);
+          expect(error._tag).toBe("QuietAsk");
+          expect(envelopes).toHaveLength(0);
+        }
+
         const rejected = yield* ratking
           .send("alice", body, { cc: ["missing"] })
           .pipe(Effect.flip);
@@ -111,10 +129,26 @@ it.live.prop(
           expect(envelopes).toHaveLength(0);
         }
 
-        const delivered = yield* ratking.send("alice", body, {
+        const tool = yield* runAction("ratking", 600, {
+          action: "send",
           cc: ["bob", "alice", "bob"],
           encrypt,
+          message: body,
+          quiet,
+          to: "alice",
         });
+
+        expect(tool.isError).toBe(false);
+        expect(tool.text).toContain(
+          quiet ? "alice: quiet copy, no wake" : "alice: woken (to)"
+        );
+        const [firstEnvelope] = envelopes;
+
+        if (firstEnvelope === undefined) {
+          throw new Error("Missing envelope");
+        }
+
+        const delivered = { id: firstEnvelope.aad.messageId };
 
         expect(envelopes).toHaveLength(2);
         expect(
@@ -149,6 +183,7 @@ it.live.prop(
           expect(opened.encrypted).toBe(encrypt);
           texts.push(opened.body);
           const payload = yield* Schema.decodeEffect(PayloadJson)(opened.body);
+          expect(payload.quiet).toBe(quiet ? true : undefined);
           expect(payload).toMatchObject({
             body,
             cc: ["bob"],

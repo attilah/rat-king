@@ -36,13 +36,14 @@ const ignoreDelivery: Deliver = () => Effect.void;
 
 const arrival = (index: number, quiet: boolean): Inbound => ({
   body: `Body ${index}`,
-  cc: quiet,
-  copy: quiet,
+  cc: quiet && index % 2 === 0,
+  copy: quiet && index % 2 === 0,
   did: "did:web:sender.example.invalid",
   from: "sender",
   id: `3trigger${index}`,
   kind: "message",
   label: Option.none(),
+  quiet: quiet && index % 2 === 1,
   replyTo: Option.none(),
   summary: Option.some(`Summary ${index}`),
   verified: true,
@@ -52,11 +53,11 @@ type CustomMessage = Parameters<PiHost["sendMessage"]>[0];
 
 const Sample = Schema.Struct({
   busy: Schema.Boolean,
-  count: Schema.Int.check(Schema.isBetween({ maximum: 8, minimum: 1 })),
+  count: Schema.Int.check(Schema.isBetween({ maximum: 8, minimum: 2 })),
 });
 
 it.effect.prop(
-  "mail-triggered runs bypass the user-prompt hook: held copies append before an idle direct trigger or queue as follow-up while busy, with display-only custody",
+  "mail-triggered runs bypass the user-prompt hook: held quiet to and cc copies append before an idle direct trigger or queue as follow-up while busy, with display-only custody",
   [Arbitrary.schema(Sample)],
   ([sample]) =>
     Effect.gen(function* mailTriggeredRun() {
@@ -199,6 +200,7 @@ it.effect.prop(
       expect(projected).toHaveLength(2);
       const [digest] = projected ?? [];
       expect(shownIds({ ...digest, role: "custom" })).toEqual(ids);
+      expect(digest?.content).toContain("🐀 while you were away");
 
       for (const id of ids) {
         expect(digest?.content).toEqual(expect.stringContaining(id));

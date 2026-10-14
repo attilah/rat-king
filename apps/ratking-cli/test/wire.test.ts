@@ -23,6 +23,7 @@ const LongText = Schema.String.check(
 const Send = Schema.Struct({
   body: Text,
   cc: Schema.Boolean,
+  quiet: Schema.Boolean,
   summary: Schema.optionalKey(Schema.Union([Text, LongText])),
 });
 
@@ -70,6 +71,7 @@ const toolParams = (send: SendCase) => {
   const params: ToolParamsValue = {
     action: "send",
     message: send.body,
+    quiet: send.quiet,
     to: "peer",
   };
 
@@ -89,6 +91,10 @@ const cliArgs = (send: SendCase) => {
 
   if (send.cc) {
     args.push("--cc", "other");
+  }
+
+  if (send.quiet) {
+    args.push("--quiet");
   }
 
   if (send.summary !== undefined) {

@@ -251,6 +251,7 @@ it.live.prop(
               body,
               cc: [],
               from: "peer",
+              quiet: true,
               thread: "incident",
               to: "tester",
             }),
@@ -293,6 +294,9 @@ it.live.prop(
 
         expect(original.from).toBe("peer");
         expect(original.body).toBe(body);
+        expect(original.quiet).toBe(true);
+        expect(original.copy).toBe(false);
+        expect(original.digestMinutes).toBe(15);
         expect(original.levers?.prefs?.forward).toEqual(["copy/desk"]);
         expect(original.levers?.owner).toBe("peer");
         expect(acks).toBe(0);
@@ -328,7 +332,10 @@ it.live.prop(
       }).pipe(
         Effect.provide(
           Layer.merge(
-            harness(state, http, [], { attentionLevers: true }),
+            harness(state, http, [], {
+              attentionLevers: true,
+              ccDigestMinutes: { tester: 15 },
+            }),
             socket
           )
         )

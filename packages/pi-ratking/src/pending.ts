@@ -64,17 +64,29 @@ export interface PendingMail {
   readonly line?: string;
 }
 
-export const digestLabel = (reason: Reason = DIGEST_REASON) =>
-  Reasons.$is("intent")(reason) &&
-  reason.facts.includes("cc") &&
-  reason.facts.includes("digest")
-    ? "cc digest"
-    : "digest";
+export const digestLabel = (reason: Reason = DIGEST_REASON) => {
+  if (!Reasons.$is("intent")(reason) || !reason.facts.includes("digest")) {
+    return "digest";
+  }
 
-export const digestReason = (mails: readonly PendingMail[]): Reason =>
-  mails.every((mail) => digestLabel(mail.reason) === "cc digest")
-    ? DIGEST_REASON
-    : Reasons.lever({ facts: ["digest"] });
+  if (reason.facts.includes("quiet")) {
+    return "quiet digest";
+  }
+
+  return reason.facts.includes("cc") ? "cc digest" : "digest";
+};
+
+export const digestReason = (mails: readonly PendingMail[]): Reason => {
+  if (mails.every((mail) => digestLabel(mail.reason) === "cc digest")) {
+    return DIGEST_REASON;
+  }
+
+  if (mails.every((mail) => digestLabel(mail.reason) === "quiet digest")) {
+    return Reasons.intent({ facts: ["quiet", "digest"] });
+  }
+
+  return Reasons.lever({ facts: ["digest"] });
+};
 
 const ShownMail = Schema.Struct({
   customType: Schema.Literals([MAIL_MESSAGE, "ratking_record_notice"]),

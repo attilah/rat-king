@@ -3280,6 +3280,7 @@ var Payload = Schema38.Struct({
   from: AgentName,
   kind: Schema38.optionalKey(Kind),
   label: Schema38.optionalKey(Schema38.String.check(Schema38.isMaxLength(256))),
+  quiet: Schema38.optionalKey(Schema38.Literal(true)),
   reply: Schema38.optionalKey(ReplyRef),
   replyTo: Schema38.optionalKey(Schema38.String),
   summary: Schema38.optionalKey(

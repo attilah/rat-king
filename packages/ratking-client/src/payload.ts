@@ -83,6 +83,7 @@ export interface Inbound {
   readonly verified: boolean;
   readonly body: string;
   readonly kind: KindValue;
+  readonly quiet?: boolean;
   readonly reply?: ReplyRefValue;
   readonly replyTo: Option.Option<string>;
   readonly summary: Option.Option<string>;

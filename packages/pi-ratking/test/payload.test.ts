@@ -29,6 +29,7 @@ it.effect.prop(
             "from",
             "kind",
             "label",
+            "quiet",
             "reply",
             "replyTo",
             "summary",

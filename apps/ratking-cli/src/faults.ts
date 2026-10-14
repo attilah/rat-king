@@ -1,6 +1,7 @@
 import type { InvalidRecord } from "@rat-king/ratking-client/agentgraph";
 import { ccRefusalFields } from "@rat-king/ratking-client/cc-lint";
 import type { NotConfigured } from "@rat-king/ratking-client/config";
+import type { QuietAsk } from "@rat-king/ratking-client/errors";
 import { literalPrompt } from "@rat-king/ratking-client/prompt";
 import type { PromptInput } from "@rat-king/ratking-client/prompt";
 import type {
@@ -22,6 +23,7 @@ export type Fault =
   | LeaseHeld
   | NotConfigured
   | NotDelivered
+  | QuietAsk
   | Usage;
 
 export interface Faulted {
@@ -172,6 +174,13 @@ const promptOf = (fault: Fault, ground: Ground): PromptInput =>
       fix: `ratking send ${asFlag(ground)} --to ${ground.to ?? "<name>"} --record <file.json> --type <nsid>`,
       tag: "InvalidRecord",
       why: failure.reason,
+    })),
+    Match.tag("QuietAsk", (failure) => ({
+      accepted: "quiet messages and replies; asks without --quiet",
+      debug: failure.debug,
+      fix: failure.fix,
+      tag: failure._tag,
+      why: failure.why,
     })),
     Match.tag("Usage", (failure) => ({
       accepted: failure.accepted,
