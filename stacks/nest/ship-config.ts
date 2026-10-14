@@ -34,6 +34,7 @@ export const ShipSettings = Schema.Struct({
   bot: Text,
   checkpoint: Text,
   intervalSeconds: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
+  keepReleases: Schema.optionalKey(Schema.Int),
   launchd: Schema.Struct({
     errorLog: Text,
     label: Text,

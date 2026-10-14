@@ -1,5 +1,5 @@
 import type { Path } from "effect";
-import { Effect, FileSystem, Option, Schema, Stream } from "effect";
+import { Effect, FileSystem, Option, Ref, Schema, Stream } from "effect";
 import { FetchHttpClient, HttpClient } from "effect/http";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
@@ -17,6 +17,8 @@ import {
 import { sanitizeCandidateStderr } from "./ship-diagnostics.ts";
 import { sendShipNotification } from "./ship-notify.ts";
 import { deployOutcome } from "./ship-observation.ts";
+import { clampKeep, pruneSafely } from "./ship-prune.ts";
+import type { ReleaseCurrent } from "./ship-prune.ts";
 import { shipLoop } from "./ship.ts";
 import type { ShipPorts } from "./ship.ts";
 import { FleetError } from "./stage-config.ts";
@@ -221,6 +223,11 @@ export const shipCommand = Effect.fn("Ship.command")(
     const http = yield* HttpClient.HttpClient;
     const store = yield* SecretStore;
     yield* fs.makeDirectory(ship.releases, { mode: 0o700, recursive: true });
+    yield* fs.writeFileString(`${ship.releases}/.metadata_never_index`, "", {
+      mode: 0o600,
+    });
+    const shipping = yield* Ref.make<ReleaseCurrent>({ attempt: "", sha: "" });
+    const logged = yield* Ref.make<ReadonlySet<string>>(new Set());
 
     const saved = (yield* fs.exists(ship.checkpoint))
       ? yield* Schema.decodeEffect(Schema.fromJsonString(ShipCheckpoint))(
@@ -322,6 +329,7 @@ export const shipCommand = Effect.fn("Ship.command")(
       deploy: Effect.fn("Ship.deploy")(
         function* deploy(sha) {
           const release = `${ship.releases}/${sha}`;
+          yield* Ref.set(shipping, { attempt: "", sha });
 
           if (!(yield* fs.exists(release))) {
             yield* requireSuccess(
@@ -374,6 +382,12 @@ export const shipCommand = Effect.fn("Ship.command")(
             prefix: "attempt-",
           });
 
+          yield* Ref.set(shipping, {
+            attempt: attemptDirectory.slice(
+              attemptDirectory.lastIndexOf("/") + 1
+            ),
+            sha,
+          });
           const events = `${attemptDirectory}/restart-events.jsonl`;
           const configPath = `${attemptDirectory}/stage.json`;
           yield* fs.writeFileString(events, "", { flag: "wx", mode: 0o600 });
@@ -453,6 +467,22 @@ export const shipCommand = Effect.fn("Ship.command")(
           ),
           Effect.mapError(
             () => new FleetError({ reason: "Deploy receipt write failed" })
+          ),
+          Effect.andThen(
+            Ref.get(shipping).pipe(
+              Effect.flatMap((now) =>
+                pruneSafely(
+                  {
+                    keep: clampKeep(ship.keepReleases),
+                    receipts: ship.receipts,
+                    releases: ship.releases,
+                  },
+                  now,
+                  logged
+                )
+              ),
+              Effect.asVoid
+            )
           )
         ),
       recover,
