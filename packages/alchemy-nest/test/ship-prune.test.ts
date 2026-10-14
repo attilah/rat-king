@@ -3,8 +3,11 @@ import { it } from "@effect/vitest";
 import { Effect, FileSystem, Fiber, Option, Ref, Schema } from "effect";
 import { expect } from "vitest";
 
+import type { ShipReceipt } from "../../../stacks/nest/ship-config.ts";
 import {
   clampKeep,
+  prepareReleases,
+  recordReceipt,
   planRetention,
   pruneReleases,
   pruneSafely,
@@ -249,4 +252,75 @@ it.live("a prune error never fails the ship", () =>
 
     expect(Option.isNone(outcome)).toBe(true);
   }).pipe(Effect.provide(NodeServices.layer))
+);
+
+const receipt = (sha: string, result: "failed" | "success") =>
+  ({
+    celldRestarted: null,
+    end: 1,
+    restartSeconds: null,
+    result,
+    sha,
+    start: 0,
+  }) satisfies typeof ShipReceipt.Type;
+
+const wiring = Effect.fn("wiring")(function* wiring(releasesOverride?: string) {
+  const fs = yield* FileSystem.FileSystem;
+  const root = yield* fs.makeTempDirectoryScoped();
+  const releases = `${root}/releases`;
+  yield* prepareReleases(releases);
+  yield* seed(fs, releases);
+  const receipts = `${root}/receipts.jsonl`;
+
+  yield* fs.writeFileString(
+    receipts,
+    receiptsFile([
+      [shas[1] ?? "", "success"],
+      [shas[3] ?? "", "success"],
+    ])
+  );
+
+  yield* fs.utimes(`${releases}/${shas[2]}`, 0, 0);
+
+  const shipping = yield* Ref.make({
+    attempt: "attempt-zzzzzz",
+    sha: shas[5] ?? "",
+  });
+
+  const record = recordReceipt(
+    { keepReleases: 2, receipts, releases: releasesOverride ?? releases },
+    shipping,
+    yield* Ref.make<ReadonlySet<string>>(new Set())
+  );
+
+  return { fs, receipts, record, releases };
+});
+
+it.live(
+  "record writes the receipt, then prunes with the receipt and the shipping sha and attempt",
+  () =>
+    Effect.gen(function* ordering() {
+      const { fs, receipts, record, releases } = yield* wiring();
+      yield* record(receipt(shas[2] ?? "", "success"));
+      yield* Effect.sleep("100 millis");
+      expect(yield* fs.readFileString(receipts)).toContain(shas[2] ?? "");
+      const left = yield* listing(fs, releases);
+      expect(left).toContain(shas[2]);
+      expect(left).toContain(shas[3]);
+      expect(left).toContain(shas[5]);
+      expect(left).not.toContain(shas[0]);
+      expect(left).toContain("attempt-zzzzzz");
+      expect(left).not.toContain("attempt-aaaaaa");
+      expect(left).toContain(".metadata_never_index");
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer))
+);
+
+it.live(
+  "a prune failure leaves the receipt written and record succeeding",
+  () =>
+    Effect.gen(function* failing() {
+      const { fs, receipts, record } = yield* wiring("/nonexistent/releases");
+      yield* record(receipt(shas[2] ?? "", "failed"));
+      expect(yield* fs.readFileString(receipts)).toContain(shas[2] ?? "");
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer))
 );

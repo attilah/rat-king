@@ -11,6 +11,8 @@ import {
 import type { Fiber } from "effect";
 
 import { ShipReceipt } from "./ship-config.ts";
+import type { ShipSettingsValue } from "./ship-config.ts";
+import { FleetError } from "./stage-config.ts";
 
 export type EntryKind = "directory" | "file" | "other";
 
@@ -314,3 +316,53 @@ export const pruneSafely = (
       )
     )
   );
+
+export const prepareReleases = Effect.fn("Ship.prepareReleases")(
+  function* prepareReleases(releases: string) {
+    const fs = yield* FileSystem.FileSystem;
+    yield* fs.makeDirectory(releases, { mode: 0o700, recursive: true });
+    yield* fs.writeFileString(`${releases}/.metadata_never_index`, "", {
+      mode: 0o600,
+    });
+  }
+);
+
+export const recordReceipt =
+  (
+    ship: Pick<ShipSettingsValue, "keepReleases" | "receipts" | "releases">,
+    shipping: Ref.Ref<ReleaseCurrent>,
+    logged: Ref.Ref<ReadonlySet<string>>
+  ) =>
+  (receipt: typeof ShipReceipt.Type) =>
+    Effect.gen(function* record() {
+      const fs = yield* FileSystem.FileSystem;
+
+      const line = yield* Schema.encodeEffect(
+        Schema.fromJsonString(ShipReceipt)
+      )(receipt);
+
+      yield* fs.writeFileString(ship.receipts, `${line}\n`, {
+        flag: "a",
+        mode: 0o600,
+      });
+    }).pipe(
+      Effect.mapError(
+        () => new FleetError({ reason: "Deploy receipt write failed" })
+      ),
+      Effect.andThen(
+        Ref.get(shipping).pipe(
+          Effect.flatMap((now) =>
+            pruneSafely(
+              {
+                keep: clampKeep(ship.keepReleases),
+                receipts: ship.receipts,
+                releases: ship.releases,
+              },
+              now,
+              logged
+            )
+          ),
+          Effect.asVoid
+        )
+      )
+    );
