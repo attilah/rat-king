@@ -287,6 +287,16 @@ interface Sent {
   readonly summary: string | null;
 }
 
+const observed = (name: string, hook: Effect.Effect<void> | undefined) =>
+  hook === undefined
+    ? Effect.void
+    : hook.pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning(`Rat King ${name} hook failed`, cause)
+        ),
+        Effect.uninterruptible
+      );
+
 const oneLineSummary = (text: string) =>
   text.replaceAll(/\s+/gu, " ").trim().slice(0, SUMMARY_MAX);
 
@@ -295,6 +305,7 @@ export interface SendOptions {
   readonly copyTo?: string;
   readonly encrypt?: boolean;
   readonly kind?: KindValue;
+  readonly onDispatch?: Effect.Effect<void>;
   readonly quiet?: true;
   readonly replyTo?: { readonly messageId: string; readonly senderDid: string };
   readonly summary?: string;
@@ -304,9 +315,10 @@ export interface SendOptions {
 
 export type AskOptions = Pick<
   SendOptions,
-  "ccOnPurpose" | "encrypt" | "cc" | "quiet" | "summary"
+  "ccOnPurpose" | "encrypt" | "cc" | "onDispatch" | "quiet" | "summary"
 > & {
   readonly dueBy?: number;
+  readonly onDelivered?: Effect.Effect<void>;
   readonly wait?: boolean;
 };
 
@@ -365,7 +377,7 @@ export class RatKing extends Context.Service<
       body: string | LexiconRecordValue,
       options?: Pick<
         SendOptions,
-        "ccOnPurpose" | "encrypt" | "kind" | "quiet" | "summary"
+        "ccOnPurpose" | "encrypt" | "kind" | "onDispatch" | "quiet" | "summary"
       > & {
         readonly replyAll?: boolean;
         readonly to?: string | undefined;
@@ -1395,6 +1407,8 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       }
 
       const extra = yield* before(first.aad.messageId, primary.did);
+
+      yield* observed("dispatch", options.onDispatch);
 
       for (const envelope of envelopes) {
         const target = targets.find(
@@ -2554,6 +2568,8 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
               return Option.some(yield* threads.wait(id, did));
             })
         );
+
+        yield* observed("delivery", options?.onDelivered);
 
         yield* copyOut(delivered, sent);
         yield* closeLoops(sent);

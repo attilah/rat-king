@@ -268,6 +268,38 @@ const timing = (input: Pick<ResultInput, "details">): readonly string[] => {
     : [];
 };
 
+const CancelledDetails = Schema.Struct({
+  cancelled: Schema.Literal(true),
+  sent: Schema.Union([Schema.Boolean, Schema.Literal("uncertain")]),
+});
+
+const cancelMark = (sent: boolean | "uncertain") => {
+  if (sent === true) {
+    return ["success", "↩"] as const;
+  }
+
+  return sent === false
+    ? (["error", "✗"] as const)
+    : (["warning", "!"] as const);
+};
+
+const cancelledLines = (
+  input: ResultInput,
+  details: typeof CancelledDetails.Type,
+  theme: Paint,
+  width: number
+) => {
+  const [colour, glyph] = cancelMark(details.sent);
+
+  return Block({
+    footer: [...timing(input), "cancelled"].join(" · "),
+    glyph: theme.fg(colour, glyph),
+    headline: theme.fg(colour, clean(input.text).trim()),
+    theme,
+    width,
+  });
+};
+
 const ProgressDetails = Schema.Struct({
   elapsedMs: Schema.Finite,
   progress: Schema.Literals(["asking", "sending", "waiting"]),
@@ -436,6 +468,10 @@ export const resultLines = (
 ): readonly string[] => {
   if (input.isPartial) {
     return progressLines(input, theme, width, labels);
+  }
+
+  if (Schema.is(CancelledDetails)(input.details)) {
+    return cancelledLines(input, input.details, theme, width);
   }
 
   if (!failed(input) && Schema.is(ReceiptDetails)(input.details)) {

@@ -50,6 +50,7 @@ import {
   Match,
   Option,
   Path,
+  Ref,
   Predicate,
   Schedule,
   Schema,
@@ -75,7 +76,9 @@ import {
 import type { DigestVariant, PendingMail } from "./pending.ts";
 import { callView, resultView } from "./tool-view.ts";
 import {
+  cancelledText,
   description,
+  idleDispatch,
   notConfiguredText,
   notDeliveredText,
   promptSnippet,
@@ -1134,7 +1137,8 @@ export const ratkingExtension = (options: ExtensionOptions) =>
     const run = async <A>(
       effect: Effect.Effect<A, never, Services>,
       fallback: (reason: string) => A,
-      signal?: AbortSignal
+      signal?: AbortSignal,
+      cancelled?: () => A
     ) => {
       if (Option.isNone(runtime)) {
         return fallback(
@@ -1151,9 +1155,11 @@ export const ratkingExtension = (options: ExtensionOptions) =>
 
       return Exit.match(exit, {
         onFailure: (cause) =>
-          fallback(
-            Cause.hasInterruptsOnly(cause) ? "Cancelled" : notRunning(cause)
-          ),
+          Cause.hasInterruptsOnly(cause) && cancelled !== undefined
+            ? cancelled()
+            : fallback(
+                Cause.hasInterruptsOnly(cause) ? "Cancelled" : notRunning(cause)
+              ),
         onSuccess: (value) => value,
       });
     };
@@ -1179,6 +1185,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
       description: description(tool),
       execute: async (_id, params, signal, onUpdate) => {
         const update = (progress: ToolText) => onUpdate?.(toolResult(progress));
+        const phase = idleDispatch();
 
         const result = await executeToolWithLiveness(
           params,
@@ -1199,7 +1206,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
                 return yield* withTurnWait(
                   turns,
                   decoded,
-                  runAction(tool, settings.askTimeoutMs, decoded)
+                  runAction(tool, settings.askTimeoutMs, decoded, phase)
                 );
               }).pipe(
                 Effect.orElseSucceed((): ToolText => ({
@@ -1209,7 +1216,8 @@ export const ratkingExtension = (options: ExtensionOptions) =>
                 }))
               ),
               (reason) => notConfiguredText(new NotConfigured({ reason })),
-              signal
+              signal,
+              () => cancelledText(params, Ref.getUnsafe(phase))
             );
 
             if (

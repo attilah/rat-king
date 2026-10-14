@@ -18,6 +18,7 @@ import type {
   AskOptions,
   Delivered,
   NotDelivered,
+  SendOptions,
   Status,
 } from "@rat-king/ratking-client/ratking";
 import { withSummaryLead } from "@rat-king/ratking-client/summary";
@@ -28,6 +29,7 @@ import {
   Fiber,
   Match,
   Option,
+  Ref,
   Schedule,
   Schema,
 } from "effect";
@@ -106,6 +108,62 @@ export interface ToolText {
   readonly isError: boolean;
   readonly details: Readonly<Record<string, DetailValue>>;
 }
+
+export type DispatchPhase = "idle" | "issued" | "delivered";
+
+export type Dispatch = Ref.Ref<DispatchPhase>;
+
+export const idleDispatch = (): Dispatch =>
+  Ref.makeUnsafe<DispatchPhase>("idle");
+
+export const cancelledText = (
+  params: Pick<ToolProgressParams, "to">,
+  phase: DispatchPhase
+): ToolText => {
+  const party = params.to ?? "the recipient";
+
+  if (phase === "delivered") {
+    return {
+      details: { cancelled: true, sent: true },
+      isError: false,
+      text: "ASK SENT; stopped waiting. The reply will arrive as a message.",
+    };
+  }
+
+  return phase === "issued"
+    ? {
+        details: { cancelled: true, sent: "uncertain" },
+        isError: true,
+        text: `CANCELLED: outcome uncertain. The message may have reached ${party}; do not resend. Check with ratking pending or the thread.`,
+      }
+    : {
+        details: { cancelled: true, sent: false },
+        isError: true,
+        text: `CANCELLED: not sent. Nothing reached ${party}.`,
+      };
+};
+
+const dispatching = <T extends object>(options: T, dispatch?: Dispatch): T => {
+  if (dispatch !== undefined) {
+    Object.assign(options, { onDispatch: Ref.set(dispatch, "issued") });
+  }
+
+  return options;
+};
+
+type RatKingService = typeof RatKing.Service;
+
+const handledIssuing =
+  (dispatch: Dispatch, call: RatKingService["handled"]) => (id: string) =>
+    Ref.set(dispatch, "issued").pipe(Effect.andThen(call(id)));
+
+const tracked = (
+  ratking: RatKingService,
+  dispatch: Dispatch | undefined
+): RatKingService =>
+  dispatch === undefined
+    ? ratking
+    : { ...ratking, handled: handledIssuing(dispatch, ratking.handled) };
 
 export interface ToolProgressParams {
   readonly action: string;
@@ -305,9 +363,10 @@ const needTo = (params: ToolParamsValue) =>
 export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
   tool: string,
   askTimeout: Duration.Input,
-  params: ToolParamsValue
+  params: ToolParamsValue,
+  dispatch?: Dispatch
 ) {
-  const ratking = yield* RatKing;
+  const ratking = tracked(yield* RatKing, dispatch);
 
   const { clamp, options: encryption } = sendingOptions(params);
 
@@ -451,11 +510,18 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
           );
         }
 
-        const delivered = yield* ratking.reply(target, message, {
-          ...encryption,
-          replyAll: params.replyAll ?? true,
-          to: params.to,
-        });
+        const delivered = yield* ratking.reply(
+          target,
+          message,
+          dispatching(
+            {
+              ...encryption,
+              replyAll: params.replyAll ?? true,
+              to: params.to,
+            },
+            dispatch
+          )
+        );
 
         return ok(
           withPresence(receiptText("Reply delivered to", delivered), delivered),
@@ -484,12 +550,19 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
               )
             : JSON.stringify(value);
 
-        const delivered = yield* ratking.send(to, body, {
-          ...encryption,
-          cc: params.cc ?? [],
-          kind: "data",
-          summary: params.summary ?? recordSummary(value),
-        });
+        const delivered = yield* ratking.send(
+          to,
+          body,
+          dispatching<SendOptions>(
+            {
+              ...encryption,
+              cc: params.cc ?? [],
+              kind: "data",
+              summary: params.summary ?? recordSummary(value),
+            },
+            dispatch
+          )
+        );
 
         return ok(
           `Record delivered to ${delivered.to} over Rat King (id ${delivered.id}, seq ${delivered.seq}).`,
@@ -502,10 +575,11 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
         const to = yield* needTo(params);
         const message = yield* needMessage(params, lead);
 
-        const delivered = yield* ratking.send(to, message, {
-          ...encryption,
-          cc: params.cc ?? [],
-        });
+        const delivered = yield* ratking.send(
+          to,
+          message,
+          dispatching({ ...encryption, cc: params.cc ?? [] }, dispatch)
+        );
 
         return ok(
           withPresence(receiptText("Delivered to", delivered), delivered),
@@ -524,10 +598,10 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
         const to = yield* needTo(params);
         const message = yield* needMessage(params, lead);
 
-        const askOptions: AskOptions = {
-          ...encryption,
-          cc: params.cc ?? [],
-        };
+        const askOptions: AskOptions = dispatching(
+          { ...encryption, cc: params.cc ?? [] },
+          dispatch
+        );
 
         if (params.dueBy !== undefined) {
           Object.assign(askOptions, { dueBy: params.dueBy });
@@ -535,6 +609,12 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
 
         if (params.wait !== undefined) {
           Object.assign(askOptions, { wait: params.wait });
+        }
+
+        if (params.wait === true && dispatch !== undefined) {
+          Object.assign(askOptions, {
+            onDelivered: Ref.set(dispatch, "delivered"),
+          });
         }
 
         const { delivered, reply } = yield* ratking.ask(
