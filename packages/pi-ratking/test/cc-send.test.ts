@@ -14,7 +14,7 @@ import { document, identity } from "../../mailbox-client/test/identity.ts";
 import { harness } from "./harness.ts";
 
 it.live.prop(
-  "cc seals identical signed payloads, rooted at the first id, after resolving every recipient",
+  "cc seals identical signed payloads rooted at the first id, resolving every recipient and refusing any self target before admission",
   [Schema.Boolean, Schema.String],
   ([encrypt, body]) =>
     Effect.gen(function* ccProof() {
@@ -102,8 +102,17 @@ it.live.prop(
         expect(rejected.code).toBe("UnknownName");
         expect(envelopes).toHaveLength(0);
 
+        for (const target of ["alice", "tester"]) {
+          const self = yield* ratking
+            .send(target, body, { cc: ["bob", "tester"], encrypt })
+            .pipe(Effect.flip);
+
+          expect(self.code).toBe("Self");
+          expect(envelopes).toHaveLength(0);
+        }
+
         const delivered = yield* ratking.send("alice", body, {
-          cc: ["bob", "tester", "alice", "bob"],
+          cc: ["bob", "alice", "bob"],
           encrypt,
         });
 

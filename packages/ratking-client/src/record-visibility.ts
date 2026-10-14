@@ -3,9 +3,14 @@ import { Option } from "effect";
 
 import { decodeAgentGraphBody } from "./agentgraph.ts";
 
-export const SILENT_RECORD_TYPES: readonly string[] = [
-  "sh.mschf.agentgraph.friction",
+export const CONTROL_RECORD_TYPES: readonly string[] = [
   "sh.mschf.agentgraph.turn",
+  "sh.mschf.agentgraph.wake",
+];
+
+export const SILENT_RECORD_TYPES: readonly string[] = [
+  ...CONTROL_RECORD_TYPES,
+  "sh.mschf.agentgraph.friction",
   "sh.mschf.ratking.relay#outbound",
 ];
 
