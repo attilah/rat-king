@@ -7,6 +7,7 @@ import {
   hostedVars,
 } from "../../apps/mailbox/src/bindings.ts";
 import {
+  BindingName,
   Declaration,
   wranglerConfiguration,
 } from "../../packages/alchemy-nest/src/deployment-config.ts";
@@ -26,7 +27,6 @@ const validDeclaration = Arbitrary.schema(Declaration).pipe(
       (binding) =>
         binding.name !== "AGENT_IDENTITIES_CREDENTIAL" &&
         binding.name !== "AGENT_MODEL" &&
-        binding.name.length > 0 &&
         binding.class_name.length > 0
     );
 
@@ -43,7 +43,19 @@ const validDeclaration = Arbitrary.schema(Declaration).pipe(
   })
 );
 
-const Vars = Schema.Record(Schema.String, Schema.String);
+const Vars = Schema.Record(Schema.String, Schema.String).check(
+  Schema.isPropertyNames(BindingName)
+);
+
+const nulVariable = { "\u0000": "", AGENT_MODEL: "faux" };
+
+const emptyDeclaration = {
+  compatibility_date: "2026-10-04",
+  compatibility_flags: [],
+  durable_objects: { bindings: [] },
+  migrations: [{ new_sqlite_classes: [], tag: "v1" }],
+  name: "nul",
+};
 
 it.effect.prop(
   "projects exactly the declaration and prepared bytes, without routes",
@@ -224,4 +236,48 @@ it.prop(
       assertFaux({ RAT_KING_AGENT_MODEL: "gateway" });
     }).toThrow("Preview forbids");
   }
+);
+
+it.effect.prop(
+  "refuses every variable name that is not a binding identifier",
+  { name: Schema.String.check(Schema.isPattern(/[^A-Za-z0-9_]|^[0-9]|^$/u)) },
+  ({ name }) =>
+    Effect.gen(function* refusedVariable() {
+      const refused = yield* wranglerConfiguration(emptyDeclaration, {
+        commit: "property",
+        main: "worker.mjs",
+        vars: { [name]: "", AGENT_MODEL: "faux" },
+        version: "property",
+      }).pipe(Effect.flip);
+
+      expect(refused._tag).toBe("DeploymentError");
+    })
+);
+
+it.effect("refuses a NUL variable name instead of letting JSON mangle it", () =>
+  Effect.gen(function* nulRefusal() {
+    const refused = yield* wranglerConfiguration(emptyDeclaration, {
+      commit: "pinned",
+      main: "worker.mjs",
+      vars: nulVariable,
+      version: "pinned",
+    }).pipe(Effect.flip);
+
+    expect(refused._tag).toBe("DeploymentError");
+    expect(() =>
+      projectWorker(
+        emptyDeclaration,
+        {
+          bundle: "",
+          configuration: JSON.stringify({
+            ...emptyDeclaration,
+            main: "worker.mjs",
+            no_bundle: true,
+            vars: nulVariable,
+          }),
+        },
+        Redacted.make("")
+      )
+    ).toThrow();
+  })
 );

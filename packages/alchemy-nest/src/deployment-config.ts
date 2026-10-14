@@ -1,5 +1,11 @@
 import { Effect, Schema } from "effect";
 
+const bindingNamePattern = /^[A-Za-z_][A-Za-z0-9_]*$/u;
+
+export const BindingName = Schema.String.check(
+  Schema.isPattern(bindingNamePattern)
+);
+
 export const Declaration = Schema.Struct({
   compatibility_date: Schema.String.check(
     Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/u)
@@ -7,7 +13,7 @@ export const Declaration = Schema.Struct({
   compatibility_flags: Schema.Array(Schema.String),
   durable_objects: Schema.Struct({
     bindings: Schema.Array(
-      Schema.Struct({ class_name: Schema.String, name: Schema.String })
+      Schema.Struct({ class_name: Schema.String, name: BindingName })
     ),
   }),
   migrations: Schema.Array(
@@ -25,7 +31,9 @@ export const GeneratedConfiguration = Schema.Struct({
   ...Declaration.fields,
   main: Schema.Literal("worker.mjs"),
   no_bundle: Schema.Literal(true),
-  vars: Schema.Record(Schema.String, Schema.String),
+  vars: Schema.Record(Schema.String, Schema.String).check(
+    Schema.isPropertyNames(BindingName)
+  ),
 });
 
 export interface DeploymentBuild {
@@ -73,6 +81,7 @@ export const wranglerConfiguration = Effect.fn(
   if (
     new Set(names).size !== names.length ||
     names.some((name) => Object.hasOwn(build.vars, name)) ||
+    Object.keys(build.vars).some((name) => !bindingNamePattern.test(name)) ||
     classes.some((name) => !migrated.includes(name)) ||
     migrated.some((name) => !classes.includes(name)) ||
     build.version.length === 0 ||
