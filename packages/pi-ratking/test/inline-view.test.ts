@@ -136,7 +136,7 @@ const Sample = Schema.Struct({
 });
 
 it.effect.prop(
-  "every inbound box closes at widths 20–200 with equal visible widths and both corners, in dark and light themes",
+  "every inbound block fits widths 20–200 with a gutter and no frames, in dark and light themes",
   [Arbitrary.schema(Sample)],
   ([sample]) =>
     Effect.sync(() => {
@@ -162,14 +162,16 @@ it.effect.prop(
           });
 
           for (const line of lines) {
-            expect(visibleWidth(line)).toBe(width);
+            expect(visibleWidth(line)).toBeLessThanOrEqual(width);
           }
 
-          expect(stripTerminalSequences(lines[0] ?? "")).toMatch(/^╭.*╮$/u);
-          expect(stripTerminalSequences(lines.at(-1) ?? "")).toMatch(/^╰.*╯$/u);
+          expect(stripTerminalSequences(lines[0] ?? "")).toMatch(/^🐀/u);
+          expect(lines.map(stripTerminalSequences).join("\n")).not.toMatch(
+            /[╭╮╰╯│]/u
+          );
 
-          for (const line of lines.slice(1, -1)) {
-            expect(stripTerminalSequences(line)).toMatch(/^(?:│.*│|├.*┤)$/u);
+          for (const line of lines.slice(1)) {
+            expect(stripTerminalSequences(line)).toMatch(/^ {4}/u);
           }
         }
       }
@@ -193,10 +195,8 @@ it.effect.prop(
           })[0] ?? ""
         );
 
-        expect(header).toMatch(
-          /^╭─ (?:⚠ )?🐀 (?:from|ask from|reply from|record unknown from) /u
-        );
-        expect(header).not.toContain("✓");
+        expect(header).toMatch(/^🐀[✓↩⚠] from /u);
+        expect(header.includes("⚠")).toBe(!sample.verified);
 
         for (const [name, value] of Object.entries(messages)) {
           const lines = inboundLines({
@@ -209,30 +209,28 @@ it.effect.prop(
           });
 
           const top = stripTerminalSequences(lines[0] ?? "");
-          expect(top).toMatch(/^╭─ 🐀 (?:from|cc from|reply from|sent to) /u);
+          expect(top).toMatch(/^🐀[✓⋯↩] (?:from|sent to) /u);
           expect(top).toContain(
             Party({
-              label: labels("peer"),
+              label: labels("peer")?.split(" · ")[0],
               name: "peer",
               theme: { bold: (text) => text, fg: (_colour, text) => text },
-              variant: sample.expanded ? "expanded" : "collapsed",
+              variant: "collapsed",
             })
           );
-          expect(top).not.toContain("✓");
+          expect(top).toMatch(/^🐀[✓⋯↩]/u);
           expect(top).not.toContain("message");
           expect(top).not.toContain("📤");
 
           if (name === "inbound cc") {
-            expect(top).toMatch(/ quiet ─╮$/u);
+            expect(top).toMatch(/^🐀⋯/u);
           } else {
-            expect(top).not.toMatch(
-              / (?:woken|quiet|held|reply|ask|sent) ─╮$/u
-            );
+            expect(top).not.toMatch(/^🐀⋯/u);
           }
 
           if (value.replyTo !== undefined) {
-            expect(top).toContain(
-              sample.expanded ? value.replyTo : value.replyTo.slice(0, 8)
+            expect(lines.map(stripTerminalSequences).join("\n")).toContain(
+              value.replyTo
             );
           }
         }
@@ -247,9 +245,7 @@ it.effect.prop(
         );
 
         expect(recordHeader).toContain(
-          sample.expanded
-            ? "🐀 record example.notice from 🔮 Merlin · Desk (peer)"
-            : "🐀 record example.notice from 🔮 Merlin · Desk"
+          "🐀  record example.notice from 🔮 Merlin"
         );
         expect(recordHeader).not.toContain("✓");
 
@@ -262,7 +258,7 @@ it.effect.prop(
           }).render(200)[0] ?? ""
         );
 
-        expect(digestHeader).toBe("🐀 cc digest · 1");
+        expect(digestHeader).toBe("🐀⋯ cc digest · 1");
 
         const cc = stripTerminalSequences(
           inboundLines({
@@ -274,8 +270,7 @@ it.effect.prop(
           })[0] ?? ""
         );
 
-        const level = sample.level.split(":")[0] ?? "";
-        expect(cc.includes(` ${level} ─╮`)).toBe(level !== "woken");
+        expect(cc).toMatch(/^🐀⋯ from /u);
       }
     })
 );
@@ -293,7 +288,7 @@ it.effect.prop(
             assertTheme(lines, theme, width);
 
             if (!expanded) {
-              expect(lines.length, name).toBeLessThanOrEqual(12);
+              expect(lines.length, name).toBeLessThanOrEqual(16);
             }
           }
         }

@@ -252,7 +252,7 @@ it.effect.prop(
 );
 
 it.effect.prop(
-  "wake views group replies under their roots, cover the eight/nine-row edge, fit bounded samples at 20–200 in both themes and expand all bodies",
+  "wake views group replies under their roots, keep one row per message and width-bounded footer height, fit bounded samples at 20–200 in both themes and expand all bodies",
   [
     Arbitrary.schema(Count),
     Arbitrary.schema(
@@ -294,12 +294,18 @@ it.effect.prop(
               .render(width)
               .map(stripTerminalSequences);
 
-            expect(collapsed.length).toBeLessThanOrEqual(11);
-            expect(collapsed.join("\n").includes(`+${count - 8} more`)).toBe(
-              count > 8
+            expect(collapsed.length).toBeLessThanOrEqual(2 * count + 8);
+            expect(collapsed.join("\n")).toContain(`${count} messages`);
+            expect(collapsed.join("\n").replaceAll(/\s/gu, "")).toContain(
+              held(1).id
             );
-            expect(collapsed[1]).toContain(held(1).id.slice(0, 8));
-            expect(collapsed[2]).toMatch(/^ {2}/u);
+
+            const rootRow = collapsed.findIndex((line) =>
+              line.includes("🔮 Merlin")
+            );
+
+            expect(rootRow).toBeGreaterThan(0);
+            expect(collapsed[rootRow + 1]).toMatch(/^ {6}/u);
 
             for (const line of collapsed) {
               expect(visibleWidth(line)).toBeLessThanOrEqual(width);

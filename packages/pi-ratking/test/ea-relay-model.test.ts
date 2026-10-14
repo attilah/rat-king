@@ -154,7 +154,7 @@ it.effect.prop(
                 }).join("\n")
               );
 
-              expect(shown[0]).toContain("🐀 sent to person");
+              expect(shown[0]).toContain("🐀↩ sent to person");
               expect(shown[0]).toContain("sent by desk");
               expect(shown[1]).not.toContain('action: "reply"');
             } else if (accepted) {
@@ -198,9 +198,9 @@ it.effect.prop(
                 width: 80,
               });
 
-              expect(compact.at(-1)).toContain("via desk");
+              expect(compact.join("\n")).toContain("via desk");
               expect(compact[0]).toContain("Yaffle");
-              expect(compact.length).toBeLessThanOrEqual(4);
+              expect(compact.length).toBeLessThanOrEqual(8);
             }
 
             expect(delivered).toHaveLength(model.deliveries);
