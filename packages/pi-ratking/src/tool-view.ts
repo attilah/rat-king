@@ -65,7 +65,8 @@ export const callLines = (
   call: CallArgs,
   theme: Paint,
   width: number,
-  labels: Labels = noLabels
+  labels: Labels = noLabels,
+  queued = false
 ): readonly string[] => {
   const action = oneLine(call.action ?? "");
   const dot = theme.fg("dim", " · ");
@@ -104,7 +105,7 @@ export const callLines = (
               oneLine(preview)
             ),
           ],
-    glyph: theme.fg("accent", BRAND),
+    glyph: queued ? theme.fg("dim", "⋯") : theme.fg("accent", BRAND),
     headline: flags.length === 0 ? head : `${head}${dot}${flags.join(dot)}`,
     theme,
     width,
@@ -115,6 +116,7 @@ interface CallInput {
   readonly call: CallArgs;
   readonly expanded: boolean;
   readonly labels: Labels;
+  readonly queued: boolean;
   readonly theme: Paint;
   readonly tool: string;
 }
@@ -127,7 +129,7 @@ class CallShell implements Component {
   constructor(input: CallInput) {
     this.input = input;
     this.view = lines((width) => {
-      const { call, expanded, labels, theme, tool } = this.input;
+      const { call, expanded, labels, queued, theme, tool } = this.input;
 
       const rendered = callLines(
         tool,
@@ -137,8 +139,21 @@ class CallShell implements Component {
         },
         theme,
         width,
-        labels
+        labels,
+        queued
       );
+
+      if (queued) {
+        return [
+          ...rendered,
+          ...Block({
+            glyph: "",
+            headline: theme.fg("dim", "queued"),
+            theme,
+            width,
+          }),
+        ];
+      }
 
       return expanded && call.message !== undefined
         ? [
@@ -164,10 +179,12 @@ class CallShell implements Component {
 }
 
 interface CallState {
+  hasResult?: boolean;
   shell?: CallShell;
 }
 
 interface CallContext {
+  readonly executionStarted?: boolean;
   readonly expanded?: boolean;
   readonly state: CallState;
 }
@@ -183,6 +200,8 @@ export const callView = (
     call,
     expanded: context?.expanded ?? false,
     labels,
+    queued:
+      context?.executionStarted === false && context.state.hasResult !== true,
     theme,
     tool,
   };
@@ -212,6 +231,7 @@ const failed = (input: ResultInput) =>
   Schema.is(Schema.Struct({ error: Schema.Literal(true) }))(input.details);
 
 const ReceiptDetails = Schema.Struct({
+  durationMs: Schema.optionalKey(Schema.Finite),
   id: Schema.String,
   recipients: Schema.optionalKey(Recipients),
   replyId: Schema.optionalKey(Schema.String),
@@ -234,6 +254,26 @@ const trimNote = (text: string) => {
     : [`summary trimmed ${match.groups.length ?? ""}`];
 };
 
+const TimingDetails = Schema.Struct({ durationMs: Schema.Finite });
+
+const timing = (input: Pick<ResultInput, "details">): readonly string[] => {
+  const { details } = input;
+
+  return Schema.is(TimingDetails)(details)
+    ? [
+        details.durationMs < 1000
+          ? `${Math.round(details.durationMs)} ms`
+          : `${(details.durationMs / 1000).toFixed(1)} s`,
+      ]
+    : [];
+};
+
+const ProgressDetails = Schema.Struct({
+  elapsedMs: Schema.Finite,
+  progress: Schema.Literals(["asking", "sending", "waiting"]),
+  to: Schema.String,
+});
+
 const receiptFooter = (details: ReceiptDetailsValue, text: string) =>
   [
     details.id,
@@ -248,6 +288,7 @@ const receiptFooter = (details: ReceiptDetailsValue, text: string) =>
       : []),
     ...(details.replyId === undefined ? [] : [`reply ${details.replyId}`]),
     ...trimNote(text),
+    ...timing({ details }),
   ].join(" · ");
 
 const receiptLines = (
@@ -341,12 +382,50 @@ const statusLines = (
 
   return Block({
     body: input.expanded ? [clean(input.text)] : body,
-    footer: footer.filter((value) => value !== "").join(" · "),
+    footer: [...footer.filter((value) => value !== ""), ...timing(input)].join(
+      " · "
+    ),
     glyph: theme.fg("success", "✓"),
     headline: party(theme, name, labels(name)),
     theme,
     width,
   });
+};
+
+const progressLines = (
+  input: ResultInput,
+  theme: Paint,
+  width: number,
+  labels: Labels
+) => {
+  const progress = Schema.is(ProgressDetails)(input.details)
+    ? input.details
+    : undefined;
+
+  const waiting = progress?.progress === "waiting";
+
+  let headline =
+    progress?.progress ??
+    (input.action === "ask" ? "waiting for the reply" : "sending");
+
+  if (waiting && input.action === "ask") {
+    headline = "waiting for the reply";
+  }
+
+  const target = progress?.to;
+
+  if (target !== undefined && target !== "") {
+    headline += ` → ${party(theme, target, labels(target))}`;
+  }
+
+  if (waiting) {
+    headline += theme.fg(
+      "dim",
+      ` · ${Math.floor((progress?.elapsedMs ?? 0) / 1000)}s`
+    );
+  }
+
+  return Block({ glyph: theme.fg("warning", "⋯"), headline, theme, width });
 };
 
 export const resultLines = (
@@ -356,12 +435,7 @@ export const resultLines = (
   labels: Labels = noLabels
 ): readonly string[] => {
   if (input.isPartial) {
-    return Block({
-      glyph: theme.fg("warning", "⋯"),
-      headline: input.action === "ask" ? "waiting for the reply" : "sending",
-      theme,
-      width,
-    });
+    return progressLines(input, theme, width, labels);
   }
 
   if (!failed(input) && Schema.is(ReceiptDetails)(input.details)) {
@@ -402,7 +476,7 @@ export const resultLines = (
       ...rest.map((line) => theme.fg(error ? "error" : "text", line)),
       ...(pending && input.expanded ? clean(input.text).split("\n") : []),
     ],
-    footer: footer.join(" · ") || undefined,
+    footer: [...footer, ...timing(input)].join(" · ") || undefined,
     glyph: theme.fg(error ? "error" : "success", error ? "✗" : "✓"),
     headline: theme.fg(error ? "error" : "text", head),
     theme,
@@ -418,8 +492,18 @@ export const resultView = (
 ): Component => {
   const shell = context?.state.shell;
 
+  if (context !== undefined) {
+    context.state.hasResult = true;
+  }
+
   if (shell !== undefined) {
-    shell.input = { ...shell.input, expanded: input.expanded, labels, theme };
+    shell.input = {
+      ...shell.input,
+      expanded: input.expanded,
+      labels,
+      queued: false,
+      theme,
+    };
 
     if (
       input.action === "reply" &&

@@ -21,7 +21,16 @@ import type {
   Status,
 } from "@rat-king/ratking-client/ratking";
 import { withSummaryLead } from "@rat-king/ratking-client/summary";
-import { Clock, DateTime, Effect, Match, Option, Schema } from "effect";
+import {
+  Clock,
+  DateTime,
+  Effect,
+  Fiber,
+  Match,
+  Option,
+  Schedule,
+  Schema,
+} from "effect";
 import type { Duration } from "effect";
 
 export const Action = Schema.Literals([
@@ -97,6 +106,59 @@ export interface ToolText {
   readonly isError: boolean;
   readonly details: Readonly<Record<string, DetailValue>>;
 }
+
+export interface ToolProgressParams {
+  readonly action: string;
+  readonly to?: string | undefined;
+  readonly wait?: boolean | undefined;
+}
+
+export const toolProgress = (
+  params: ToolProgressParams,
+  elapsedMs = 0
+): ToolText => {
+  let progress = params.action === "ask" ? "asking" : "sending";
+
+  if (
+    elapsedMs >= 2000 ||
+    (params.action === "ask" && params.wait === true && elapsedMs > 0)
+  ) {
+    progress = "waiting";
+  }
+
+  return {
+    details: { elapsedMs, progress, to: params.to ?? "" },
+    isError: false,
+    text: "",
+  };
+};
+
+export const withToolLiveness = <E, R>(
+  params: ToolProgressParams,
+  action: Effect.Effect<ToolText, E, R>,
+  update: (progress: ToolText) => void
+): Effect.Effect<ToolText, E, R> =>
+  Effect.gen(function* toolLiveness() {
+    const started = yield* Clock.currentTimeMillis;
+
+    const ticker = yield* Effect.gen(function* toolTick() {
+      const now = yield* Clock.currentTimeMillis;
+
+      update(toolProgress(params, now - started));
+    }).pipe(
+      Effect.repeat(Schedule.spaced("1 second")),
+      Effect.delay("1 second"),
+      Effect.forkChild
+    );
+
+    const result = yield* action.pipe(Effect.ensuring(Fiber.interrupt(ticker)));
+    const ended = yield* Clock.currentTimeMillis;
+
+    return {
+      ...result,
+      details: { ...result.details, durationMs: ended - started },
+    };
+  });
 
 const ok = (text: string, details: ToolText["details"] = {}): ToolText => ({
   details,
