@@ -98,6 +98,14 @@ const ShownDigest = Schema.Struct({
   details: Schema.Struct({ ids: Schema.Array(Schema.String) }),
 });
 
+const ShownArbited = Schema.Struct({
+  customType: Schema.Literals([DIGEST_MESSAGE, WAKE_MESSAGE]),
+  details: Schema.Struct({
+    followUpId: Schema.String,
+    receipt: Schema.Struct({ ids: Schema.Array(Schema.String) }),
+  }),
+});
+
 export interface SessionMessage {
   readonly customType?: string;
   readonly details?: unknown;
@@ -113,7 +121,11 @@ const shownIn = (value: Carried): readonly string[] =>
   Option.match(Schema.decodeUnknownOption(ShownMail)(value), {
     onNone: () =>
       Option.match(Schema.decodeUnknownOption(ShownDigest)(value), {
-        onNone: () => [],
+        onNone: () =>
+          Option.match(Schema.decodeUnknownOption(ShownArbited)(value), {
+            onNone: () => [],
+            onSome: (arbited) => arbited.details.receipt.ids,
+          }),
         onSome: (digest) => digest.details.ids,
       }),
     onSome: (mail) => [mail.details.id],

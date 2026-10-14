@@ -789,6 +789,22 @@ export const ratkingExtension = (options: ExtensionOptions) =>
     let isIdle = idle;
     let flushing = false;
 
+    const consume = (id: string) => {
+      const type = controlRecords.get(id);
+
+      if (type !== undefined) {
+        controlRecords.delete(id);
+        pi.noteSettledRecord?.(id, type);
+      }
+
+      const ack = acknowledgments.get(id);
+
+      if (Option.isSome(runtime) && ack !== undefined) {
+        acknowledgments.delete(id);
+        void runtime.value.runPromiseExit(ack);
+      }
+    };
+
     const dispatch: MailDispatch = {
       mail: inbox({
         digest: (mails, variant, delivery) => {
@@ -883,22 +899,6 @@ export const ratkingExtension = (options: ExtensionOptions) =>
       busy = true;
       mail.flushNext();
     });
-
-    const consume = (id: string) => {
-      const type = controlRecords.get(id);
-
-      if (type !== undefined) {
-        controlRecords.delete(id);
-        pi.noteSettledRecord?.(id, type);
-      }
-
-      const ack = acknowledgments.get(id);
-
-      if (Option.isSome(runtime) && ack !== undefined) {
-        acknowledgments.delete(id);
-        void runtime.value.runPromiseExit(ack);
-      }
-    };
 
     pi.onMessageShown?.((id) => {
       mail.shown(id);

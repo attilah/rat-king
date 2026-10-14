@@ -162,7 +162,11 @@ it.effect.prop(
       expect(value.content).toContain(`**🐀 wake** · ${count}`);
       expect(value.details).toMatchObject({ reason: { facts: ["wake"] } });
 
-      for (const id of shownIds({ ...value, role: "custom" })) {
+      for (const id of shownIds({
+        customType: value.customType,
+        details: { followUpId: "follow-up", receipt: value.details },
+        role: "custom",
+      })) {
         shown(id);
       }
 
