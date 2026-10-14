@@ -31,13 +31,18 @@ const append = Effect.fn("RatkingCli.recordSent")(function* append(
   const path = yield* Path.Path;
   const file = yield* fileFor(record.from);
 
-  yield* fs.makeDirectory(path.dirname(file), { recursive: true });
+  yield* fs.makeDirectory(path.dirname(file), {
+    mode: 0o700,
+    recursive: true,
+  });
+  yield* fs.chmod(path.dirname(file), 0o700);
 
   yield* fs.writeFileString(
     file,
     `${yield* Schema.encodeEffect(Schema.fromJsonString(SentRecord))(record)}\n`,
-    { flag: "a" }
+    { flag: "a", mode: 0o600 }
   );
+  yield* fs.chmod(file, 0o600);
 });
 
 export const recordSent = (record: SentRecordValue) =>
