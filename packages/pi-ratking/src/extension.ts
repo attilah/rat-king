@@ -789,6 +789,22 @@ export const ratkingExtension = (options: ExtensionOptions) =>
     let isIdle = idle;
     let flushing = false;
 
+    const consume = (id: string) => {
+      const type = controlRecords.get(id);
+
+      if (type !== undefined) {
+        controlRecords.delete(id);
+        pi.noteSettledRecord?.(id, type);
+      }
+
+      const ack = acknowledgments.get(id);
+
+      if (Option.isSome(runtime) && ack !== undefined) {
+        acknowledgments.delete(id);
+        void runtime.value.runPromiseExit(ack);
+      }
+    };
+
     const dispatch: MailDispatch = {
       mail: inbox({
         digest: (mails, variant, delivery) => {
@@ -844,7 +860,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
 
     const wakes = inbox({
       digest: (mails) => {
-        flushWake(
+        const accepted = flushWake(
           { events: pi.events, sendMessage: dispatch.send },
           {
             content: renderDigest(tool, mails, "wake"),
@@ -856,6 +872,13 @@ export const ratkingExtension = (options: ExtensionOptions) =>
           },
           mails.map((held) => held.id).join(":")
         );
+
+        if (accepted) {
+          for (const held of mails) {
+            wakes.shown(held.id);
+            consume(held.id);
+          }
+        }
       },
       show: (pending, deliverAs) => {
         dispatch.send(
@@ -883,22 +906,6 @@ export const ratkingExtension = (options: ExtensionOptions) =>
       busy = true;
       mail.flushNext();
     });
-
-    const consume = (id: string) => {
-      const type = controlRecords.get(id);
-
-      if (type !== undefined) {
-        controlRecords.delete(id);
-        pi.noteSettledRecord?.(id, type);
-      }
-
-      const ack = acknowledgments.get(id);
-
-      if (Option.isSome(runtime) && ack !== undefined) {
-        acknowledgments.delete(id);
-        void runtime.value.runPromiseExit(ack);
-      }
-    };
 
     pi.onMessageShown?.((id) => {
       mail.shown(id);

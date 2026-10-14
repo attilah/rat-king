@@ -9,12 +9,9 @@ import { expect } from "vitest";
 
 import { ratkingExtension } from "../src/extension.ts";
 import type { PiHost, SessionStart } from "../src/extension.ts";
-import { shownIds } from "../src/pending.ts";
 import { harness } from "./harness.ts";
 
 const nothing = () => {};
-
-const ignoreShown = (_id: string) => {};
 
 const ignoreDelivery: Deliver = () => Effect.void;
 
@@ -23,7 +20,7 @@ const idleHandler = async () => {
 };
 
 it.effect.prop(
-  "the reader offers held wake batches with their own custom type and reason, and acks only display",
+  "the reader offers held wake batches with their own custom type and reason, and acks them when the arbiter accepts",
   [Schema.Int.check(Schema.isBetween({ maximum: 4, minimum: 1 }))],
   ([count]) =>
     Effect.gen(function* wakeHeaderReader() {
@@ -31,7 +28,6 @@ it.effect.prop(
       let stop: () => Promise<void> = idleHandler;
       let idle: (messages: readonly unknown[]) => Promise<void> = idleHandler;
       let before = nothing;
-      let shown = ignoreShown;
       let deliver = ignoreDelivery;
       const requests: unknown[] = [];
       const acked: string[] = [];
@@ -76,9 +72,6 @@ it.effect.prop(
         },
         onBeforeAgentStart: (handler) => {
           before = handler;
-        },
-        onMessageShown: (handler) => {
-          shown = handler;
         },
         onSessionEnd: (handler) => {
           stop = handler;
@@ -147,7 +140,6 @@ it.effect.prop(
         await idle([]);
       });
       expect(requests).toHaveLength(1);
-      expect(acked).toEqual([]);
       const [request] = requests;
 
       const value = yield* Schema.decodeUnknownEffect(
@@ -161,10 +153,6 @@ it.effect.prop(
       expect(value.customType).toBe("ratking_wake");
       expect(value.content).toContain(`**🐀 wake** · ${count}`);
       expect(value.details).toMatchObject({ reason: { facts: ["wake"] } });
-
-      for (const id of shownIds({ ...value, role: "custom" })) {
-        shown(id);
-      }
 
       yield* Effect.yieldNow;
       expect(acked).toEqual(

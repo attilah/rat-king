@@ -73,12 +73,16 @@ export const flushWake = (
   message: FollowUp,
   id: string
 ) => {
-  if (!offerWake(host, message, id)) {
+  const accepted = offerWake(host, message, id);
+
+  if (!accepted) {
     host.sendMessage(
       { ...message, display: true },
       { deliverAs: "followUp", triggerTurn: true }
     );
   }
+
+  return accepted;
 };
 
 export interface WakeHost {
