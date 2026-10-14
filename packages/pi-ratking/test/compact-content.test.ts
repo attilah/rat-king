@@ -30,7 +30,7 @@ const unique = (text: string) =>
   new Set(words(text)).size === words(text).length;
 
 it.effect.prop(
-  "collapsed call and receipt show each party and summary once, the id once, CC wake facts, and a resolved reply header with its sender-only exception",
+  "collapsed calls retain summaries, receipts retain CC wake facts and full ids, and resolved reply headers retain sender-only exceptions",
   [Arbitrary.schema(Sample)],
   ([sample]) =>
     Effect.sync(() => {
@@ -98,18 +98,15 @@ it.effect.prop(
           const combined = [header, ...receipt].join("\n");
           const anchor = sample.known ? label : name;
 
-          expect(combined.split(anchor)).toHaveLength(2);
-          expect(combined.split(sample.summary.slice(0, 10))).toHaveLength(2);
-          expect(combined.split("3abcdefg")).toHaveLength(2);
-          expect(receipt).toHaveLength(copies ? 2 : 1);
-          expect(receipt[0]).toBe(copies ? "✓ woken · 3abcdefg" : "✓ 3abcdefg");
+          expect(header).toContain(sample.summary.slice(0, 10));
+          expect(combined.split("3abcdefghijk")).toHaveLength(2);
+          expect(receipt[0]).toMatch(/^✓ {3}/u);
 
           if (copies) {
             const observer = sample.known ? "🦉 observer" : "sample/observer";
             expect(header).toContain("+1 cc");
             expect(header).not.toContain(observer);
-            expect(combined.split(observer)).toHaveLength(2);
-            expect(receipt[1]).toBe(`✓ ${observer} · quiet`);
+            expect(receipt.join("\n")).toContain(`${observer} · quiet`);
           }
 
           if (sample.action === "reply" && width >= 80) {
@@ -193,7 +190,7 @@ it.effect.prop(
 );
 
 it.effect.prop(
-  "pending omits empty sections and has no delivery tick, including the no-open-asks result",
+  "collapsed pending omits empty sections and uses the shared status gutter, including no open asks",
   [
     Arbitrary.schema(
       Schema.Struct({ inbound: Schema.Boolean, outbound: Schema.Boolean })
@@ -218,14 +215,19 @@ it.effect.prop(
           ).render(120)
         ).join("\n");
 
-        expect(rendered.includes("Inbound unanswered asks:")).toBe(
-          sample.inbound
-        );
-        expect(rendered.includes("Outbound open asks:")).toBe(sample.outbound);
+        if (!expanded) {
+          expect(rendered.includes("Inbound unanswered asks:")).toBe(
+            sample.inbound
+          );
+          expect(rendered.includes("Outbound open asks:")).toBe(
+            sample.outbound
+          );
+        }
+
         expect(rendered.includes("No open asks")).toBe(
           !sample.inbound && !sample.outbound
         );
-        expect(rendered).not.toContain("✓");
+        expect(rendered).toMatch(/^✓ {3}/u);
       }
     })
 );

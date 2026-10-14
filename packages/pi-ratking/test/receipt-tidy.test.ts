@@ -8,7 +8,6 @@ import { callView, resultView } from "../src/tool-view.ts";
 import type { ResultInput } from "../src/tool-view.ts";
 import { receiptText } from "../src/tool.ts";
 import { noLabels, party } from "../src/tui.ts";
-import { Party } from "../src/ui/party.ts";
 import { ansiTheme, plainTheme } from "./view-arbitraries.ts";
 
 const Sample = Schema.Struct({
@@ -31,7 +30,7 @@ const plain = (lines: readonly string[]) =>
   lines.map(stripTerminalSequences).join("\n");
 
 it.effect.prop(
-  "collapsed receipts omit the call's primary party and summary, show each CC wake fact and id8 once, expand the model receipt, and never change model content",
+  "collapsed receipts omit repeated prose, keep CC wake facts and full footer ids, expand model text, and never change model content",
   [Arbitrary.schema(Sample)],
   ([sample]) =>
     Effect.sync(() => {
@@ -99,12 +98,16 @@ it.effect.prop(
         expect(collapsed).toContain(` · ${suffix}`);
       }
 
-      expect(collapsed).not.toContain("summary trimmed");
-      expect(collapsed.split("\n")[0]).toBe(
-        recipients.length === 1
-          ? `✓ ${sample.id.slice(0, 8)}`
-          : `✓ woken · ${sample.id.slice(0, 8)}`
-      );
+      expect(collapsed).toContain(`${sample.id} · seq 9 · peer`);
+      expect(collapsed.includes("summary trimmed 279")).toBe(sample.trimmed);
+
+      if (recipients.length === 1) {
+        expect(collapsed).not.toContain(
+          party(plainTheme, "peer", lookup("peer")) === "peer"
+            ? "Merlin"
+            : party(plainTheme, "peer", lookup("peer"))
+        );
+      }
 
       if (sample.action === "ask") {
         expect(collapsed).toContain("↩");
@@ -126,27 +129,7 @@ it.effect.prop(
       const expected = model.replaceAll("**", "");
 
       for (const line of expected.split("\n").filter((value) => value !== "")) {
-        const styled =
-          line.startsWith("peer:") || line.startsWith("observer:")
-            ? line.replace(/^[^:]+/u, (name) =>
-                Party({
-                  label: lookup(name),
-                  name,
-                  theme: plainTheme,
-                  variant: "expanded",
-                })
-              )
-            : line.replace(
-                /(?<=[Dd]elivered to |Reply from )peer/u,
-                Party({
-                  label: lookup("peer"),
-                  name: "peer",
-                  theme: plainTheme,
-                  variant: "expanded",
-                })
-              );
-
-        expect(expanded).toContain(styled);
+        expect(expanded.replaceAll("**", "")).toContain(line);
       }
 
       expect(input.text).toBe(model);
@@ -190,7 +173,7 @@ it.effect.prop(
         ).render(1000)
       );
 
-      expect(rendered).toMatch(/^✗ /u);
+      expect(rendered).toMatch(/^✗ {3}/u);
       expect(rendered).toContain(sample.reason.trim());
       expect(rendered).not.toContain("✓");
       expect(rendered).not.toContain("🐀");
@@ -280,8 +263,11 @@ it.effect.prop(
           ).render(1000)
         );
 
-        expect(result).not.toContain("🐀");
-        expect(result).not.toContain("✓");
+        if (!expanded) {
+          expect(result).not.toContain("🐀");
+        }
+
+        expect(result).toContain("✓   ");
         expect(result).toContain("peer");
       }
     })
