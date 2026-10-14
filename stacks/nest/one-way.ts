@@ -368,7 +368,7 @@ const codeChanges = (
   const masked = file.added
     .join("\n")
     .replaceAll(
-      /"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|`(?:\\[\s\S]|[^`\\])*`|\/\/[^\n]*|\/\*[\s\S]*?\*\//gu,
+      /(?<=(?:^|=>|[=(,:;!&|?[]|\b(?:return|throw|yield|case|void|typeof|delete|else|do))(?:\s|\/\*(?:[^*]|\*(?!\/))*\*\/|\/\/[^\n]*\n)*)\/(?![*/])(?:\\[^\n]|\[(?:\\[^\n]|[^\]\\\n])*\]|[^/\\[\n])+\/[dgimsuvy]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|`(?:\\[\s\S]|[^`\\])*`|\/\/[^\n]*|\/\*[\s\S]*?\*\//gu,
       (token) => {
         const newlines = token.match(/\n/gu)?.length ?? 0;
 
