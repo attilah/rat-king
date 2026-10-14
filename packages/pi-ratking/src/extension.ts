@@ -28,6 +28,7 @@ import {
 import type { Inbound } from "@rat-king/ratking-client/payload";
 import {
   NotDelivered,
+  Inbox,
   RatKing,
   ratKingLayer,
 } from "@rat-king/ratking-client/ratking";
@@ -60,6 +61,17 @@ import { Type } from "typebox";
 
 import { paneLabel } from "./herdr.ts";
 import { messageView } from "./message-view.ts";
+import {
+  chooseName,
+  heldElsewhere,
+  heldNotice,
+  heldReason,
+  NAME_ENTRY,
+  parseNameEntries,
+  shouldRecord,
+  stateName,
+} from "./name.ts";
+import type { NamedFacts, NameEntryValue, NameSourceValue } from "./name.ts";
 import { digestView, recordView } from "./notice-view.ts";
 import {
   applyDelivery,
@@ -265,12 +277,20 @@ const alive = (pid: number) => {
 export const collectFacts = (
   session: string,
   sessionName?: () => string | undefined,
-  interactive = true
+  interactive = true,
+  entries: readonly NameEntryValue[] = []
 ) =>
   Effect.gen(function* sessionFacts() {
-    const env = yield* Config.option(
+    const given = yield* Config.option(
       Config.String(interactive ? "RATKING_NAME" : "RATKING_PRINT_NAME")
     );
+
+    const choice = chooseName({
+      entries: interactive ? entries : [],
+      env: given,
+    });
+
+    const env = choice.name;
 
     const paneId = interactive
       ? yield* Config.option(Config.String("HERDR_PANE_ID"))
@@ -298,7 +318,8 @@ export const collectFacts = (
       pid: process.pid,
       reads: interactive || Option.isSome(env),
       session,
-    } satisfies SessionFacts;
+      source: choice.source,
+    } satisfies NamedFacts;
   }).pipe(Effect.provide(NodeServices.layer));
 
 export const inboundDetails = (inbound: Inbound, settled: boolean) => ({
@@ -348,6 +369,8 @@ export interface SessionStart {
   readonly turnCount?: number;
   readonly rememberTurn?: (n: number) => void;
   readonly interactive?: boolean;
+  readonly names?: readonly NameEntryValue[];
+  readonly rememberName?: (entry: NameEntryValue) => void;
   readonly session: string;
   readonly sessionName?: () => string | undefined;
   readonly status?: (text: string | undefined) => void;
@@ -430,6 +453,10 @@ export const piHost = (pi: ExtensionAPI): PiHost => ({
       await handler({
         interactive: ctx.hasUI,
         isIdle: () => ctx.isIdle(),
+        names: parseNameEntries(ctx.sessionManager.getEntries()),
+        rememberName: (entry) => {
+          pi.appendEntry(NAME_ENTRY, entry);
+        },
         rememberTurn: (n) => {
           pi.appendEntry("ratking.turn", { n });
         },
@@ -472,8 +499,9 @@ export interface ExtensionOptions {
   readonly facts: (
     session: string,
     sessionName?: () => string | undefined,
-    interactive?: boolean
-  ) => Effect.Effect<SessionFacts, Config.ConfigError>;
+    interactive?: boolean,
+    entries?: readonly NameEntryValue[]
+  ) => Effect.Effect<NamedFacts, Config.ConfigError>;
   readonly tool: Effect.Effect<string>;
 }
 
@@ -1133,6 +1161,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
       });
 
     let retired = false;
+    let degraded: string | undefined;
 
     const run = async <A>(
       effect: Effect.Effect<A, never, Services>,
@@ -1140,6 +1169,10 @@ export const ratkingExtension = (options: ExtensionOptions) =>
       signal?: AbortSignal,
       cancelled?: () => A
     ) => {
+      if (degraded !== undefined) {
+        return fallback(degraded);
+      }
+
       if (Option.isNone(runtime)) {
         return fallback(
           retired
@@ -1381,9 +1414,23 @@ export const ratkingExtension = (options: ExtensionOptions) =>
       acknowledgments.clear();
       controlRecords.clear();
 
+      degraded = undefined;
+
+      const names = start.names ?? [];
+
       const collected = await Effect.runPromise(
-        options.facts(start.session, start.sessionName, start.interactive)
+        options.facts(
+          start.session,
+          start.sessionName,
+          start.interactive,
+          names
+        )
       );
+
+      const source: NameSourceValue =
+        collected.source ?? (Option.isSome(collected.env) ? "env" : "default");
+
+      let recorded = names.at(-1);
 
       knownLabels.clear();
       ownName = undefined;
@@ -1391,10 +1438,58 @@ export const ratkingExtension = (options: ExtensionOptions) =>
 
       turns = turnReporter(collected, start.turnCount, start.rememberTurn);
 
+      const remember = (name: string) => {
+        const entry: NameEntryValue = { name, source };
+
+        if (start.rememberName !== undefined && shouldRecord(recorded, entry)) {
+          recorded = entry;
+          start.rememberName(entry);
+        }
+      };
+
+      const probeHeld = async (name: string) => {
+        if (Option.isNone(runtime)) {
+          return;
+        }
+
+        const exit = await runtime.value.runPromiseExit(
+          Inbox.use((current) => current.holder)
+        );
+
+        if (
+          Exit.isSuccess(exit) &&
+          heldElsewhere(exit.value, start.session) &&
+          degraded === undefined
+        ) {
+          degraded = heldReason(name);
+          start.status?.(heldNotice(name));
+          start.warn(heldNotice(name));
+        }
+      };
+
       const facts: SessionFacts = {
         ...collected,
         onState: (reader) => {
-          start.status?.(readerFooter(reader));
+          const named = stateName(reader);
+
+          if (Option.isSome(named)) {
+            remember(named.value);
+          }
+
+          if (Predicate.isTagged(reader, "Live")) {
+            degraded = undefined;
+          }
+
+          if (degraded === undefined) {
+            start.status?.(readerFooter(reader));
+          }
+
+          if (
+            Predicate.isTagged(reader, "Acquiring") &&
+            source === "restored"
+          ) {
+            void probeHeld(reader.name);
+          }
 
           if (Predicate.isTagged(reader, "Live")) {
             void reportTurn(turns?.idle());
