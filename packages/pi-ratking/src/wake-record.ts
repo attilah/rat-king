@@ -1,6 +1,8 @@
 import * as Wake from "@rat-king/lexicon/agentgraph.wake";
 import * as Prefs from "@rat-king/lexicon/attention.prefs";
 import * as Status from "@rat-king/lexicon/attention.status";
+import { signedTurn } from "@rat-king/lexicon/turns";
+import type { TurnValue } from "@rat-king/lexicon/turns";
 import { Option, Predicate, Schema } from "effect";
 
 import { attend } from "../../ratking-client/src/attend.ts";
@@ -8,6 +10,132 @@ import type { Verdict } from "../../ratking-client/src/attend.ts";
 import type { InboundRecord } from "../../ratking-client/src/payload.ts";
 import { Dispositions, verdictToHold } from "./pending.ts";
 import type { Hold, PendingMail } from "./pending.ts";
+
+export const TURN_SHOWN_ENTRY = "ratking.turn.shown";
+
+const TurnShown = Schema.Struct({ key: Schema.String });
+
+export interface TurnSessionEntry {
+  readonly customType?: string;
+  readonly data?: unknown;
+  readonly type: string;
+}
+
+export const shownTurnKeys = (
+  entries: readonly TurnSessionEntry[]
+): readonly string[] =>
+  entries.flatMap((entry) =>
+    entry.type === "custom" && entry.customType === TURN_SHOWN_ENTRY
+      ? Option.match(Schema.decodeUnknownOption(TurnShown)(entry.data), {
+          onNone: () => [],
+          onSome: ({ key }) => [key],
+        })
+      : []
+  );
+
+export const turnKey = (turn: Pick<TurnValue, "state" | "turnId">): string =>
+  JSON.stringify([turn.turnId, turn.state]);
+
+export const turnWake = (
+  inbound: InboundRecord,
+  settled: boolean,
+  seen: ReadonlySet<string>
+): Option.Option<TurnValue> =>
+  signedTurn(inbound.record, inbound.from, inbound.verified).pipe(
+    Option.filter(
+      (turn) =>
+        !settled &&
+        (turn.state === "done" ||
+          turn.state === "blocked" ||
+          turn.state === "crashed") &&
+        !seen.has(turnKey(turn))
+    )
+  );
+
+export interface TurnWakeHost {
+  readonly consume: (id: string) => void;
+  readonly take: (mail: PendingMail, hold: Hold) => void;
+}
+
+export const turnInbox = (host: TurnWakeHost) => {
+  const displayed = new Set<string>();
+  const pending = new Map<string, Set<string>>();
+  let remember: ((key: string) => void) | undefined;
+
+  return {
+    receive: (inbound: InboundRecord, settled: boolean) => {
+      const turn = turnWake(
+        inbound,
+        settled,
+        new Set([...displayed, ...pending.keys()])
+      );
+
+      if (Option.isNone(turn)) {
+        const duplicate = signedTurn(
+          inbound.record,
+          inbound.from,
+          inbound.verified
+        ).pipe(
+          Option.flatMap((value) =>
+            Option.fromUndefinedOr(pending.get(turnKey(value)))
+          )
+        );
+
+        if (!settled && Option.isSome(duplicate)) {
+          duplicate.value.add(inbound.id);
+        } else {
+          host.consume(inbound.id);
+        }
+
+        return;
+      }
+
+      const key = turnKey(turn.value);
+      pending.set(key, new Set([inbound.id]));
+      host.take(
+        {
+          content: `turn · ${turn.value.agent} · ${turn.value.state} · ${turn.value.stopReason ?? turn.value.reason ?? ""}`,
+          details: {
+            body: JSON.stringify(inbound.record),
+            cc: false,
+            did: inbound.did,
+            from: inbound.from,
+            id: inbound.id,
+            kind: "data",
+            verified: inbound.verified,
+          },
+          id: inbound.id,
+        },
+        "steer"
+      );
+    },
+    restore: (
+      keys: readonly string[],
+      note: ((key: string) => void) | undefined
+    ) => {
+      displayed.clear();
+      pending.clear();
+      remember = note;
+
+      for (const key of keys) {
+        displayed.add(key);
+      }
+    },
+    shown: (id: string) => {
+      for (const [key, ids] of pending) {
+        if (ids.has(id)) {
+          displayed.add(key);
+          pending.delete(key);
+          remember?.(key);
+
+          for (const duplicate of ids) {
+            host.consume(duplicate);
+          }
+        }
+      }
+    },
+  };
+};
 
 const WakeLevers = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean),

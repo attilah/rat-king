@@ -5,7 +5,6 @@ import type {
   ExtensionFactory,
 } from "@earendil-works/pi-coding-agent";
 import { NodeServices } from "@effect/platform-node";
-import { signedTurn } from "@rat-king/lexicon/turns";
 import { recordType } from "@rat-king/mailbox-client";
 import { decodeAgentGraphBody } from "@rat-king/ratking-client/agentgraph";
 import { attend, formatReason } from "@rat-king/ratking-client/attend";
@@ -104,7 +103,14 @@ import type { ToolProgressParams, ToolText } from "./tool.ts";
 import type { Labels } from "./tui.ts";
 import { stopReason, turnReporter } from "./turn-record.ts";
 import type { TurnReporter } from "./turn-record.ts";
-import { flushWake, receiveWake, WAKE_RECORD } from "./wake-record.ts";
+import {
+  flushWake,
+  receiveWake,
+  shownTurnKeys,
+  turnInbox,
+  TURN_SHOWN_ENTRY,
+  WAKE_RECORD,
+} from "./wake-record.ts";
 
 export const SEND_EVENT = "ratking/send";
 
@@ -371,6 +377,8 @@ export interface SessionStart {
   readonly interactive?: boolean;
   readonly names?: readonly NameEntryValue[];
   readonly rememberName?: (entry: NameEntryValue) => void;
+  readonly shownTurns?: readonly string[];
+  readonly rememberShownTurn?: (key: string) => void;
   readonly session: string;
   readonly sessionName?: () => string | undefined;
   readonly status?: (text: string | undefined) => void;
@@ -457,11 +465,15 @@ export const piHost = (pi: ExtensionAPI): PiHost => ({
         rememberName: (entry) => {
           pi.appendEntry(NAME_ENTRY, entry);
         },
+        rememberShownTurn: (key) => {
+          pi.appendEntry(TURN_SHOWN_ENTRY, { key });
+        },
         rememberTurn: (n) => {
           pi.appendEntry("ratking.turn", { n });
         },
         session: ctx.sessionManager.getSessionId(),
         sessionName: () => pi.getSessionName(),
+        shownTurns: shownTurnKeys(ctx.sessionManager.getEntries()),
         status: (text) => {
           ctx.ui.setStatus("ratking", text);
         },
@@ -901,6 +913,13 @@ export const ratkingExtension = (options: ExtensionOptions) =>
 
     const { mail } = dispatch;
 
+    const turnMail = turnInbox({
+      consume,
+      take: (pending) => {
+        mail.take(pending, isIdle() ? "followUp" : "steer");
+      },
+    });
+
     const wakes = inbox({
       digest: (mails) => {
         flushWake(
@@ -946,6 +965,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
     pi.onMessageShown?.((id) => {
       mail.shown(id);
       wakes.shown(id);
+      turnMail.shown(id);
       consume(id);
     });
 
@@ -1003,17 +1023,6 @@ export const ratkingExtension = (options: ExtensionOptions) =>
             return;
           }
 
-          if (
-            inbound.record.$type === "sh.mschf.agentgraph.turn" &&
-            Option.isNone(
-              signedTurn(inbound.record, inbound.from, inbound.verified)
-            )
-          ) {
-            consume(inbound.id);
-
-            return;
-          }
-
           pi.events.emit(RECORD_EVENT, {
             did: inbound.did,
             from: inbound.from,
@@ -1025,6 +1034,12 @@ export const ratkingExtension = (options: ExtensionOptions) =>
             }),
             verified: inbound.verified,
           });
+
+          if (inbound.record.$type === "sh.mschf.agentgraph.turn") {
+            turnMail.receive(inbound, settled);
+
+            return;
+          }
 
           const body = JSON.stringify(inbound.record);
 
@@ -1413,6 +1428,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
       wakes.clear();
       acknowledgments.clear();
       controlRecords.clear();
+      turnMail.restore(start.shownTurns ?? [], start.rememberShownTurn);
 
       degraded = undefined;
 

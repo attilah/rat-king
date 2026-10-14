@@ -60,7 +60,7 @@ const record = (kind: typeof Cases.Type): LexiconRecordValue =>
       };
 
 it.effect.prop(
-  "unclaimed turn/crashed and legacy-body wake controls settle silently, leave one session note, and acknowledge exactly once without a display event",
+  "typed crashes acknowledge at display; silent turns and legacy-body wake controls settle once",
   [Arbitrary.schema(Cases)],
   ([kind]) =>
     Effect.gen(function* controlCustody() {
@@ -151,11 +151,16 @@ it.effect.prop(
           acknowledgments += 1;
         }).pipe(Effect.andThen(Deferred.succeed(acked, true)), Effect.asVoid)
       );
-      expect(displayed).toBe(0);
+      expect(displayed).toBe(kind === "typed-crashed" ? 1 : 0);
+
+      if (kind === "typed-crashed") {
+        shown(facts.id);
+      }
+
       yield* Deferred.await(acked);
       shown(facts.id);
       shown(facts.id);
-      expect(displayed).toBe(0);
+      expect(displayed).toBe(kind === "typed-crashed" ? 1 : 0);
       expect(acknowledgments).toBe(1);
       expect(notes).toEqual([{ id: facts.id, type: value.$type }]);
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
