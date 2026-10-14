@@ -1,5 +1,6 @@
-import { Verdicts } from "@rat-king/ratking-client/attend";
-import type { Verdict } from "@rat-king/ratking-client/attend";
+import { Reasons, Verdicts } from "@rat-king/ratking-client/attend";
+import type { Reason, Verdict } from "@rat-king/ratking-client/attend";
+import { DIGEST_REASON } from "@rat-king/ratking-client/delivery";
 import { Data, Option, Schema } from "effect";
 
 export const MAIL_MESSAGE = "ratking_message";
@@ -54,9 +55,22 @@ export interface PendingMail {
   readonly details: unknown;
   readonly digestMinutes?: number | undefined;
   readonly notBefore?: number | undefined;
+  readonly reason?: Reason;
   readonly id: string;
   readonly line?: string;
 }
+
+export const digestLabel = (reason: Reason = DIGEST_REASON) =>
+  Reasons.$is("intent")(reason) &&
+  reason.facts.includes("cc") &&
+  reason.facts.includes("digest")
+    ? "cc digest"
+    : "digest";
+
+export const digestReason = (mails: readonly PendingMail[]): Reason =>
+  mails.every((mail) => digestLabel(mail.reason) === "cc digest")
+    ? DIGEST_REASON
+    : Reasons.lever({ facts: ["digest"] });
 
 const ShownMail = Schema.Struct({
   customType: Schema.Literals([MAIL_MESSAGE, "ratking_record_notice"]),

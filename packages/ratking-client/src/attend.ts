@@ -188,7 +188,7 @@ export const formatReason = (reason: Reason): string => {
   const tone = reasonTone(reason);
 
   if (tone === "held") {
-    return "held: cc digest";
+    return Reasons.$is("lever")(reason) ? "held: digest" : "held: cc digest";
   }
 
   if (tone === "quiet") {
