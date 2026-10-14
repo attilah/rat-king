@@ -1,7 +1,28 @@
-import { Clock, Console, Effect, FileSystem, Schema, Stream } from "effect";
+import {
+  Clock,
+  Console,
+  Effect,
+  FileSystem,
+  Predicate,
+  Schema,
+  Stream,
+} from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { Status } from "./health.ts";
+import {
+  classifyOneWay,
+  fallbackPath,
+  oneWayAnswer,
+  oneWayExitCode,
+  parseUnifiedDiff,
+} from "./one-way.ts";
+import type {
+  Classification,
+  CommitClassification,
+  FileDiff,
+  Finding,
+} from "./one-way.ts";
 import { FleetError as JudgeError } from "./stage-config.ts";
 import { decodeTrafficLine, fileLines, usageWindow } from "./usage.ts";
 import type { WindowBounds } from "./usage.ts";
@@ -269,12 +290,16 @@ export const NotTipMerge = Schema.TaggedStruct("NotTipMerge", {
 export const Revertibility = Schema.Union([Revertible, OneWay, NotTipMerge]);
 
 export const classifyShip = (input: {
+  readonly findings?: readonly Finding[];
   readonly oneWayCommits: readonly string[];
   readonly paths: readonly string[];
 }) => {
-  const paths = input.paths.filter((path) =>
-    OneWayPaths.some((rule) => rule.test(path))
-  );
+  const paths =
+    input.findings === undefined
+      ? input.paths.filter((path) =>
+          OneWayPaths.some((rule) => rule.test(path))
+        )
+      : [...new Set(input.findings.map((finding) => finding.path))];
 
   return paths.length === 0 && input.oneWayCommits.length === 0
     ? Revertible.make({})
@@ -288,6 +313,169 @@ export interface Git {
 const nonEmptyLines = (text: string) =>
   text.split("\n").filter((line) => line.length > 0);
 
+const resolveCommit = (git: Git, ref: string) =>
+  git
+    .run(["rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`])
+    .pipe(Effect.map((out) => out.trim()));
+
+const oneWayRange = Effect.fn("ShipJudge.oneWayRange")(function* oneWayRange(
+  git: Git,
+  range: string
+) {
+  const match =
+    /^(?<base>[A-Za-z0-9_][A-Za-z0-9_./~^-]*)\.\.(?<head>[A-Za-z0-9_][A-Za-z0-9_./~^-]*)$/u.exec(
+      range
+    );
+
+  const baseRef = match?.groups?.base;
+  const headRef = match?.groups?.head;
+
+  if (baseRef === undefined || headRef === undefined) {
+    return yield* new JudgeError({ reason: "Expected <base>..<sha>" });
+  }
+
+  const base = yield* resolveCommit(git, baseRef);
+  const head = yield* resolveCommit(git, headRef);
+  const ancestor = (yield* git.run(["merge-base", base, head])).trim();
+
+  if (ancestor !== base) {
+    return yield* new JudgeError({
+      reason: "Base must be an ancestor of head",
+    });
+  }
+
+  return { base, head };
+});
+
+const diffClassification = Effect.fn("ShipJudge.diffClassification")(
+  function* diffClassification(git: Git, base: string, head: string) {
+    const range = `${base}..${head}`;
+
+    const text = yield* git.run([
+      "-c",
+      "core.quotePath=true",
+      "diff",
+      "-U0",
+      "--no-renames",
+      "--no-ext-diff",
+      "--no-textconv",
+      range,
+      "--",
+    ]);
+
+    const parsed = yield* Effect.try({
+      catch: () => new JudgeError({ reason: "Malformed unified diff" }),
+      try: () => parseUnifiedDiff(text),
+    });
+
+    const paths = (yield* git.run([
+      "diff",
+      "--name-only",
+      "-z",
+      "--no-renames",
+      range,
+      "--",
+    ]))
+      .split("\0")
+      .filter((path) => path.length > 0);
+
+    const files: FileDiff[] = [];
+
+    for (const file of parsed) {
+      if (/^lexicons\/.*\.json$/u.test(file.path)) {
+        files.push({
+          ...file,
+          after:
+            file.newPath === null
+              ? null
+              : yield* git.run(["show", `${head}:${file.newPath}`]),
+          before:
+            file.oldPath === null
+              ? null
+              : yield* git.run(["show", `${base}:${file.oldPath}`]),
+        });
+      } else {
+        files.push(file);
+      }
+    }
+
+    const classified = classifyOneWay(files);
+
+    const unseen: Finding[] = paths
+      .filter(
+        (path) =>
+          fallbackPath(path) && !parsed.some((file) => file.path === path)
+      )
+      .map((path) => ({
+        detail: "unparsed contract or storage diff",
+        kind: "path",
+        path,
+      }));
+
+    return {
+      findings: [...classified.findings, ...unseen],
+      info: classified.info,
+    } satisfies Classification;
+  }
+);
+
+const trailerFor = (git: Git, sha: string) =>
+  git
+    .run([
+      "show",
+      "-s",
+      "--format=%(trailers:key=One-way,valueonly,separator=%x3B,unfold)",
+      sha,
+    ])
+    .pipe(Effect.map((out) => out.trim()));
+
+const declaredClassification = (
+  classification: Classification,
+  trailer: string
+): Classification => ({
+  findings:
+    trailer.length === 0
+      ? classification.findings
+      : [
+          ...classification.findings,
+          { detail: "explicit One-way trailer", kind: "path", path: "" },
+        ],
+  info: classification.info,
+});
+
+export const inspectOneWay = Effect.fn("ShipJudge.inspectOneWay")(
+  function* inspectOneWay(git: Git, range: string) {
+    const { base, head } = yield* oneWayRange(git, range);
+    const mergeTrailer = yield* trailerFor(git, head);
+
+    const aggregate = declaredClassification(
+      yield* diffClassification(git, base, head),
+      mergeTrailer
+    );
+
+    const commits: CommitClassification[] = [];
+
+    const revisions = nonEmptyLines(
+      yield* git.run(["rev-list", "--no-merges", `${base}..${head}`])
+    );
+
+    for (const sha of revisions) {
+      const parent = yield* resolveCommit(git, `${sha}^`);
+      const trailer = yield* trailerFor(git, sha);
+      commits.push({
+        ...declaredClassification(
+          yield* diffClassification(git, parent, sha),
+          trailer
+        ),
+        sha,
+        trailer,
+      });
+    }
+
+    return { answer: oneWayAnswer(aggregate, commits, mergeTrailer), commits };
+  }
+);
+
 export const revertibility = Effect.fn("ShipJudge.revertibility")(
   function* revertibility(git: Git, range: string) {
     const match = /^(?<base>[^.\s]+)\.\.(?<sha>[0-9a-f]{40})$/u.exec(range);
@@ -300,12 +488,7 @@ export const revertibility = Effect.fn("ShipJudge.revertibility")(
       });
     }
 
-    const resolve = (ref: string) =>
-      git
-        .run(["rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`])
-        .pipe(Effect.map((out) => out.trim()));
-
-    const tip = yield* resolve("HEAD");
+    const tip = yield* resolveCommit(git, "HEAD");
 
     const [, firstParent, ...otherParents] = (yield* git.run([
       "rev-list",
@@ -320,37 +503,69 @@ export const revertibility = Effect.fn("ShipJudge.revertibility")(
     if (
       tip !== sha ||
       otherParents.length === 0 ||
-      firstParent !== (yield* resolve(base))
+      firstParent !== (yield* resolveCommit(git, base))
     ) {
       return NotTipMerge.make({ sha, tip });
     }
 
-    const paths = nonEmptyLines(
-      yield* git.run([
-        "diff",
-        "--name-only",
-        "--no-renames",
-        `${firstParent}..${sha}`,
-      ])
-    );
+    const inspection = yield* inspectOneWay(git, `${firstParent}..${sha}`);
 
-    const trailers = nonEmptyLines(
-      yield* git.run([
-        "log",
-        "--format=%H%x09%(trailers:key=One-way,valueonly,separator=%x3B,unfold)",
-        `${firstParent}..${sha}`,
-      ])
-    );
-
-    const oneWayCommits = trailers.flatMap((line) => {
-      const [commit = "", value = ""] = line.split("\t");
-
-      return value.trim().length > 0 ? [commit] : [];
+    return classifyShip({
+      findings: Predicate.isTagged(inspection.answer, "OneWay")
+        ? inspection.answer.findings
+        : [],
+      oneWayCommits: inspection.commits
+        .filter(
+          (commit) =>
+            commit.findings.length > 0 || commit.trailer.trim().length > 0
+        )
+        .map((commit) => commit.sha),
+      paths: [],
     });
-
-    return classifyShip({ oneWayCommits, paths });
   }
 );
+
+const oneWayReplay = Effect.fn("ShipJudge.oneWayReplay")(function* oneWayReplay(
+  git: Git,
+  last: string
+) {
+  if (!/^[1-9]\d?$/u.test(last)) {
+    return yield* new JudgeError({
+      reason: "Expected --last between 1 and 99",
+    });
+  }
+
+  const main = yield* resolveCommit(git, "main");
+
+  const merges = nonEmptyLines(
+    yield* git.run([
+      "rev-list",
+      "--first-parent",
+      "--merges",
+      `--max-count=${last}`,
+      main,
+    ])
+  );
+
+  for (const sha of merges) {
+    const parent = yield* resolveCommit(git, `${sha}^1`);
+    const { answer } = yield* inspectOneWay(git, `${parent}..${sha}`);
+
+    const label = Predicate.isTagged(answer, "OneWay")
+      ? `OneWay ${answer.staged ? "staged" : "UNSTAGED"}`
+      : "TwoWay";
+
+    const kinds = Predicate.isTagged(answer, "OneWay")
+      ? [...new Set(answer.findings.map((finding) => finding.kind))]
+          .toSorted((left, right) => left.localeCompare(right))
+          .join(",")
+      : "";
+
+    yield* Console.log(`${sha.slice(0, 12)} ${label} ${kinds}`.trim());
+  }
+
+  return 0;
+});
 
 export const repositoryEnvironment = (
   environment: Readonly<Record<string, string | undefined>>
@@ -403,7 +618,7 @@ export const gitIn = Effect.fn("ShipJudge.gitIn")(function* gitIn(
 });
 
 const usageText =
-  "Usage: ship-judge --sha <40hex> --shipped-at <ISO> --input <traffic.jsonl> [--window-minutes 10] [--baseline-end <ISO>] [--health <health.json>] | ship-judge --revertible <base>..<sha> [--repo <dir>]";
+  "Usage: ship-judge --sha <40hex> --shipped-at <ISO> --input <traffic.jsonl> [--window-minutes 10] [--baseline-end <ISO>] [--health <health.json>] | ship-judge --revertible <base>..<sha> [--repo <dir>] | ship-judge --one-way <base>..<sha> [--repo <dir>] | ship-judge --one-way-replay --last 30 [--repo <dir>]";
 
 const parseFlags = (args: readonly string[], known: readonly string[]) => {
   const flags = new Map<string, string>();
@@ -427,6 +642,48 @@ const parseFlags = (args: readonly string[], known: readonly string[]) => {
 
   return flags;
 };
+
+const oneWayCommand = Effect.fn("ShipJudge.oneWayCommand")(
+  function* oneWayCommand(args: readonly string[]) {
+    if (args.includes("--one-way-replay")) {
+      const flags = parseFlags(
+        args.filter((arg) => arg !== "--one-way-replay"),
+        ["--last", "--repo"]
+      );
+
+      const last = flags?.get("--last");
+
+      if (
+        flags === null ||
+        last === undefined ||
+        args.filter((arg) => arg === "--one-way-replay").length !== 1
+      ) {
+        return yield* new JudgeError({ reason: usageText });
+      }
+
+      return yield* oneWayReplay(
+        yield* gitIn(flags.get("--repo") ?? "."),
+        last
+      );
+    }
+
+    const flags = parseFlags(args, ["--one-way", "--repo"]);
+    const range = flags?.get("--one-way");
+
+    if (flags === null || range === undefined) {
+      return yield* new JudgeError({ reason: usageText });
+    }
+
+    const { answer } = yield* inspectOneWay(
+      yield* gitIn(flags.get("--repo") ?? "."),
+      range
+    );
+
+    yield* Console.log(JSON.stringify(answer));
+
+    return oneWayExitCode(answer);
+  }
+);
 
 const Instant = Schema.String.check(
   Schema.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/u)
@@ -513,6 +770,10 @@ const refuse = (error: string, reason: string | null) =>
 
 export const shipJudgeCommand = (args: readonly string[]) =>
   Effect.gen(function* shipJudge() {
+    if (args.includes("--one-way") || args.includes("--one-way-replay")) {
+      return yield* oneWayCommand(args);
+    }
+
     if (args.includes("--revertible")) {
       const flags = parseFlags(args, ["--revertible", "--repo"]);
       const range = flags?.get("--revertible");
