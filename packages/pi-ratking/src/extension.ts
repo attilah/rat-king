@@ -860,7 +860,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
 
     const wakes = inbox({
       digest: (mails) => {
-        const accepted = flushWake(
+        flushWake(
           { events: pi.events, sendMessage: dispatch.send },
           {
             content: renderDigest(tool, mails, "wake"),
@@ -872,13 +872,6 @@ export const ratkingExtension = (options: ExtensionOptions) =>
           },
           mails.map((held) => held.id).join(":")
         );
-
-        if (accepted) {
-          for (const held of mails) {
-            wakes.shown(held.id);
-            consume(held.id);
-          }
-        }
       },
       show: (pending, deliverAs) => {
         dispatch.send(

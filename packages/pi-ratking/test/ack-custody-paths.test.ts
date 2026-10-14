@@ -85,6 +85,8 @@ const Offer = Schema.Struct({
   accept: Schema.declare((input): input is () => void =>
     Predicate.isFunction(input)
   ),
+  customType: Schema.String,
+  details: Schema.Unknown,
   id: Schema.String,
 });
 
@@ -99,6 +101,7 @@ const reader = (box: Mailbox, arbiter: Arbiter) =>
     let replay: readonly string[] = [];
     const sent: SentMessage[] = [];
     const offered: string[] = [];
+    const queued: SentMessage[] = [];
     const fs = yield* FileSystem.FileSystem;
     const clock = yield* Clock.Clock;
 
@@ -120,11 +123,15 @@ const reader = (box: Mailbox, arbiter: Arbiter) =>
       events: {
         emit: (event, request) => {
           if (event === "pi-until:follow-up") {
-            const { accept, id } = Schema.decodeUnknownSync(Offer)(request);
-            offered.push(id);
+            const offer = Schema.decodeUnknownSync(Offer)(request);
+            offered.push(offer.id);
 
             if (arbiter === "accept") {
-              accept();
+              offer.accept();
+              queued.push({
+                customType: offer.customType,
+                details: { followUpId: "follow-up", receipt: offer.details },
+              });
             }
           }
         },
@@ -193,7 +200,7 @@ const reader = (box: Mailbox, arbiter: Arbiter) =>
       });
 
     const display = () => {
-      for (const sentMessage of sent.splice(0)) {
+      for (const sentMessage of [...sent.splice(0), ...queued.splice(0)]) {
         for (const id of shownIds({ ...sentMessage, role: "custom" })) {
           shown(id);
         }
@@ -306,6 +313,9 @@ it.effect.prop(
         expect(r.offered).toHaveLength(1);
         expect(r.sent).toEqual([]);
         yield* r.settle;
+        expect(acksOf(box, ids)).toEqual(zeros(2));
+        r.display();
+        yield* r.settle;
         expect(acksOf(box, ids)).toEqual(ones(2));
         r.display();
         yield* r.settle;
@@ -333,11 +343,30 @@ it.effect(
       first.before();
       yield* first.postWake("a", "matched");
       yield* first.idle();
+      expect(first.offered).toHaveLength(1);
+      first.display();
+      yield* first.settle;
+
+      const second = yield* reader(box, "accept");
+
+      expect(second.replay()).toEqual([]);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer))
+);
+
+it.effect(
+  "a wake the arbiter accepted but never showed is redelivered to a fresh reader",
+  () =>
+    Effect.gen(function* quit() {
+      const box = mailbox();
+      const first = yield* reader(box, "accept");
+      first.before();
+      yield* first.postWake("a", "matched");
+      yield* first.idle();
       yield* first.settle;
       expect(first.offered).toHaveLength(1);
 
       const second = yield* reader(box, "accept");
 
-      expect(second.replay()).toEqual([]);
+      expect(second.replay()).toEqual(["a"]);
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer))
 );
