@@ -6,4 +6,7 @@ These are raw Git outputs, not reconstructed schemas. `.json.txt` keeps historic
 - `turn.diff`: `git show --format= -U0 --no-renames de38582 -- lexicons/sh/mschf/agentgraph/turn.json`. Its snapshot comes from `git show de38582:lexicons/sh/mschf/agentgraph/turn.json`.
 - `digest.diff`: `git show --format= --first-parent -U0 --no-renames 70b65a9 -- lexicons/sh/mschf/ratking/attention/prefs.json`. Its snapshots come from that path under `70b65a9^1` and `70b65a9`.
 
+- `retire-description.diff`: `git show --format= --first-parent -U0 --no-renames 4c1106d -- packages/pi-ratking/README.md packages/pi-ratking/src/extension.ts`. It retains the README prose and tool-description edit verbatim.
+- `retire-move.diff`: a zero-context slice of the deleted/added retire handler in `0dbce4f`, with no-renames path headers. Body lines are copied verbatim from `git show 0dbce4f^1:packages/pi-ratking/src/ratking.ts` (2188–2249) and `git show 0dbce4f:packages/ratking-client/src/ratking.ts` (2677–2738). The two 62-line bodies are byte-identical; only the hunk headers are narrowed to the retained slice.
+
 The history property checks the hydrated paths only: attention prefs and mailbox list, the turn record, and the optional digest addition. The CLI replay hydrates every changed lexicon from Git.

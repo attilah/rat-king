@@ -352,10 +352,120 @@ const numericFindings = (file: FileDiff): readonly Finding[] => {
   return findings;
 };
 
-const contentFindings = (file: FileDiff): readonly Finding[] => {
-  const findings = [...numericFindings(file)];
-  const added = file.added.join("\n");
-  const changed = [...file.added, ...file.removed].join("\n");
+interface CodeChanges {
+  readonly code: string;
+  readonly literals: readonly string[];
+}
+
+const normalizeLine = (line: string) => line.trim().replaceAll(/\s+/gu, " ");
+
+const codeChanges = (
+  file: FileDiff,
+  removed: ReadonlySet<string>
+): CodeChanges => {
+  const literals: string[] = [];
+
+  const masked = file.added
+    .join("\n")
+    .replaceAll(
+      /"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|`(?:\\[\s\S]|[^`\\])*`|\/\/[^\n]*|\/\*[\s\S]*?\*\//gu,
+      (token) => {
+        const newlines = token.match(/\n/gu)?.length ?? 0;
+
+        if (token.startsWith("/")) {
+          return ` ${"\n".repeat(newlines)}`;
+        }
+
+        const index = literals.length;
+        literals.push(token.slice(1, -1));
+
+        return `__one_way_literal_${index}__${"\n".repeat(newlines)}`;
+      }
+    );
+
+  const lineComment = file.path.endsWith(".sql") ? /--[^\n]*/gu : /#[^\n]*/gu;
+
+  const uncommented = /\.(?:sql|sh|py)$/u.test(file.path)
+    ? masked.replaceAll(lineComment, "")
+    : masked;
+
+  const code = uncommented
+    .split("\n")
+    .map((line, index) =>
+      removed.has(normalizeLine(file.added[index] ?? "")) ? "" : line
+    )
+    .join("\n");
+
+  return { code, literals };
+};
+
+const callLiteral = (changes: CodeChanges, calls: RegExp, content: RegExp) =>
+  [...changes.code.matchAll(calls)].some((match) =>
+    content.test(changes.literals[Number(match.groups?.index)] ?? "")
+  );
+
+const sqlDeletion = (file: FileDiff, changes: CodeChanges) => {
+  const operation = /\bDELETE\s+FROM\b|\bDROP\s+TABLE\b/iu;
+
+  return (
+    (file.path.endsWith(".sql") && operation.test(changes.code)) ||
+    callLiteral(
+      changes,
+      /\b(?:exec|execute|query|run)\s*\(\s*__one_way_literal_(?<index>\d+)__/gu,
+      operation
+    )
+  );
+};
+
+const retirement = (changes: CodeChanges) => {
+  const code = changes.code.replaceAll(
+    /\bfunction\s*\*?\s+retire\s*\(/gu,
+    "function retirementDefinition("
+  );
+
+  return (
+    /\bretire\s*\(|\bmailbox\.retire\b|\bratking\s+retire\b|\b(?:node|bun|tsx)\s+(?:[^\s]+\/)?retire\.ts\b|\bretire\s*:\s*Effect\.fn\s*\(/u.test(
+      code
+    ) ||
+    callLiteral(
+      changes,
+      /\b(?:Command\.make|Match\.when|command)\s*\(\s*__one_way_literal_(?<index>\d+)__/gu,
+      /^retire(?:\s|$)/u
+    ) ||
+    callLiteral(
+      changes,
+      /__one_way_literal_(?<index>\d+)__\s*\]\s*\(/gu,
+      /^retire$/u
+    ) ||
+    callLiteral(
+      changes,
+      /\b(?:node|bun|tsx)\s+__one_way_literal_(?<index>\d+)__/gu,
+      /(?:^|\/)retire\.ts$/u
+    ) ||
+    callLiteral(
+      changes,
+      /\b(?:exec|execSync|execute|run)\s*\(\s*__one_way_literal_(?<index>\d+)__/gu,
+      /\bratking\s+retire\b|\b(?:node|bun|tsx)\s+[^\s]*\/retire\.ts\b/u
+    )
+  );
+};
+
+const contentFindings = (
+  file: FileDiff,
+  removed: ReadonlySet<string>,
+  added: ReadonlySet<string>
+): readonly Finding[] => {
+  const netAdded = file.added.filter(
+    (line) => !removed.has(normalizeLine(line))
+  );
+
+  const netRemoved = file.removed.filter(
+    (line) => !added.has(normalizeLine(line))
+  );
+
+  const findings = [...numericFindings({ ...file, added: netAdded })];
+  const changes = codeChanges(file, removed);
+  const changed = [...netAdded, ...netRemoved].join("\n");
 
   const add = (kind: FindingKind, detail: string) => {
     findings.push({ detail, kind, path: file.path });
@@ -384,27 +494,23 @@ const contentFindings = (file: FileDiff): readonly Finding[] => {
 
   if (
     sourcePath(file.path) &&
-    /\bDELETE\s+FROM\b|\bDROP\s+TABLE\b|\.deleteAll\s*\(|\bstorage\.delete\s*\(/iu.test(
-      added
-    )
+    (/\.deleteAll\s*\(|\bstorage\.delete\s*\(/u.test(changes.code) ||
+      sqlDeletion(file, changes))
   ) {
     add("data-delete", "destructive storage operation added");
   }
 
-  if (
-    sourcePath(file.path) &&
-    (/\bretire\s*\(|\bmailbox\.retire\b|\bratking\s+retire\b/u.test(added) ||
-      (file.path === "apps/mailbox/cli/retire.ts" && added.length > 0))
-  ) {
+  if (sourcePath(file.path) && retirement(changes)) {
     add("name-retirement", "name retirement operation added");
   }
 
   if (
+    sourcePath(file.path) &&
     /(?:^apps\/mailbox\/cli\/(?:identity|secrets)\.ts$|^packages\/envelope\/|(?:^|\/)register-document\.ts$|(?:identity|keys?|secrets?)[^/]*rotat)/iu.test(
       file.path
     ) &&
     /\bverificationMethod\s*[:=]|\b(?:writeFile|writeFileString|generateKeyPair|generateKey|putSecret|setSecret)\s*\(/u.test(
-      added
+      changes.code
     )
   ) {
     add("key-rotation", "key write or verificationMethod replacement added");
@@ -417,9 +523,20 @@ export const classifyOneWay = (diff: readonly FileDiff[]): Classification => {
   const findings: Finding[] = [];
   const info: Information[] = [];
 
+  const removed = new Set(
+    diff.flatMap((file) => file.removed.map(normalizeLine))
+  );
+
+  const added = new Set(diff.flatMap((file) => file.added.map(normalizeLine)));
+
   for (const file of diff) {
     const lexicon = lexiconClassification(file);
-    const content = [...contentFindings(file), ...(lexicon?.findings ?? [])];
+
+    const content = [
+      ...contentFindings(file, removed, added),
+      ...(lexicon?.findings ?? []),
+    ];
+
     findings.push(...content);
     info.push(...(lexicon?.info ?? []));
 
