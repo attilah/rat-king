@@ -82,8 +82,10 @@ import {
   readerFooter,
   runAction,
   ToolParams,
+  toolProgress,
+  withToolLiveness,
 } from "./tool.ts";
-import type { ToolText } from "./tool.ts";
+import type { ToolProgressParams, ToolText } from "./tool.ts";
 import type { Labels } from "./tui.ts";
 import { stopReason, turnReporter } from "./turn-record.ts";
 import type { TurnReporter } from "./turn-record.ts";
@@ -322,6 +324,16 @@ const toolResult = (result: ToolText) => {
   return result.isError
     ? { content, details: result.details, isError: true as const }
     : { content, details: result.details };
+};
+
+export const executeToolWithLiveness = async (
+  params: ToolProgressParams,
+  action: Effect.Effect<ToolText>,
+  update: (progress: ToolText) => void
+): Promise<ToolText> => {
+  update(toolProgress(params));
+
+  return await Effect.runPromise(withToolLiveness(params, action, update));
 };
 
 type Services = Layer.Success<typeof appLayer>;
@@ -1165,48 +1177,59 @@ export const ratkingExtension = (options: ExtensionOptions) =>
 
     pi.registerTool({
       description: description(tool),
-      execute: async (_id, params, signal) => {
-        const result = await run(
-          Effect.gen(function* execute() {
-            const decoded =
-              yield* Schema.decodeUnknownEffect(ToolParams)(params);
+      execute: async (_id, params, signal, onUpdate) => {
+        const update = (progress: ToolText) => onUpdate?.(toolResult(progress));
 
-            const settings = yield* Settings;
-            const status = yield* RatKing.use((ratking) => ratking.status);
-            ownName = Option.getOrUndefined(
-              status.self.pipe(Option.map((self) => self.name))
+        const result = await executeToolWithLiveness(
+          params,
+          Effect.promise(async () => {
+            const outcome = await run(
+              Effect.gen(function* execute() {
+                const decoded =
+                  yield* Schema.decodeUnknownEffect(ToolParams)(params);
+
+                const settings = yield* Settings;
+
+                const status = yield* RatKing.use((ratking) => ratking.status);
+
+                ownName = Option.getOrUndefined(
+                  status.self.pipe(Option.map((self) => self.name))
+                );
+
+                return yield* withTurnWait(
+                  turns,
+                  decoded,
+                  runAction(tool, settings.askTimeoutMs, decoded)
+                );
+              }).pipe(
+                Effect.orElseSucceed((): ToolText => ({
+                  details: { error: true },
+                  isError: true,
+                  text: "Invalid Rat King tool parameters",
+                }))
+              ),
+              (reason) => notConfiguredText(new NotConfigured({ reason })),
+              signal
             );
 
-            return yield* withTurnWait(
-              turns,
-              decoded,
-              runAction(tool, settings.askTimeoutMs, decoded)
-            );
-          }).pipe(
-            Effect.orElseSucceed((): ToolText => ({
-              details: { error: true },
-              isError: true,
-              text: "Invalid Rat King tool parameters",
-            })),
-            Effect.map(toolResult)
-          ),
-          (reason) =>
-            toolResult(notConfiguredText(new NotConfigured({ reason }))),
-          signal
+            if (
+              !outcome.isError &&
+              Schema.is(Schema.Struct({ retired: Schema.Literal(true) }))(
+                outcome.details
+              )
+            ) {
+              retired = true;
+              await stop();
+            }
+
+            return outcome;
+          }),
+          update
         );
 
-        if (
-          !("isError" in result) &&
-          Schema.is(Schema.Struct({ retired: Schema.Literal(true) }))(
-            result.details
-          )
-        ) {
-          retired = true;
-          await stop();
-        }
-
-        return result;
+        return toolResult(result);
       },
+      executionMode: "parallel",
       label: "🐀",
       name: tool,
       parameters,
