@@ -176,12 +176,8 @@ it.effect.prop(
           const rendered = lines.join("\n");
 
           expect(rendered.split("pong")).toHaveLength(2);
-          expect(lines[0]).toContain(
-            sample.expanded
-              ? "💬 desk (sample/sample-desk)".slice(0, 12)
-              : "💬 desk"
-          );
-          expect(lines.at(-1)).not.toContain("↩");
+          expect(lines[0]).toContain("💬 desk");
+          expect(rendered.replaceAll(/\s/gu, "")).toContain("↩3replyabcdef");
           expect(rendered).not.toContain("✓");
           expect(value.body).toBe(body);
         }

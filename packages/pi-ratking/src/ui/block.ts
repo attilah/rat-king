@@ -1,5 +1,10 @@
-import { visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import {
+  truncateToWidth,
+  visibleWidth,
+  wrapTextWithAnsi,
+} from "@earendil-works/pi-tui";
 
+import { terminalStyles } from "./text.ts";
 import type { Paint } from "./text.ts";
 
 export const GUTTER = 4;
@@ -21,6 +26,10 @@ export const Block = ({
   theme,
   width,
 }: BlockProps): readonly string[] => {
+  if (width <= 0) {
+    return [];
+  }
+
   const room = Math.max(1, width - GUTTER);
 
   const content = (
@@ -40,5 +49,5 @@ export const Block = ({
 
           return `${mark}${" ".repeat(Math.max(0, GUTTER - visibleWidth(mark)))}${line}`;
         })),
-  ];
+  ].map((line) => terminalStyles(truncateToWidth(line, width, "…")));
 };

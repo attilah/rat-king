@@ -59,11 +59,11 @@ export const Verdicts = Data.taggedEnum<Verdict>();
 const senderOf = (arrival: Arrival) =>
   arrival.sender ?? (arrival.verified === true ? arrival.from : undefined);
 
-const isJoel = (arrival: Arrival) =>
+export const isOperator = (arrival: Arrival) =>
   senderOf(arrival) === "joel" || senderOf(arrival) === "operator";
 
 const joelVerdict = (arrival: Arrival, levers: Levers): Verdict | undefined =>
-  levers.enabled === true && isJoel(arrival)
+  levers.enabled === true && isOperator(arrival)
     ? Verdicts.Now({ reason: Reasons.joel({ facts: ["to"] }) })
     : undefined;
 

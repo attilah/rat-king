@@ -201,13 +201,15 @@ it.effect.prop(
       expect(collapsed).not.toContain("intercom");
       expect(collapsed).not.toContain("To reply:");
       expect(collapsed).not.toContain(COPY_NOTE);
-      expect(collapsed).toContain("🔮 Merlin · Desk");
+      expect(collapsed).toContain("🔮 Merlin");
       expect(collapsed).not.toContain("Desk peer");
       expect(expanded).toContain(hint);
       expect(content).toContain(hint);
 
       if (sample.cc) {
-        expect(collapsed).toContain("🐀 cc from");
+        expect(collapsed).toContain(
+          sample.kind === "reply" ? "🐀↩ from" : "🐀⋯ from"
+        );
         expect(collapsed.includes("quiet")).toBe(sample.kind !== "ask");
 
         if (sample.kind !== "ask") {
@@ -282,16 +284,10 @@ it.effect.prop(
         expect(view).not.toMatch(
           /Rat King (?:send|ask|reply|status|cc|record|message)|🐀 Rat King/u
         );
-        expect(view).toContain(
-          expanded ? "🔮 Merlin · Desk (peer)" : "🔮 Merlin · Desk"
-        );
+        expect(view).toContain("🔮 Merlin");
       }
 
-      expect(digest).toContain(
-        expanded
-          ? "🔮 Merlin · Desk (peer) · Gate ready"
-          : "🔮 Merlin · Desk · Gate ready"
-      );
+      expect(digest).toContain("🔮 Merlin · Gate ready");
       expect(digest.includes("intercom")).toBe(expanded);
       expect(copy).not.toContain("intercom");
       expect(notice).not.toContain("intercom");

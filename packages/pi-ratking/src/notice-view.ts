@@ -1,39 +1,36 @@
 import type { Component } from "@earendil-works/pi-tui";
-import { truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { truncateToWidth } from "@earendil-works/pi-tui";
 import { DeliveryReason } from "@rat-king/ratking-client/delivery";
 import { Option, Schema } from "effect";
 
 import { messageView } from "./message-view.ts";
 import { digestLabel } from "./pending.ts";
 import {
-  FRAME_MIN,
-  clip,
-  frame,
   noLabels,
   oneLine,
   paragraphs,
   recordType,
-  short,
   terminalStyles,
 } from "./tui.ts";
 import type { Labels, Paint } from "./tui.ts";
-import { Box } from "./ui/box.ts";
-import { Fold } from "./ui/fold.ts";
-import { Header } from "./ui/header.ts";
+import { Block, GUTTER } from "./ui/block.ts";
+import { BRAND } from "./ui/brand.ts";
+import { mailParty } from "./ui/mail-party.ts";
 import { Party } from "./ui/party.ts";
-import { ShortId } from "./ui/short-id.ts";
-import { Text } from "./ui/text.ts";
 
 const PartyDetails = Schema.Struct({
   body: Schema.optional(Schema.String),
   from: Schema.String,
   id: Schema.optional(Schema.String),
+  kind: Schema.optional(Schema.Literals(["message", "ask", "reply", "data"])),
   label: Schema.optional(Schema.String),
   replyTo: Schema.optional(Schema.String),
   summary: Schema.optional(Schema.String),
+  verified: Schema.optional(Schema.Boolean),
 });
 
 const DigestDetails = Schema.Struct({
+  ids: Schema.optional(Schema.Array(Schema.String)),
   messages: Schema.Array(Schema.Unknown),
   reason: Schema.optional(DeliveryReason),
   variant: Schema.optional(Schema.Literal("wake")),
@@ -80,13 +77,16 @@ interface DigestEntry {
   readonly value: typeof PartyDetails.Type;
 }
 
-const threaded = (messages: readonly unknown[]): readonly DigestEntry[] => {
-  const entries = messages.flatMap((details) =>
+const entriesOf = (messages: readonly unknown[]): readonly DigestEntry[] =>
+  messages.flatMap((details) =>
     Option.match(Schema.decodeUnknownOption(PartyDetails)(details), {
       onNone: () => [],
       onSome: (value) => [{ depth: 0, details, value }],
     })
   );
+
+const threaded = (messages: readonly unknown[]): readonly DigestEntry[] => {
+  const entries = entriesOf(messages);
 
   const ids = new Set(
     entries.flatMap((entry) =>
@@ -129,164 +129,136 @@ const threaded = (messages: readonly unknown[]): readonly DigestEntry[] => {
   return ordered;
 };
 
-const wakeLines = (
-  input: NoticeInput,
-  messages: readonly unknown[],
-  width: number
-): readonly string[] => {
-  const labels = input.labels ?? noLabels;
-  const entries = threaded(messages);
+const row = (entry: DigestEntry, input: NoticeInput, width: number): string => {
+  const { value } = entry;
 
-  const typedWake = Option.match(
-    Schema.decodeUnknownOption(DigestDetails)(input.details),
-    {
-      onNone: () => false,
-      onSome: (value) => value.reason?.facts.includes("wake") === true,
-    }
-  );
-
-  const header = Header({
-    facts: [String(messages.length)],
+  const name = Party({
+    label: mailParty({
+      from: value.from,
+      kind: value.kind ?? "message",
+      label: value.label ?? (input.labels ?? noLabels)(value.from),
+      verified: value.verified,
+    }),
+    name: value.from,
     theme: input.theme,
-    variant: "digest",
-    verb: typedWake ? "wake" : "while you were away",
   });
 
-  const rows = entries.map(({ depth, value }) =>
-    Text({
-      suffix: input.theme.fg(
-        "dim",
-        ` · ${ShortId({ id: value.id ?? "unknown" })}`
-      ),
-      text: `${"  ".repeat(Math.min(depth, 3))}${Party({ label: value.label ?? labels(value.from), name: value.from, theme: input.theme })}${input.theme.fg("dim", ` · ${oneLine(value.summary ?? value.body ?? "message")}`)}`,
-      width,
-    })
+  return truncateToWidth(
+    `${"  ".repeat(Math.min(entry.depth, 3))}${name} · ${oneLine(value.summary ?? value.body ?? "message")}`,
+    Math.max(1, width - GUTTER),
+    "…"
   );
+};
 
-  if (!input.expanded) {
-    return [
-      header,
-      ...(typedWake ? rows : rows.slice(0, 8)),
-      ...(!typedWake && rows.length > 8
-        ? [input.theme.fg("dim", `+${rows.length - 8} more`)]
-        : []),
-      input.theme.fg("dim", "ctrl+o expands"),
-    ];
+const digestVerb = (value: typeof DigestDetails.Type | undefined): string => {
+  if (value?.variant === "wake") {
+    return value.reason?.facts.includes("wake") === true
+      ? "wake"
+      : "while you were away";
   }
 
-  return [
-    header,
-    ...entries.flatMap(
-      ({ details, value }) =>
-        messageView({
-          details,
-          expanded: true,
-          labels,
-          theme: input.theme,
-          tool: input.tool ?? "ratking",
-        })?.render(width) ?? paragraphs(value.body ?? "", width)
-    ),
-  ];
+  return digestLabel(value?.reason);
 };
+
+const digestEntries = (
+  value: typeof DigestDetails.Type
+): readonly DigestEntry[] =>
+  value.variant === "wake"
+    ? threaded(value.messages)
+    : entriesOf(value.messages);
 
 export const digestView = (input: NoticeInput): Component =>
   component((width) => {
-    const labels = input.labels ?? noLabels;
     const decoded = Schema.decodeUnknownOption(DigestDetails)(input.details);
 
-    if (Option.isSome(decoded) && decoded.value.variant === "wake") {
-      return wakeLines(input, decoded.value.messages, width);
-    }
+    const entries = Option.isSome(decoded) ? digestEntries(decoded.value) : [];
 
-    const entries = Option.match(decoded, {
-      onNone: () =>
-        input.content.split("\n").filter((line) => line.startsWith("- ")),
-      onSome: ({ messages }) =>
-        messages.flatMap((details) =>
-          Option.match(Schema.decodeUnknownOption(PartyDetails)(details), {
-            onNone: () => [],
-            onSome: (value) =>
-              wrapTextWithAnsi(
-                `${Party({ label: value.label ?? labels(value.from), name: value.from, theme: input.theme, variant: input.expanded ? "expanded" : "collapsed" })} · ${oneLine(value.summary ?? value.body ?? "message").slice(0, 160)}`,
-                width
-              ),
-          })
-        ),
-    });
+    const rows = Option.isSome(decoded)
+      ? entries.map((entry) => row(entry, input, width))
+      : input.content
+          .split("\n")
+          .filter((line) => line.startsWith("- "))
+          .map(oneLine);
 
-    const hints = input.expanded
-      ? paragraphs(
-          input.content
-            .split("\n")
-            .filter((line) => !line.startsWith("- "))
-            .slice(1)
-            .join("\n"),
-          width
-        ).map((line) => input.theme.fg("dim", line))
+    const count = Option.isSome(decoded)
+      ? decoded.value.messages.length
+      : rows.length;
+
+    const ids = Option.isSome(decoded)
+      ? (decoded.value.ids ??
+        entries.flatMap(({ value }) =>
+          value.id === undefined ? [] : [value.id]
+        ))
       : [];
 
-    const count = Option.match(decoded, {
-      onNone: () => entries.length,
-      onSome: ({ messages }) => messages.length,
-    });
+    const verb = digestVerb(Option.getOrUndefined(decoded));
 
-    const header = Header({
-      facts: [String(count)],
+    const hints =
+      input.expanded &&
+      Option.isSome(decoded) &&
+      decoded.value.variant !== "wake"
+        ? paragraphs(
+            input.content
+              .split("\n")
+              .filter((line) => !line.startsWith("- "))
+              .slice(1)
+              .join("\n"),
+            Math.max(1, width - GUTTER)
+          ).map((line) => input.theme.fg("dim", line))
+        : [];
+
+    const header = Block({
+      body: [...rows, ...hints],
+      footer: `${count} messages · ids ${ids.map(oneLine).join(", ")}${input.expanded ? "" : " · ctrl+o expands"}`,
+      glyph: `${BRAND}⋯`,
+      headline: `${verb} · ${count}`,
       theme: input.theme,
-      variant: "digest",
-      verb: digestLabel(
-        Option.isSome(decoded) ? decoded.value.reason : undefined
-      ),
+      width,
     });
 
-    const body = Fold({
-      collapsed: () => clip(input.theme, entries, 2, width),
-      expanded: input.expanded,
-      full: () => [...entries, ...hints],
-    });
-
-    return [header, ...body];
+    return input.expanded &&
+      Option.isSome(decoded) &&
+      decoded.value.variant === "wake"
+      ? [
+          ...header,
+          ...entries.flatMap(
+            ({ details, value }) =>
+              messageView({
+                details,
+                expanded: true,
+                labels: input.labels ?? noLabels,
+                theme: input.theme,
+                tool: input.tool ?? "ratking",
+              })?.render(width) ??
+              Block({
+                body: paragraphs(value.body ?? "", Math.max(1, width - GUTTER)),
+                glyph: BRAND,
+                headline: `from ${oneLine(value.from)}`,
+                theme: input.theme,
+                width,
+              })
+          ),
+        ]
+      : header;
   });
 
 export const recordView = (input: NoticeInput): Component =>
   component((width) => {
-    const labels = input.labels ?? noLabels;
     const value = Schema.decodeUnknownOption(PartyDetails)(input.details);
 
-    const sender = Option.match(value, {
-      onNone: () => "",
-      onSome: (details) =>
-        ` from ${Party({ label: details.label ?? labels(details.from), name: details.from, theme: input.theme, variant: input.expanded ? "expanded" : "collapsed" })}`,
+    const sender = Option.isSome(value)
+      ? ` from ${mailParty({ ...value.value, kind: "data" })}`
+      : "";
+
+    return Block({
+      body: paragraphs(
+        input.expanded ? input.content : "Not rendered by this reader",
+        Math.max(1, width - GUTTER)
+      ),
+      footer: `${Option.isSome(value) && value.value.id !== undefined ? `id ${oneLine(value.value.id)} · ` : ""}${input.expanded ? "" : "ctrl+o expands"}`,
+      glyph: BRAND,
+      headline: `record ${recordType(input.content)}${sender}`,
+      theme: input.theme,
+      width,
     });
-
-    const header = `${Header({ theme: input.theme, variant: "record", verb: `record ${recordType(input.content)}` })}${sender}`;
-    const box = frame(input.theme, width, "borderMuted");
-    const inner = width < FRAME_MIN ? width : box.inner;
-
-    const body = paragraphs(
-      input.expanded ? input.content : "Not rendered by this reader",
-      inner
-    ).map((line) => input.theme.fg("dim", line));
-
-    const id = Option.match(value, {
-      onNone: () => "",
-      onSome: (details) =>
-        details.id === undefined
-          ? ""
-          : `${input.expanded ? oneLine(details.id) : short(details.id)} · `,
-    });
-
-    return width < FRAME_MIN
-      ? [header, ...body]
-      : Box({
-          body,
-          border: "borderMuted",
-          footer: input.theme.fg(
-            "dim",
-            `${id}${input.expanded ? "" : "ctrl+o expands"}`
-          ),
-          header,
-          theme: input.theme,
-          width,
-        });
   });

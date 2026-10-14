@@ -1,7 +1,8 @@
 import type { Component } from "@earendil-works/pi-tui";
-import { truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { truncateToWidth } from "@earendil-works/pi-tui";
+import { Turn } from "@rat-king/lexicon/turns";
 import { compactRecord } from "@rat-king/ratking-client/agentgraph";
-import { formatReason, reasonTone } from "@rat-king/ratking-client/attend";
+import { formatReason, isOperator } from "@rat-king/ratking-client/attend";
 import {
   DeliveryReason,
   storedReason,
@@ -16,25 +17,18 @@ import type { Inbound } from "@rat-king/ratking-client/payload";
 import { Match, Option, Schema } from "effect";
 
 import {
-  FRAME_MIN,
   clean,
   clip,
-  frame,
+  noLabels,
   oneLine,
   paragraphs,
-  party,
-  noLabels,
-  recordType,
-  short,
   terminalStyles,
 } from "./tui.ts";
 import type { Labels, Paint } from "./tui.ts";
-import { Box } from "./ui/box.ts";
-import { Fold } from "./ui/fold.ts";
-import { Footer } from "./ui/footer.ts";
-import { Header } from "./ui/header.ts";
+import { Block, GUTTER } from "./ui/block.ts";
+import { BRAND } from "./ui/brand.ts";
+import { mailParty } from "./ui/mail-party.ts";
 import { Party } from "./ui/party.ts";
-import { Tag } from "./ui/tag.ts";
 
 const Details = Schema.Struct({
   body: Schema.String,
@@ -59,260 +53,89 @@ export type InboundView = typeof Details.Type;
 
 export const COMPACT_LINES = 4;
 
-const border = (value: InboundView) => {
-  if (!value.verified) {
-    return "warning";
+export interface InboundInput {
+  readonly expanded: boolean;
+  readonly labels?: Labels;
+  readonly theme: Paint;
+  readonly tool: string;
+  readonly value: InboundView;
+  readonly width: number;
+}
+
+export interface MessageInput {
+  readonly details: unknown;
+  readonly expanded: boolean;
+  readonly labels?: Labels;
+  readonly theme: Paint;
+  readonly tool: string;
+}
+
+const deliveryStatus = (value: InboundView): string => {
+  if (value.kind === "ask") {
+    return "ask";
   }
 
-  return value.sentBy === undefined ? "borderMuted" : "dim";
+  if (value.kind === "reply") {
+    return "reply";
+  }
+
+  return value.cc ? "cc" : "to";
 };
 
-const actionOf = (value: InboundView) => {
+const defaultReason = (value: InboundView): string => {
+  if (value.cc && value.kind !== "ask") {
+    return "quiet: cc";
+  }
+
+  return `woken: ${deliveryStatus(value)}`;
+};
+
+const reasonText = (value: InboundView): string => {
+  const reason = storedReason(value.reason);
+
+  return reason === undefined
+    ? Match.value(value.reason).pipe(
+        Match.when(Match.string, oneLine),
+        Match.orElse(() => defaultReason(value))
+      )
+    : formatReason(reason);
+};
+
+const footer = (value: InboundView, expanded: boolean): string =>
+  [
+    `id ${oneLine(value.id)}`,
+    reasonText(value),
+    value.relay === undefined ? undefined : `via ${oneLine(value.relay.name)}`,
+    value.relay?.encrypted === true ? "encrypted" : undefined,
+    value.verified ? undefined : `unverified sender ${oneLine(value.did)}`,
+    value.replyTo === undefined ? undefined : `↩ ${oneLine(value.replyTo)}`,
+    value.sentBy === undefined ? undefined : `sent by ${oneLine(value.sentBy)}`,
+    value.ccNames === undefined
+      ? undefined
+      : `cc ${value.ccNames.map(oneLine).join(", ")}`,
+    value.thread === undefined ? undefined : `thread ${oneLine(value.thread)}`,
+    expanded ? undefined : "ctrl+o expands",
+  ]
+    .filter((part) => part !== undefined)
+    .join(" · ");
+
+const hints = (value: InboundView, tool: string): readonly string[] => {
   if (value.sentBy !== undefined) {
-    return "sent to";
-  }
-
-  if (value.cc) {
-    return "cc from";
-  }
-
-  if (value.kind === "message") {
-    return "from";
-  }
-
-  return `${value.kind === "data" ? `record ${recordType(value.body)}` : value.kind} from`;
-};
-
-const sender = (
-  theme: Paint,
-  value: InboundView,
-  expanded: boolean,
-  labels: Labels = noLabels
-) => {
-  const mark = value.verified ? "" : `${theme.fg("warning", "⚠")} `;
-
-  const name =
-    value.sentBy === undefined ? value.from : (value.to ?? "unknown");
-
-  const label =
-    value.sentBy === undefined ? (value.label ?? labels(name)) : labels(name);
-
-  const action = actionOf(value);
-
-  const reply =
-    value.kind === "reply" && value.replyTo !== undefined
-      ? theme.fg(
-          "muted",
-          ` · ↩ ${expanded ? oneLine(value.replyTo) : short(value.replyTo)}`
-        )
-      : "";
-
-  return `${mark}${Header({ party: Party({ label, name, theme, variant: expanded ? "expanded" : "collapsed" }), theme, variant: "inbound", verb: action })}${!expanded && value.summary !== undefined ? theme.fg("dim", ` · ${oneLine(value.summary)}`) : ""}${reply}`;
-};
-
-const senderLine = (
-  theme: Paint,
-  value: InboundView,
-  withName: boolean,
-  width: number,
-  labels: Labels = noLabels
-) =>
-  !value.verified && width < 3
-    ? theme.fg("warning", "⚠")
-    : truncateToWidth(sender(theme, value, withName, labels), width, "…");
-
-const reasonText = (value: NonNullable<InboundView["reason"]>): string =>
-  Match.value(value).pipe(
-    Match.when(Match.string, (text) => {
-      const reason = storedReason(text);
-
-      return reason === undefined ? text : formatReason(reason);
-    }),
-    Match.orElse(formatReason)
-  );
-
-const copyNotice = (value: InboundView): boolean => {
-  const reason = storedReason(value.reason);
-
-  return value.cc && reason !== undefined && reasonTone(reason) !== "woken";
-};
-
-const tag = (theme: Paint, value: InboundView) => {
-  const reason = storedReason(value.reason);
-  const tone = reason === undefined ? undefined : reasonTone(reason);
-  const held = tone === "held";
-
-  const quiet = value.cc && value.kind !== "ask" && tone !== "woken";
-
-  const nondefault = value.sentBy === undefined && (held || quiet);
-
-  const level = held ? "held" : "quiet";
-
-  return Tag({
-    theme,
-    variant: nondefault ? level : "default",
-  });
-};
-
-const ccText = (value: InboundView, theme: Paint, labels: Labels) =>
-  (value.ccNames?.length ?? 0) > 0
-    ? `cc ${(value.ccNames ?? []).map((name) => party(theme, name, labels(name))).join(", ")}`
-    : undefined;
-
-const meta = (
-  theme: Paint,
-  value: InboundView,
-  hint: string | undefined,
-  labels: Labels
-) =>
-  Footer({
-    cc: ccText(value, theme, labels),
-    hint: hint === undefined ? undefined : theme.fg("dim", hint),
-    relay:
-      value.relay === undefined
-        ? undefined
-        : `${theme.fg("muted", "via")} ${party(theme, value.relay.name, labels(value.relay.name))}`,
-    reply:
-      value.replyTo === undefined || value.kind === "reply"
-        ? undefined
-        : theme.fg("muted", `↩ ${short(value.replyTo)}`),
-    sentBy:
-      value.sentBy === undefined
-        ? undefined
-        : `${theme.fg("muted", "sent by")} ${party(theme, value.sentBy, labels(value.sentBy))}`,
-    theme,
-    warning: value.verified ? undefined : theme.fg("warning", "unverified"),
-  });
-
-const startsWithSummary = (value: InboundView) =>
-  value.summary !== undefined &&
-  clean(value.body).trimStart().startsWith(clean(value.summary).trim());
-
-const previewBody = (value: InboundView) =>
-  startsWithSummary(value)
-    ? clean(value.body)
-        .trimStart()
-        .slice(clean(value.summary ?? "").trim().length)
-        .trimStart()
-    : value.body;
-
-const preview = (theme: Paint, value: InboundView, width: number) => [
-  ...(value.kind === "data" && Option.isSome(compactRecord(value.body))
-    ? wrapTextWithAnsi(
-        Option.getOrElse(compactRecord(value.body), () => ""),
-        width
-      ).map((line) => theme.bold(line))
-    : []),
-
-  ...paragraphs(
-    value.kind === "data" && Option.isSome(compactRecord(value.body))
-      ? ""
-      : previewBody(value),
-    width
-  )
-    .filter((line) => line !== "")
-    .map((line) => theme.fg("customMessageText", line)),
-];
-
-const collapsed = (
-  theme: Paint,
-  value: InboundView,
-  width: number,
-  labels: Labels
-) => {
-  if (width < FRAME_MIN) {
     return [
-      senderLine(theme, value, false, width, labels),
-      ...clip(theme, preview(theme, value, width), COMPACT_LINES - 1, width),
-    ].map((line) => truncateToWidth(line, width, "…"));
+      `Context only: ${oneLine(value.sentBy)} already sent this. No reply needed.`,
+    ];
   }
-
-  const box = frame(theme, width, border(value));
-
-  const lines = preview(theme, value, box.inner);
-  const room = COMPACT_LINES - 2;
-
-  return Box({
-    body: clip(theme, lines, room, box.inner),
-    border: border(value),
-    footer: meta(theme, value, "ctrl+o expands", labels),
-    header: sender(theme, value, false, labels),
-    tag: tag(theme, value),
-    theme,
-    width,
-  });
-};
-
-const expanded = (
-  theme: Paint,
-  tool: string,
-  value: InboundView,
-  width: number,
-  labels: Labels
-) => {
-  const box = frame(theme, width, border(value));
-
-  const inner = width < FRAME_MIN ? width : box.inner;
-
-  const dim = (text: string) =>
-    wrapTextWithAnsi(text, inner).map((line) => theme.fg("dim", line));
-
-  const details = [
-    ...(value.verified
-      ? []
-      : wrapTextWithAnsi(
-          `unverified name; sender ${oneLine(value.did)}`,
-          inner
-        ).map((line) => theme.fg("warning", line))),
-    ...(value.relay === undefined
-      ? []
-      : dim(
-          `via ${party(theme, value.relay.name, labels(value.relay.name))}${value.relay.encrypted ? " · encrypted" : ""}`
-        )),
-    ...(value.sentBy === undefined
-      ? []
-      : dim(`sent by ${party(theme, value.sentBy, labels(value.sentBy))}`)),
-    ...(value.to === undefined || value.sentBy !== undefined
-      ? []
-      : dim(`to ${party(theme, value.to, labels(value.to))}`)),
-    ...(ccText(value, theme, labels) === undefined
-      ? []
-      : dim(ccText(value, theme, labels) ?? "")),
-    ...(value.reason === undefined ? [] : dim(reasonText(value.reason))),
-    ...(copyNotice(value) ? dim(COPY_NOTE) : []),
-    ...(value.replyTo === undefined
-      ? []
-      : dim(`↩ in reply to ${oneLine(value.replyTo)}`)),
-    ...(value.thread === undefined
-      ? []
-      : dim(`thread ${oneLine(value.thread)}`)),
-    ...dim(`id ${oneLine(value.id)}`),
-  ];
-
-  const summary =
-    value.summary === undefined || startsWithSummary(value)
-      ? []
-      : [
-          ...wrapTextWithAnsi(oneLine(value.summary), inner).map((line) =>
-            theme.bold(line)
-          ),
-          "",
-        ];
-
-  const body = paragraphs(value.body, inner).map((line) =>
-    theme.fg("customMessageText", line)
-  );
 
   const inbound: Inbound = {
     body: value.body,
     cc: value.cc,
     did: value.did,
     from: value.from,
-    id: oneLine(value.id),
+    id: value.id,
     kind: value.kind,
     label: Option.none(),
-    replyTo: Option.none(),
-    summary: Option.none(),
+    replyTo: Option.fromNullishOr(value.replyTo),
+    summary: Option.fromNullishOr(value.summary),
     verified: value.verified,
   };
 
@@ -320,78 +143,136 @@ const expanded = (
     Object.assign(inbound, { relay: value.relay });
   }
 
-  const hint = replyHint(tool, inbound);
+  return [
+    ...(value.cc ? [COPY_NOTE] : []),
+    ...clean(replyHint(tool, inbound)).split("\n"),
+  ];
+};
 
-  const hints =
-    value.sentBy === undefined
-      ? clean(hint)
-          .split("\n")
-          .flatMap((line) => dim(line))
-      : dim(
-          `Context only: ${oneLine(value.sentBy)} already sent this. No reply needed.`
-        );
-
-  if (width < FRAME_MIN) {
-    return [
-      senderLine(theme, value, true, width, labels),
-      ...summary,
-      ...body,
-      "",
-      ...details,
-      ...hints,
-    ].map((line) => truncateToWidth(line, width, "…"));
+const turnLines = (input: InboundInput): readonly string[] | undefined => {
+  if (input.value.kind !== "data") {
+    return undefined;
   }
 
-  return Box({
-    body: [...summary, ...body, "", ...details],
-    border: border(value),
-    header: sender(theme, value, true, labels),
-    tag: tag(theme, value),
-    tail: hints,
-    theme,
-    width,
+  const turn = Schema.decodeUnknownOption(Schema.fromJsonString(Turn))(
+    input.value.body
+  );
+
+  if (
+    Option.isNone(turn) ||
+    !input.value.verified ||
+    (!isOperator({
+      from: input.value.from,
+      kind: input.value.kind,
+      verified: input.value.verified,
+    }) &&
+      turn.value.agent !== input.value.from)
+  ) {
+    return undefined;
+  }
+
+  const { value } = turn;
+
+  const glyphs = {
+    blocked: "!",
+    crashed: "✗",
+    done: "✓",
+    idle: "⋯",
+    working: "⋯",
+  };
+
+  return Block({
+    body: [
+      oneLine(value.reason ?? value.stopReason ?? input.value.summary ?? ""),
+    ],
+    footer: `turn ${oneLine(value.turnId)}`,
+    glyph: glyphs[value.state],
+    headline: `${oneLine(value.agent)} · ${value.state}`,
+    theme: input.theme,
+    width: input.width,
   });
 };
 
-export const inboundLines = (input: {
-  readonly expanded: boolean;
-  readonly labels?: Labels;
-  readonly theme: Paint;
-  readonly tool: string;
-  readonly value: InboundView;
-  readonly width: number;
-}): readonly string[] => {
+const previewBody = (value: InboundView, expanded: boolean): string => {
+  if (value.kind === "data") {
+    return expanded
+      ? value.body
+      : Option.getOrElse(compactRecord(value.body), () => value.body);
+  }
+
+  const summary = clean(value.summary ?? "").trim();
+
+  return summary !== "" && clean(value.body).trimStart().startsWith(summary)
+    ? clean(value.body).trimStart().slice(summary.length).trimStart()
+    : value.body;
+};
+
+const statusGlyph = (value: InboundView): string => {
+  if (value.kind === "reply") {
+    return "↩";
+  }
+
+  return value.cc ? "⋯" : "✓";
+};
+
+export const inboundLines = (input: InboundInput): readonly string[] => {
   if (input.width <= 0) {
     return [];
   }
 
-  return Fold({
-    collapsed: () =>
-      collapsed(
-        input.theme,
-        input.value,
-        input.width,
-        input.labels ?? noLabels
-      ),
-    expanded: input.expanded,
-    full: () =>
-      expanded(
-        input.theme,
-        input.tool,
-        input.value,
-        input.width,
-        input.labels ?? noLabels
-      ),
+  const turn = turnLines(input);
+
+  if (turn !== undefined) {
+    return turn;
+  }
+
+  const { expanded, theme, value, width } = input;
+  const room = Math.max(1, width - GUTTER);
+  const label = value.label ?? (input.labels ?? noLabels)(value.from);
+
+  const name = Party({
+    label: mailParty({ ...value, label }),
+    name: value.from,
+    theme,
   });
+
+  const recipient = Party({
+    label: mailParty({
+      ...value,
+      from: value.to ?? "unknown",
+      label: (input.labels ?? noLabels)(value.to ?? "unknown"),
+      verified: false,
+    }),
+    name: value.to ?? "unknown",
+    theme,
+  });
+
+  const headline = `${value.sentBy === undefined ? "from" : "sent to"} ${value.sentBy === undefined ? name : recipient}${value.summary === undefined ? "" : ` · ${oneLine(value.summary)}`}`;
+
+  const bodyText = previewBody(value, expanded);
+
+  const body = paragraphs(bodyText, room).map((line) =>
+    theme.fg("customMessageText", line)
+  );
+
+  const status = statusGlyph(value);
+
+  return Block({
+    body: expanded
+      ? [
+          ...body,
+          ...hints(value, input.tool).map((line) => theme.fg("dim", line)),
+        ]
+      : clip(theme, body, 2, room),
+    footer: footer(value, expanded),
+    glyph: `${BRAND}${value.verified ? status : "⚠"}`,
+    headline,
+    theme,
+    width,
+  }).map((line) => truncateToWidth(line, width, "…"));
 };
 
-export const messageView = (input: {
-  readonly details: unknown;
-  readonly expanded: boolean;
-  readonly labels?: Labels;
-  readonly theme: Paint;
-  readonly tool: string;
-}): Component | undefined =>
+export const messageView = (input: MessageInput): Component | undefined =>
   Schema.decodeUnknownOption(Details)(input.details).pipe(
     Option.map((value) => {
       let cache: { width: number; lines: string[] } | undefined;

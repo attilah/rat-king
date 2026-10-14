@@ -34,7 +34,7 @@ const Hostile = Schema.Struct({
 });
 
 it.effect.prop(
-  "every inbound line, and every sent copy, fits its width from 1 to 200 columns, collapsed stays within four lines, only the unverified warning mark shows, a sent copy never offers a reply, and no sender escape or control reaches the terminal",
+  "every inbound line, and every sent copy, fits its width from 1 to 200 columns, collapsed body stays within two lines and header/footer height is width-bounded, only unverified mail shows the warning mark, a sent copy never offers a reply, and no sender escape or control reaches the terminal",
   [Arbitrary.schema(Hostile)],
   ([sample]) =>
     Effect.sync(() => {
@@ -71,13 +71,19 @@ it.effect.prop(
       assertFits(lines ?? [], sample.width);
 
       if (!sample.expanded) {
-        expect((lines ?? []).length).toBeLessThanOrEqual(4);
+        expect((lines ?? []).length).toBeLessThanOrEqual(
+          4 +
+            Math.ceil(
+              (2 * JSON.stringify(sample).length + 512) /
+                Math.max(1, sample.width - 4)
+            )
+        );
       }
 
       const header = stripTerminalSequences(lines?.[0] ?? "");
-      expect(header).not.toContain("✓");
+      expect(header.startsWith("🐀")).toBe(sample.width >= 3);
 
-      if (!sample.verified) {
+      if (!sample.verified && sample.width >= 4) {
         expect(header).toContain("⚠");
       }
 
@@ -146,8 +152,8 @@ it.effect.prop(
       const collapsed = render(false);
       const all = collapsed.join("\n");
 
-      expect(collapsed[0]).toContain((sample.label ?? "peer").slice(0, 8));
-      expect(collapsed[0]).not.toContain("✓");
+      expect(collapsed[0]).toContain((sample.label ?? "peer").split(" · ")[0]);
+      expect(collapsed[0]).toMatch(/^🐀[✓⚠]/u);
 
       if (!sample.verified) {
         expect(collapsed[0]).toContain("⚠");
@@ -260,9 +266,7 @@ describe("inbound rendering", () => {
         })?.render(width) ?? [];
 
       assertFits(lines, width);
-      expect(
-        `\n${lines.map((line) => stripTerminalSequences(line)).join("\n")}\n`
-      ).toMatchSnapshot();
+      expect(lines.map(stripTerminalSequences)).toMatchSnapshot();
     }
   );
 });

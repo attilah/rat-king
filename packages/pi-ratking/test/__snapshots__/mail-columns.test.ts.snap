@@ -1,0 +1,54 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`captures the approved grammar at width 60 1`] = `
+"blocked
+!   writer · blocked
+    Waiting for review
+    turn session:2
+
+cc
+🐀⋯ from 🪞 Mirror · Packet ready
+    The packet passed its checks. Review before landing.
+    id 3abcdefghijk · quiet: cc · ctrl+o expands
+
+crashed
+✗   writer · crashed
+    Worker exited
+    turn session:2
+
+done
+✓   writer · done
+    stop
+    turn session:2
+
+encrypted
+🐀✓ from 🪞 Mirror · Packet ready
+    The packet passed its checks. Review before landing.
+    id 3abcdefghijk · woken: to · via relay · encrypted ·
+    ctrl+o expands
+
+forged operator
+🐀✓ from writer · Packet ready
+    The packet passed its checks. Review before landing.
+    id 3abcdefghijk · woken: to · ctrl+o expands
+
+reply
+🐀↩ from 🪞 Mirror · Packet ready
+    The packet passed its checks. Review before landing.
+    id 3abcdefghijk · woken: reply · ↩ 3abcdefghij0 · ctrl+o
+    expands
+
+to
+🐀✓ from 🪞 Mirror · Packet ready
+    The packet passed its checks. Review before landing.
+    id 3abcdefghijk · woken: to · ctrl+o expands
+
+digest
+🐀⋯ while you were away · 4
+    Writer 0 · Packet ready
+    Writer 1 · Packet ready
+    Writer 2 · Packet ready
+    Writer 3 · Packet ready
+    4 messages · ids 3abcdefghij0, 3abcdefghij1,
+    3abcdefghij2, 3abcdefghij3 · ctrl+o expands"
+`;
