@@ -13,6 +13,7 @@ import {
 } from "effect";
 
 import { Settings } from "./config.ts";
+import { suggestNames } from "./directory-view.ts";
 import { withLock } from "./lock.ts";
 import { AgentName, canonicalName, Did } from "./name.ts";
 
@@ -37,7 +38,11 @@ export interface Listed {
 
 export class UnknownName extends Schema.TaggedError<UnknownName>()(
   "UnknownName",
-  { name: Schema.String, reason: Schema.String }
+  {
+    name: Schema.String,
+    reason: Schema.String,
+    suggestions: Schema.optionalKey(Schema.Array(Schema.String)),
+  }
 ) {}
 
 export class DirectoryError extends Schema.TaggedError<DirectoryError>()(
@@ -117,9 +122,15 @@ export const directoryLayer = Layer.effect(
       );
 
       if (Option.isNone(did)) {
+        const suggestions = suggestNames(requested, [
+          ...Object.keys(settings.reserved),
+          ...Object.keys(known),
+        ]);
+
         return yield* new UnknownName({
           name: requested,
-          reason: "No Rat King identity has this name",
+          reason: `No Rat King identity has this name${suggestions.length === 0 ? "" : `; did you mean ${suggestions.join(", ")}?`}`,
+          suggestions,
         });
       }
 
