@@ -9,15 +9,18 @@ import type {
   Delivered,
   SendOptions,
 } from "@rat-king/ratking-client/ratking";
-import { AskFailed, Inbox, RatKing } from "@rat-king/ratking-client/ratking";
+import { Inbox, RatKing } from "@rat-king/ratking-client/ratking";
 import { withSummaryLead } from "@rat-king/ratking-client/summary";
 import { Effect, FileSystem, Option, Schema, Stdio, Stream } from "effect";
 import { Argument, Command, Flag } from "effect/cli";
 
+import { threadOf } from "./entries.ts";
 import { Usage } from "./faults.ts";
+import { locate } from "./inbox.ts";
 import { withField } from "./output.ts";
 import type { Report } from "./output.ts";
 import { pendingLines, recipientsOf, sentLine, short } from "./render.ts";
+import { recordSent } from "./sent.ts";
 import { commonFlags, named, toggle } from "./session.ts";
 
 const ASK_WINDOW = "10 minutes";
@@ -92,7 +95,7 @@ export const sendCommand = Command.make(
     type: Flag.String("type").pipe(Flag.optional),
   },
   (args) =>
-    named("send", args, () =>
+    named("send", args, (me) =>
       Effect.gen(function* send() {
         const ratking = yield* RatKing;
 
@@ -107,12 +110,13 @@ export const sendCommand = Command.make(
 
         const recordFile = Option.getOrUndefined(args.record);
 
+        const text =
+          recordFile === undefined
+            ? yield* messageText(args.body, clamp?.full)
+            : "";
+
         const delivered = yield* recordFile === undefined
-          ? messageText(args.body, clamp?.full).pipe(
-              Effect.flatMap((message) =>
-                ratking.send(args.to.trim(), message, withCc)
-              )
-            )
+          ? ratking.send(args.to.trim(), text, withCc)
           : Effect.gen(function* sendRecord() {
               const fs = yield* FileSystem.FileSystem;
 
@@ -154,6 +158,16 @@ export const sendCommand = Command.make(
               );
             });
 
+        yield* recordSent({
+          body: text,
+          from: me.name,
+          id: delivered.id,
+          seq: delivered.seq,
+          summary: Option.getOrElse(args.summary, () => text),
+          thread: delivered.id,
+          to: delivered.to,
+        });
+
         return {
           document: withField(
             { delivered: deliveredDocument(delivered) },
@@ -190,7 +204,7 @@ export const askCommand = Command.make(
     wait: toggle("wait"),
   },
   (args) =>
-    named("ask", args, () =>
+    named("ask", args, (me) =>
       Effect.gen(function* ask() {
         const ratking = yield* RatKing;
 
@@ -218,6 +232,16 @@ export const askCommand = Command.make(
           args.wait ? `${args.timeout} seconds` : ASK_WINDOW,
           asking
         );
+
+        yield* recordSent({
+          body: message,
+          from: me.name,
+          id: delivered.id,
+          seq: delivered.seq,
+          summary: Option.getOrElse(args.summary, () => message),
+          thread: delivered.id,
+          to: delivered.to,
+        });
 
         return {
           document: withField(
@@ -263,10 +287,9 @@ export const replyCommand = Command.make(
     to: Flag.String("to").pipe(Flag.optional),
   },
   (args) =>
-    named("reply", args, () =>
+    named("reply", args, (me) =>
       Effect.gen(function* reply() {
         const ratking = yield* RatKing;
-        const inbox = yield* Inbox;
 
         const { clamp, options } = sendingOptions({
           ccOnPurpose: args.ccOnPurpose ? true : undefined,
@@ -277,28 +300,33 @@ export const replyCommand = Command.make(
 
         const message = yield* messageText(args.body, clamp?.full);
 
-        const answer = ratking.reply(args.id, message, {
+        const { entry } = yield* locate(args.id);
+        const parent = entry.received.id;
+
+        const delivered = yield* ratking.reply(parent, message, {
           ...options,
           replyAll: !args.onlySender,
           to: Option.getOrUndefined(args.to),
         });
 
-        const delivered = yield* inbox.peek().pipe(
-          Effect.andThen(answer),
-          Effect.catchIf(
-            (error) =>
-              Schema.is(AskFailed)(error) && error.code === "NoSuchMessage",
-            () => inbox.peek({ all: true }).pipe(Effect.andThen(answer))
-          )
-        );
+        yield* recordSent({
+          body: message,
+          from: me.name,
+          id: delivered.id,
+          replyTo: parent,
+          seq: delivered.seq,
+          summary: Option.getOrElse(args.summary, () => message),
+          thread: threadOf(entry.received),
+          to: delivered.to,
+        });
 
         return {
           document: {
             delivered: deliveredDocument(delivered),
-            replyTo: args.id,
+            replyTo: parent,
           },
           lines: [
-            `${sentLine("replied", delivered)} · to ${short(args.id)}`,
+            `${sentLine("replied", delivered)} · to ${short(parent)}`,
             ...presenceLines(delivered),
           ],
         } satisfies Report;

@@ -140,7 +140,12 @@ export class NotDelivered extends Schema.TaggedError<NotDelivered>()(
 ) {}
 
 export class AskFailed extends Schema.TaggedError<AskFailed>()("AskFailed", {
-  code: Schema.Literals(["NoReply", "NoReader", "NoSuchMessage"]),
+  code: Schema.Literals([
+    "NoReply",
+    "NoReader",
+    "NoSuchMessage",
+    "AmbiguousId",
+  ]),
   reason: Schema.String,
 }) {}
 

@@ -391,7 +391,8 @@ const testCommand = Command.make(
     named("attention test", args, (me) =>
       Effect.gen(function* attentionTest() {
         const inbox = yield* Inbox;
-        const levers = yield* inbox.levers;
+        const stored = yield* inbox.levers;
+        const levers = { ...stored, enabled: true };
         const at = yield* Clock.currentTimeMillis;
 
         const peeked = Option.isSome(args.message)
@@ -459,12 +460,12 @@ const testCommand = Command.make(
         return {
           document: {
             arrival,
-            enabled: levers.enabled,
+            enabled: stored.enabled,
             name: me.name,
             ...verdictFields(verdict),
           },
           lines: [
-            `🐀 attention test ${me.name} · ${verdict._tag} · ${formatReason(verdict.reason)}${levers.enabled ? "" : " · levers off: verdict is the intent default"}`,
+            `🐀 attention test ${me.name} · ${verdict._tag} · ${formatReason(verdict.reason)}${stored.enabled ? "" : " · reader levers are off (RATKING_ATTENTION unset): a running reader ignores this verdict"}`,
           ],
         } satisfies Report;
       })

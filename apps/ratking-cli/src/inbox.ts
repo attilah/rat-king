@@ -6,7 +6,8 @@ import { Argument, Command, Flag } from "effect/cli";
 import { entryDocument, threadOf } from "./entries.ts";
 import { withField } from "./output.ts";
 import type { Report } from "./output.ts";
-import { inboxLine, readLines, short } from "./render.ts";
+import { inboxLine, oneLine, readLines, short } from "./render.ts";
+import { sentBy } from "./sent.ts";
 import { commonFlags, named, toggle } from "./session.ts";
 
 const notFound = (id: string) =>
@@ -15,28 +16,48 @@ const notFound = (id: string) =>
     reason: `No message ${id} in this mailbox`,
   });
 
-const find = (entries: readonly Peeked[], id: string) =>
-  entries.find(
-    (entry) => entry.received.id === id || entry.received.id.startsWith(id)
-  );
+const ambiguous = (id: string, ids: readonly string[]) =>
+  new AskFailed({
+    code: "AmbiguousId",
+    reason: `${id} matches ${ids.length} messages: ${ids.map(short).join(", ")}. Use more characters`,
+  });
 
-const locate = Effect.fn("RatkingCli.locate")(function* locate(id: string) {
+export const matching = (entries: readonly Peeked[], id: string) => {
+  const exact = entries.filter((entry) => entry.received.id === id);
+
+  return exact.length > 0
+    ? exact
+    : entries.filter((entry) => entry.received.id.startsWith(id));
+};
+
+export const locate = Effect.fn("RatkingCli.locate")(function* locate(
+  id: string
+) {
   const inbox = yield* Inbox;
   const recent = yield* inbox.peek();
-  const hit = find(recent.messages, id);
+  const hits = matching(recent.messages, id);
 
-  if (hit !== undefined) {
-    return { entry: hit, history: recent.messages };
-  }
+  const history =
+    hits.length > 0
+      ? recent.messages
+      : (yield* inbox.peek({ all: true })).messages;
 
-  const all = yield* inbox.peek({ all: true });
-  const found = find(all.messages, id);
+  const found = hits.length > 0 ? hits : matching(history, id);
 
-  if (found === undefined) {
+  const [entry] = found;
+
+  if (entry === undefined) {
     return yield* notFound(id);
   }
 
-  return { entry: found, history: all.messages };
+  if (found.length > 1) {
+    return yield* ambiguous(
+      id,
+      found.map((candidate) => candidate.received.id)
+    );
+  }
+
+  return { entry, history };
 });
 
 export const inboxCommand = Command.make(
@@ -131,20 +152,44 @@ export const threadCommand = Command.make(
   "thread",
   { ...commonFlags, id: Argument.String("id") },
   (args) =>
-    named("thread", args, () =>
+    named("thread", args, (me) =>
       Effect.gen(function* thread() {
         const { entry, history } = yield* locate(args.id);
         const root = threadOf(entry.received);
 
-        const members = history
-          .filter((candidate) => threadOf(candidate.received) === root)
-          .toSorted((left, right) => left.seq - right.seq);
+        const members = history.filter(
+          (candidate) => threadOf(candidate.received) === root
+        );
+
+        const mine = (yield* sentBy(me.name)).filter(
+          (record) => record.thread === root
+        );
+
+        const ordered = [
+          ...members.map((member) => ({
+            document: entryDocument(member),
+            id: member.received.id,
+            lines: readLines(member),
+          })),
+          ...mine.map((record) => ({
+            document: { ...record, direction: "sent" },
+            id: record.id,
+            lines: [
+              `🐀 sent ${record.to} · ${short(record.id)} · ${oneLine(record.summary, 72)}`,
+              "",
+              record.body,
+            ],
+          })),
+        ].toSorted((left, right) => left.id.localeCompare(right.id));
 
         return {
-          document: { messages: members.map(entryDocument), thread: root },
+          document: {
+            messages: ordered.map((item) => item.document),
+            thread: root,
+          },
           lines: [
-            `🐀 thread ${short(root)} · ${members.length} messages`,
-            ...members.flatMap((member) => ["", ...readLines(member)]),
+            `🐀 thread ${short(root)} · ${ordered.length} messages`,
+            ...ordered.flatMap((item) => ["", ...item.lines]),
           ],
         } satisfies Report;
       })
