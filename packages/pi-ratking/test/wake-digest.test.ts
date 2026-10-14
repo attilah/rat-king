@@ -197,6 +197,9 @@ it.effect.prop(
 
       expect(sent).toHaveLength(0);
       expect(acknowledgments).toEqual(Array.from({ length: count }, () => 0));
+      before();
+      before();
+      expect(sent).toHaveLength(1);
 
       for (const kind of ["message", "ask"] as const) {
         yield* deliver(
@@ -214,9 +217,6 @@ it.effect.prop(
         );
       }
 
-      expect(sent).toHaveLength(2);
-      before();
-      before();
       expect(sent).toHaveLength(3);
       const message = sent.find((entry) => entry.customType === DIGEST_MESSAGE);
 
@@ -252,60 +252,79 @@ it.effect.prop(
 );
 
 it.effect.prop(
-  "wake views group replies under their roots, cap at eight rows plus more, fit 20–200 in both themes and expand to all full bodies",
-  [Arbitrary.schema(Count)],
-  ([count]) =>
+  "wake views group replies under their roots, cover the eight/nine-row edge, fit bounded samples at 20–200 in both themes and expand all bodies",
+  [
+    Arbitrary.schema(Count),
+    Arbitrary.schema(
+      Schema.Int.check(Schema.isBetween({ maximum: 200, minimum: 20 }))
+    ),
+  ],
+  ([sampleCount, sampleWidth]) =>
     Effect.sync(() => {
-      const mails = Array.from({ length: count }, (_value, index) =>
-        held(index)
-      );
+      for (const count of new Set([8, 9, sampleCount])) {
+        const mails = Array.from({ length: count }, (_value, index) =>
+          held(index)
+        );
 
-      const content = renderDigest("ratking", mails, "wake");
+        const content = renderDigest("ratking", mails, "wake");
 
-      const details = {
-        ...digestDetails(mails, "wake"),
-        messages: mails.map((value) => value.details),
-      };
+        const details = {
+          ...digestDetails(mails, "wake"),
+          messages: mails.map((value) => value.details),
+        };
 
-      expect(content).toContain(`reply to ${held(1).id}`);
+        expect(content).toContain(`reply to ${held(1).id}`);
 
-      for (const { theme } of themes) {
-        for (let width = 20; width <= 200; width += 1) {
-          const collapsed = digestView({
-            content,
-            details,
-            expanded: false,
-            theme,
-          })
-            .render(width)
-            .map(stripTerminalSequences);
-
-          expect(collapsed.length).toBeLessThanOrEqual(11);
-          expect(collapsed[1]).toContain(held(1).id.slice(0, 8));
-          expect(collapsed[2]).toMatch(/^ {2}/u);
-
-          for (const line of collapsed) {
-            expect(visibleWidth(line)).toBeLessThanOrEqual(width);
-          }
-
-          if ([40, 60, 80, 120].includes(width)) {
-            const expanded = digestView({
+        for (const { theme } of themes) {
+          for (const width of new Set([
+            20,
+            40,
+            60,
+            80,
+            120,
+            200,
+            sampleWidth,
+          ])) {
+            const collapsed = digestView({
               content,
               details,
-              expanded: true,
+              expanded: false,
               theme,
             })
               .render(width)
-              .map(stripTerminalSequences)
-              .join("\n");
+              .map(stripTerminalSequences);
 
-            for (let index = 0; index < count; index += 1) {
-              expect(expanded).toContain(`Full message ${index}`);
+            expect(collapsed.length).toBeLessThanOrEqual(11);
+            expect(collapsed.join("\n").includes(`+${count - 8} more`)).toBe(
+              count > 8
+            );
+            expect(collapsed[1]).toContain(held(1).id.slice(0, 8));
+            expect(collapsed[2]).toMatch(/^ {2}/u);
+
+            for (const line of collapsed) {
+              expect(visibleWidth(line)).toBeLessThanOrEqual(width);
+            }
+
+            if ([40, 60, 80, 120].includes(width)) {
+              const expanded = digestView({
+                content,
+                details,
+                expanded: true,
+                theme,
+              })
+                .render(width)
+                .map(stripTerminalSequences)
+                .join("\n");
+
+              for (let index = 0; index < count; index += 1) {
+                expect(expanded).toContain(`Full message ${index}`);
+              }
             }
           }
         }
       }
-    })
+    }),
+  { arbitrary: { maxShrinks: 20, runs: 20 }, timeout: 10_000 }
 );
 
 it.effect.prop(

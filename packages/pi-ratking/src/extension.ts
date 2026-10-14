@@ -6,6 +6,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { NodeServices } from "@effect/platform-node";
 import { signedTurn } from "@rat-king/lexicon/turns";
+import { recordType } from "@rat-king/mailbox-client";
 import { decodeAgentGraphBody } from "@rat-king/ratking-client/agentgraph";
 import { attend, formatReason } from "@rat-king/ratking-client/attend";
 import {
@@ -31,7 +32,10 @@ import {
   ratKingLayer,
 } from "@rat-king/ratking-client/ratking";
 import type { Deliver, SendOptions } from "@rat-king/ratking-client/ratking";
-import { recordNotice } from "@rat-king/ratking-client/record-visibility";
+import {
+  CONTROL_RECORD_TYPES,
+  recordNotice,
+} from "@rat-king/ratking-client/record-visibility";
 import { secretStoreLayer } from "@rat-king/ratking-client/secrets";
 import {
   Cause,
@@ -324,6 +328,7 @@ type Services = Layer.Success<typeof appLayer>;
 type Runtime = ManagedRuntime.ManagedRuntime<Services, NotConfigured>;
 
 export interface SessionStart {
+  readonly isIdle?: () => boolean;
   readonly turnCount?: number;
   readonly rememberTurn?: (n: number) => void;
   readonly interactive?: boolean;
@@ -334,6 +339,7 @@ export interface SessionStart {
 }
 
 export interface PiHost {
+  readonly noteSettledRecord?: (id: string, type: string) => void;
   readonly onBeforeAgentStart?: (handler: () => void) => void;
   readonly onAgentStart?: (handler: () => Promise<void>) => void;
   readonly onAgentEnd?: (
@@ -351,8 +357,16 @@ export interface PiHost {
   readonly onSessionEnd: (handler: () => Promise<void>) => void;
 }
 
+interface MailDispatch {
+  readonly mail: ReturnType<typeof inbox>;
+  readonly send: PiHost["sendMessage"];
+}
+
 export const piHost = (pi: ExtensionAPI): PiHost => ({
   events: pi.events,
+  noteSettledRecord: (id, type) => {
+    pi.appendEntry("ratking.record.settled", { id, type });
+  },
   onAgentEnd: (handler) => {
     pi.on("agent_end", async (event) => {
       await handler(event.messages);
@@ -399,6 +413,7 @@ export const piHost = (pi: ExtensionAPI): PiHost => ({
 
       await handler({
         interactive: ctx.hasUI,
+        isIdle: () => ctx.isIdle(),
         rememberTurn: (n) => {
           pi.appendEntry("ratking.turn", { n });
         },
@@ -670,6 +685,8 @@ const parameters = Type.Object({
   ),
 });
 
+const idle = () => true;
+
 export const ratkingExtension = (options: ExtensionOptions) =>
   async function piRatking(pi: PiHost) {
     const tool = await Effect.runPromise(options.tool);
@@ -750,42 +767,67 @@ export const ratkingExtension = (options: ExtensionOptions) =>
       await reportTurn(turns?.approval());
     });
     const acknowledgments = new Map<string, Effect.Effect<void>>();
+    const controlRecords = new Map<string, string>();
+    let isIdle = idle;
+    let flushing = false;
 
-    const mail = inbox({
-      digest: (mails, variant = "cc") => {
-        pi.sendMessage(
-          {
-            content: renderDigest(tool, mails, variant),
-            customType: DIGEST_MESSAGE,
-            details: {
-              ...digestDetails(mails, variant),
-              messages: mails.map((held) => held.details),
+    const dispatch: MailDispatch = {
+      mail: inbox({
+        digest: (mails, variant, delivery) => {
+          dispatch.send(
+            {
+              content: renderDigest(tool, mails, variant),
+              customType: DIGEST_MESSAGE,
+              details: {
+                ...digestDetails(mails, variant),
+                messages: mails.map((held) => held.details),
+              },
+              display: true,
             },
-            display: true,
-          },
-          {
-            deliverAs: variant === "wake" ? "nextTurn" : "followUp",
-            triggerTurn: variant !== "wake",
+            {
+              deliverAs:
+                delivery?.deliverAs ??
+                (variant === "wake" ? "nextTurn" : "followUp"),
+              triggerTurn: delivery?.triggerTurn ?? variant !== "wake",
+            }
+          );
+        },
+        show: (pending, deliverAs, triggerTurn) => {
+          dispatch.send(
+            {
+              content: pending.content,
+              customType: MAIL_MESSAGE,
+              details: pending.details,
+              display: true,
+            },
+            { deliverAs, triggerTurn: triggerTurn ?? deliverAs !== "nextTurn" }
+          );
+        },
+      }),
+      send: (message, delivery) => {
+        if (delivery?.triggerTurn === true && !flushing) {
+          flushing = true;
+
+          try {
+            dispatch.mail.flushNext({
+              deliverAs: "followUp",
+              triggerTurn: !isIdle(),
+            });
+          } finally {
+            flushing = false;
           }
-        );
+        }
+
+        pi.sendMessage(message, delivery);
       },
-      show: (pending, deliverAs) => {
-        pi.sendMessage(
-          {
-            content: pending.content,
-            customType: MAIL_MESSAGE,
-            details: pending.details,
-            display: true,
-          },
-          { deliverAs, triggerTurn: deliverAs !== "nextTurn" }
-        );
-      },
-    });
+    };
+
+    const { mail } = dispatch;
 
     const wakes = inbox({
       digest: (mails) => {
         flushWake(
-          pi,
+          { events: pi.events, sendMessage: dispatch.send },
           {
             content: renderDigest(tool, mails, "wake"),
             customType: WAKE_MESSAGE,
@@ -798,7 +840,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
         );
       },
       show: (pending, deliverAs) => {
-        pi.sendMessage(
+        dispatch.send(
           {
             content: renderDigest(tool, [pending], "wake"),
             customType: WAKE_MESSAGE,
@@ -825,6 +867,13 @@ export const ratkingExtension = (options: ExtensionOptions) =>
     });
 
     const consume = (id: string) => {
+      const type = controlRecords.get(id);
+
+      if (type !== undefined) {
+        controlRecords.delete(id);
+        pi.noteSettledRecord?.(id, type);
+      }
+
       const ack = acknowledgments.get(id);
 
       if (Option.isSome(runtime) && ack !== undefined) {
@@ -851,9 +900,19 @@ export const ratkingExtension = (options: ExtensionOptions) =>
       Effect.asVoid
     );
 
+    const rememberControl = (inbound: Parameters<Deliver>[0]) => {
+      const type =
+        "record" in inbound ? inbound.record.$type : recordType(inbound.body);
+
+      if (CONTROL_RECORD_TYPES.includes(type)) {
+        controlRecords.set(inbound.id, type);
+      }
+    };
+
     const deliver: Deliver = (inbound, settled, ack) =>
       Effect.gen(function* deliverMail() {
         const now = yield* Clock.currentTimeMillis;
+        rememberControl(inbound);
 
         if (ack !== undefined) {
           acknowledgments.set(inbound.id, ack);
@@ -1262,12 +1321,14 @@ export const ratkingExtension = (options: ExtensionOptions) =>
 
     pi.onSessionStart(async (start) => {
       retired = false;
+      isIdle = start.isIdle ?? idle;
 
       await stop();
 
       mail.clear();
       wakes.clear();
       acknowledgments.clear();
+      controlRecords.clear();
 
       const collected = await Effect.runPromise(
         options.facts(start.session, start.sessionName, start.interactive)

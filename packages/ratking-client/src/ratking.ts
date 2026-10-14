@@ -1218,11 +1218,9 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
         target.did === own.did &&
         !(selfWake && name === own.name && name === names[0])
       ) {
-        if (name === names[0]) {
-          return yield* refused("Self")("Cannot message this Pi's own name");
-        }
-
-        continue;
+        return yield* refused("Self")(
+          "Cannot message this Pi's own name, including cc"
+        );
       }
 
       if (!targets.some((known) => known.did === target.did)) {

@@ -112,12 +112,27 @@ export const shownIds = (message: SessionMessage): readonly string[] =>
     ? shownIn({ customType: message.customType, details: message.details })
     : [];
 
+export interface FlushDelivery {
+  readonly deliverAs: DeliverAs;
+  readonly triggerTurn: boolean;
+}
+
+const NEXT_TURN_DELIVERY: FlushDelivery = {
+  deliverAs: "nextTurn",
+  triggerTurn: false,
+};
+
 export interface MailHost {
   readonly digest: (
     mails: readonly PendingMail[],
-    variant?: DigestVariant
+    variant?: DigestVariant,
+    delivery?: FlushDelivery
   ) => void;
-  readonly show: (pending: PendingMail, deliverAs: DeliverAs) => void;
+  readonly show: (
+    pending: PendingMail,
+    deliverAs: DeliverAs,
+    triggerTurn?: boolean
+  ) => void;
 }
 
 const held = (mail: PendingMail) => mail.deliverAs === "digest";
@@ -142,7 +157,7 @@ export const inbox = (host: MailHost) => {
       digested.clear();
       last = Option.none();
     },
-    flushNext: () => {
+    flushNext: (delivery: FlushDelivery = NEXT_TURN_DELIVERY) => {
       const due = [...pending.values()].filter(
         (mail) =>
           mail.deliverAs === "nextTurn" &&
@@ -155,13 +170,15 @@ export const inbox = (host: MailHost) => {
       }
 
       if (due.length === 1 && due[0] !== undefined && due[0].wake !== true) {
-        host.show(due[0], "nextTurn");
+        host.show(due[0], delivery.deliverAs, delivery.triggerTurn);
       } else {
-        host.digest(due, "wake");
+        host.digest(due, "wake", delivery);
       }
 
       for (const mail of due) {
-        digested.add(mail.id);
+        if (pending.has(mail.id)) {
+          digested.add(mail.id);
+        }
       }
     },
     shown: (id: string) => {
