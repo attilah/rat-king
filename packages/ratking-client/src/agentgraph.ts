@@ -2,6 +2,7 @@ import * as CheckIn from "@rat-king/lexicon/agentgraph.checkin";
 import * as Friction from "@rat-king/lexicon/agentgraph.friction";
 import * as Outcome from "@rat-king/lexicon/agentgraph.outcome";
 import * as Plan from "@rat-king/lexicon/agentgraph.plan";
+import * as Wake from "@rat-king/lexicon/agentgraph.wake";
 import { Turn } from "@rat-king/lexicon/turns";
 import { Effect, Option, Result, Schema } from "effect";
 
@@ -11,7 +12,12 @@ export const AgentGraphRecord = Schema.Union([
   Outcome.Main,
 ]);
 
-const OutboundRecord = Schema.Union([AgentGraphRecord, Friction.Main, Turn]);
+const OutboundRecord = Schema.Union([
+  AgentGraphRecord,
+  Friction.Main,
+  Turn,
+  Wake.Main,
+]);
 
 export type AgentGraphRecordValue = typeof OutboundRecord.Type;
 
@@ -28,6 +34,7 @@ const allowedKeys = new Map([
   ["sh.mschf.agentgraph.outcome", Object.keys(Outcome.Main.schema.fields)],
   ["sh.mschf.agentgraph.turn", Object.keys(Turn.schema.fields)],
   ["sh.mschf.agentgraph.friction", Object.keys(Friction.Main.schema.fields)],
+  ["sh.mschf.agentgraph.wake", Object.keys(Wake.Main.schema.fields)],
 ]);
 
 export const invalidRecordText = (error: InvalidRecord) =>
@@ -106,6 +113,10 @@ export const recordSummary = (record: AgentGraphRecordValue) => {
 
     case "sh.mschf.agentgraph.turn": {
       return `turn: ${record.agent} ${record.state}`;
+    }
+
+    case "sh.mschf.agentgraph.wake": {
+      return `wake: ${record.label} · ${record.status}`.slice(0, 280);
     }
 
     case "sh.mschf.agentgraph.outcome": {

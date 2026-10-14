@@ -10,6 +10,7 @@ import { sendingOptions } from "@rat-king/ratking-client/compose";
 import type { NotConfigured } from "@rat-king/ratking-client/config";
 import { recipientLines } from "@rat-king/ratking-client/delivery";
 import type { RecipientLevelValue } from "@rat-king/ratking-client/delivery";
+import { LexiconRecord } from "@rat-king/ratking-client/payload";
 import { RatKing, ReaderState } from "@rat-king/ratking-client/ratking";
 import type {
   AskOptions,
@@ -410,7 +411,14 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
 
         const to = yield* needTo(params);
 
-        const delivered = yield* ratking.send(to, JSON.stringify(value), {
+        const body =
+          value.$type === "sh.mschf.agentgraph.wake"
+            ? yield* Schema.decodeUnknownEffect(LexiconRecord)(value).pipe(
+                Effect.mapError((error) => loud(error.message))
+              )
+            : JSON.stringify(value);
+
+        const delivered = yield* ratking.send(to, body, {
           ...encryption,
           cc: params.cc ?? [],
           kind: "data",

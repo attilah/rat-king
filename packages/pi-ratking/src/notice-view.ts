@@ -1,8 +1,10 @@
 import type { Component } from "@earendil-works/pi-tui";
 import { truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { DeliveryReason } from "@rat-king/ratking-client/delivery";
 import { Option, Schema } from "effect";
 
 import { messageView } from "./message-view.ts";
+import { digestLabel } from "./pending.ts";
 import {
   FRAME_MIN,
   clip,
@@ -33,6 +35,7 @@ const PartyDetails = Schema.Struct({
 
 const DigestDetails = Schema.Struct({
   messages: Schema.Array(Schema.Unknown),
+  reason: Schema.optional(DeliveryReason),
   variant: Schema.optional(Schema.Literal("wake")),
 });
 
@@ -223,7 +226,9 @@ export const digestView = (input: NoticeInput): Component =>
       facts: [String(count)],
       theme: input.theme,
       variant: "digest",
-      verb: "cc digest",
+      verb: digestLabel(
+        Option.isSome(decoded) ? decoded.value.reason : undefined
+      ),
     });
 
     const body = Fold({

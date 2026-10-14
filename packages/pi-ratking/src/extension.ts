@@ -15,11 +15,7 @@ import {
   Settings,
   toolName,
 } from "@rat-king/ratking-client/config";
-import {
-  DIGEST_REASON,
-  deliveryReason,
-  injects,
-} from "@rat-king/ratking-client/delivery";
+import { deliveryReason, injects } from "@rat-king/ratking-client/delivery";
 import { directoryLayer } from "@rat-king/ratking-client/directory";
 import type { SessionFacts } from "@rat-king/ratking-client/identity";
 import { issuerLayer } from "@rat-king/ratking-client/issuer";
@@ -63,6 +59,8 @@ import { digestView, recordView } from "./notice-view.ts";
 import {
   applyDelivery,
   DIGEST_MESSAGE,
+  digestLabel,
+  digestReason,
   inbox,
   MAIL_MESSAGE,
   shownIds,
@@ -163,19 +161,22 @@ export const renderDigest = (
             ]),
       ].join("\n")
     : [
-        `**🐀 cc digest** · ${mails.length} cc'd since the last digest, newest first`,
-        formatReason(DIGEST_REASON),
+        `**🐀 ${digestLabel(digestReason(mails))}** · ${mails.length}${digestLabel(digestReason(mails)) === "cc digest" ? " cc'd" : ""} since the last digest, newest first`,
+        formatReason(digestReason(mails)),
         "",
         ...mails.map((mail) => mail.line ?? `- id ${mail.id}`),
         "",
-        `These are copies; the sender used to: for whoever must act. To answer one: ${tool}({ action: "reply", replyTo: "<id>", summary: "...", message: "..." })`,
+        `${digestLabel(digestReason(mails)) === "cc digest" ? "These are copies; the sender used to: for whoever must act. " : ""}To answer one: ${tool}({ action: "reply", replyTo: "<id>", summary: "...", message: "..." })`,
       ].join("\n");
 
 export const digestDetails = (
   mails: readonly PendingMail[],
   variant: DigestVariant = "cc"
 ) => {
-  const details = { ids: mails.map((held) => held.id), reason: DIGEST_REASON };
+  const details = {
+    ids: mails.map((held) => held.id),
+    reason: digestReason(mails),
+  };
 
   return variant === "wake" ? { ...details, variant } : details;
 };
@@ -994,6 +995,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
                       : inbound.digestMinutes,
                   id: inbound.id,
                   line: digestLine(inbound),
+                  reason: verdict.reason,
                 };
 
                 if (

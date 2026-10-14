@@ -1,4 +1,5 @@
 /* oxlint-disable eslint/max-classes-per-file, eslint/no-redeclare -- Effect service, Schema errors and the reader state enum share their owning port. */
+import * as Wake from "@rat-king/lexicon/agentgraph.wake";
 import type * as Prefs from "@rat-king/lexicon/attention.prefs";
 import type * as AttentionStatus from "@rat-king/lexicon/attention.status";
 import * as Defs from "@rat-king/lexicon/defs";
@@ -1196,6 +1197,10 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
 
     const targets: Resolved[] = [];
 
+    const selfWake =
+      !Schema.is(Schema.String)(body) &&
+      Option.isSome(Schema.decodeUnknownOption(Wake.Main)(body));
+
     for (const name of names) {
       const target = yield* directory
         .resolve(name)
@@ -1209,7 +1214,10 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
           )
         );
 
-      if (target.did === own.did) {
+      if (
+        target.did === own.did &&
+        !(selfWake && name === own.name && name === names[0])
+      ) {
         if (name === names[0]) {
           return yield* refused("Self")("Cannot message this Pi's own name");
         }

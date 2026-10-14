@@ -61,6 +61,7 @@ export const storedReason = (
 ): Reason | undefined =>
   Match.value(reason).pipe(
     Match.when("held: cc digest", () => DIGEST_REASON),
+    Match.when("held: digest", () => Reasons.lever({ facts: ["digest"] })),
     Match.when("quiet: cc", () => Reasons.intent({ facts: ["cc"] })),
     Match.when("woken: ask", () => Reasons.intent({ facts: ["ask"] })),
     Match.when("woken: reply", () => Reasons.intent({ facts: ["reply"] })),
