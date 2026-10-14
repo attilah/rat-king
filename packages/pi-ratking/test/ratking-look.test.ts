@@ -92,7 +92,14 @@ it.effect.prop(
         resultView(
           {
             action: "send",
-            details: {},
+            details: {
+              id: "3abcdefghijk",
+              recipients: [
+                { level: "wake", name: "peer" },
+                { level: "quiet", name: "observer" },
+              ],
+              seq: 1,
+            },
             expanded: true,
             isError: false,
             isPartial: false,
@@ -141,7 +148,7 @@ it.effect.prop(
       expect(call).not.toContain(known ? "🦉 Scout · Watch" : "observer");
       expect(result).toContain(known ? "🦉 Scout · Watch" : "observer");
 
-      expect(call).toMatch(/^🐀 send/u);
+      expect(call).toMatch(/^🐀 {2}send/u);
     })
 );
 

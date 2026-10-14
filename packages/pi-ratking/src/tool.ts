@@ -486,7 +486,11 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
               `✓ asked ${delivered.to} · ${delivered.id.slice(0, 8)}\nThe reply arrives as a message; your turn is not blocked.`,
               delivered
             ),
-            { id: delivered.id, recipients: recipientsOf(delivered) }
+            {
+              id: delivered.id,
+              recipients: recipientsOf(delivered),
+              seq: delivered.seq,
+            }
           );
         }
 
@@ -501,6 +505,7 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
             id: delivered.id,
             recipients: recipientsOf(delivered),
             replyId: reply.id,
+            seq: delivered.seq,
           }
         );
       })

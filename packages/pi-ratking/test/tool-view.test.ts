@@ -48,17 +48,32 @@ it.effect.prop(
         ansiTheme
       ).render(sample.width);
 
-      const result = resultView(
-        {
-          action: sample.action,
-          details: sample.error ? { error: true } : {},
-          expanded: sample.expanded,
-          isError: false,
-          isPartial: sample.partial,
-          text: joined(sample.result),
-        },
-        ansiTheme
-      ).render(sample.width);
+      const input = Object.freeze({
+        action: sample.action,
+        details: sample.error ? { error: true } : {},
+        expanded: sample.expanded,
+        isError: false,
+        isPartial: sample.partial,
+        text: joined(sample.result),
+      });
+
+      const result = resultView(input, ansiTheme).render(sample.width);
+
+      expect(input.text).toBe(joined(sample.result));
+
+      if (sample.width >= 20) {
+        for (const [index, line] of call.entries()) {
+          const prefix = index === 0 ? "🐀  " : "    ";
+          expect(stripTerminalSequences(line).startsWith(prefix)).toBe(true);
+        }
+
+        for (const [index, line] of result.entries()) {
+          const plain = stripTerminalSequences(line);
+          expect(
+            index === 0 ? /^[✓✗⋯↩] {3}/u.test(plain) : plain.startsWith("    ")
+          ).toBe(true);
+        }
+      }
 
       assertFits(call, sample.width);
       assertFits(result, sample.width);
