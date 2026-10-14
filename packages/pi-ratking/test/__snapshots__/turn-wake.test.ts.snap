@@ -1,0 +1,21 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`turn receipts at width 60 retain done, blocked and crashed glyphs; replay renders nothing > blocked 1`] = `
+"!   peer · blocked
+    
+    turn peer-session:1"
+`;
+
+exports[`turn receipts at width 60 retain done, blocked and crashed glyphs; replay renders nothing > crashed 1`] = `
+"✗   peer · crashed
+    
+    turn peer-session:1"
+`;
+
+exports[`turn receipts at width 60 retain done, blocked and crashed glyphs; replay renders nothing > done 1`] = `
+"✓   peer · done
+    stop
+    turn peer-session:1"
+`;
+
+exports[`turn receipts at width 60 retain done, blocked and crashed glyphs; replay renders nothing > replay 1`] = `""`;
