@@ -27,6 +27,7 @@ export const Payload = Schema.Struct({
   from: AgentName,
   kind: Schema.optionalKey(Kind),
   label: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(256))),
+  quiet: Schema.optionalKey(Schema.Literal(true)),
   reply: Schema.optionalKey(ReplyRef),
   replyTo: Schema.optionalKey(Schema.String),
   summary: Schema.optionalKey(

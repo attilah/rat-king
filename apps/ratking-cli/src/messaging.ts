@@ -85,6 +85,7 @@ export const sendCommand = Command.make(
     cc: Flag.String("cc").pipe(Flag.atLeast(0)),
     ccOnPurpose: toggle("cc-on-purpose"),
     encrypt: toggle("encrypt"),
+    quiet: toggle("quiet"),
     record: Flag.String("record").pipe(Flag.optional),
     summary: Flag.String("summary").pipe(Flag.optional),
     to: Flag.String("to"),
@@ -98,6 +99,7 @@ export const sendCommand = Command.make(
         const { clamp, options } = sendingOptions({
           ccOnPurpose: args.ccOnPurpose ? true : undefined,
           encrypt: args.encrypt ? true : undefined,
+          quiet: args.quiet ? true : undefined,
           summary: Option.getOrUndefined(args.summary),
         });
 
@@ -181,6 +183,7 @@ export const askCommand = Command.make(
     ccOnPurpose: toggle("cc-on-purpose"),
     dueBy: Flag.Int("due-by").pipe(Flag.optional),
     encrypt: toggle("encrypt"),
+    quiet: toggle("quiet"),
     summary: Flag.String("summary").pipe(Flag.optional),
     timeout: Flag.Int("timeout").pipe(Flag.withDefault(600)),
     to: Flag.String("to"),
@@ -194,6 +197,7 @@ export const askCommand = Command.make(
         const { clamp, options } = sendingOptions({
           ccOnPurpose: args.ccOnPurpose ? true : undefined,
           encrypt: args.encrypt ? true : undefined,
+          quiet: args.quiet ? true : undefined,
           summary: Option.getOrUndefined(args.summary),
         });
 
@@ -254,6 +258,7 @@ export const replyCommand = Command.make(
     encrypt: toggle("encrypt"),
     id: Argument.String("id"),
     onlySender: toggle("only-sender"),
+    quiet: toggle("quiet"),
     summary: Flag.String("summary").pipe(Flag.optional),
     to: Flag.String("to").pipe(Flag.optional),
   },
@@ -266,6 +271,7 @@ export const replyCommand = Command.make(
         const { clamp, options } = sendingOptions({
           ccOnPurpose: args.ccOnPurpose ? true : undefined,
           encrypt: args.encrypt ? true : undefined,
+          quiet: args.quiet ? true : undefined,
           summary: Option.getOrUndefined(args.summary),
         });
 

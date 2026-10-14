@@ -201,6 +201,7 @@ const sendFields = {
   cc: Schema.optionalKey(Schema.Array(Schema.String)),
   encrypt: Schema.optionalKey(Schema.Boolean),
   kind: Schema.optionalKey(Schema.Literals(["message", "ask", "data"])),
+  quiet: Schema.optionalKey(Schema.Boolean),
   replyAll: Schema.optionalKey(Schema.Boolean),
   replyTo: Schema.optionalKey(Schema.String),
   replyToDid: Schema.optionalKey(Schema.String),
@@ -480,6 +481,10 @@ const forwardSend = (request: typeof SendRequest.Type) =>
       replyAll: request.replyAll ?? true,
     };
 
+    if (request.quiet === true) {
+      Object.assign(options, { quiet: true });
+    }
+
     if (request.encrypt !== undefined) {
       Object.assign(options, { encrypt: request.encrypt });
     }
@@ -533,6 +538,13 @@ const forwardSend = (request: typeof SendRequest.Type) =>
           status: "not-delivered",
         } as const),
       NotDelivered: (error) =>
+        Effect.succeed({
+          code: error.code,
+          reason: notDeliveredText(error),
+          requestId: request.requestId,
+          status: "not-delivered",
+        } as const),
+      QuietAsk: (error) =>
         Effect.succeed({
           code: error.code,
           reason: notDeliveredText(error),
@@ -622,6 +634,12 @@ const parameters = Type.Object({
     Type.Unknown({
       description:
         "Replace private preferences. Jev now/later are decimals 0..1.",
+    })
+  ),
+  quiet: Type.Optional(
+    Type.Boolean({
+      description:
+        "Deliver without waking: the recipient sees it next turn or in their digest. Not for asks.",
     })
   ),
   record: Type.Optional(
@@ -1055,7 +1073,9 @@ export const ratkingExtension = (options: ExtensionOptions) =>
                   coalesce:
                     pi.onBeforeAgentStart !== undefined &&
                     hold === "nextTurn" &&
-                    (inbound.cc || inbound.copy === true) &&
+                    (inbound.cc ||
+                      inbound.copy === true ||
+                      inbound.quiet === true) &&
                     inbound.kind !== "ask",
                   content: renderInbound(tool, inbound),
                   details: inboundDetails(inbound, settled),

@@ -10,7 +10,9 @@ import { sendingOptions } from "@rat-king/ratking-client/compose";
 import type { NotConfigured } from "@rat-king/ratking-client/config";
 import { recipientLines } from "@rat-king/ratking-client/delivery";
 import type { RecipientLevelValue } from "@rat-king/ratking-client/delivery";
+import type { QuietAsk } from "@rat-king/ratking-client/errors";
 import { LexiconRecord } from "@rat-king/ratking-client/payload";
+import { literalPrompt } from "@rat-king/ratking-client/prompt";
 import { RatKing, ReaderState } from "@rat-king/ratking-client/ratking";
 import type {
   AskOptions,
@@ -59,6 +61,7 @@ export const ToolParams = Schema.Struct({
   note: Schema.optionalKey(Schema.String),
   openProjectPaneIfMissing: Schema.optionalKey(Schema.Boolean),
   prefs: Schema.optionalKey(Schema.Json),
+  quiet: Schema.optionalKey(Schema.Boolean),
   record: Schema.optionalKey(Schema.Json),
   replyAll: Schema.optionalKey(Schema.Boolean),
   replyTo: Schema.optionalKey(Schema.String),
@@ -117,14 +120,15 @@ const recipientsOf = (delivered: Delivered) =>
   delivered.recipients ?? [{ level: "wake" as const, name: delivered.to }];
 
 export const receiptText = (lead: string, delivered: Delivered) =>
-  recipientsOf(delivered).length > 1
+  recipientsOf(delivered).length > 1 ||
+  recipientsOf(delivered).some((recipient) => recipient.level === "quiet")
     ? [
         `Delivered over Rat King (id ${delivered.id}, seq ${delivered.seq}).`,
         ...recipientLines(recipientsOf(delivered)),
       ].join("\n")
     : `${lead} ${delivered.to} over Rat King (id ${delivered.id}, seq ${delivered.seq}).`;
 
-export const notDeliveredText = (error: NotDelivered) =>
+export const notDeliveredText = (error: NotDelivered | QuietAsk) =>
   Match.value(error.code).pipe(
     Match.whenOr("ReaderCannotRender", "AskAimedAtCc", () => error.reason),
     Match.when("Partial", () => `PARTIAL DELIVERY: ${error.reason}`),
@@ -141,7 +145,7 @@ Messages are signed plaintext by default, readable by operators and observers su
 
 Address agents by Rat King name (for example switchboard, or project/row).
 
-send and ask accept cc: ["name", ...]. to: is for whoever must act, and wakes them. cc: is for whoever should know: a quiet copy that does not wake. A send whose message or summary addresses a cc'd name (@name, or an "ask for name" line) is refused; pass ccOnPurpose: true if the cc is deliberate. reply defaults to reply-all; replyAll: false answers only the sender. To answer a message that arrived before this Pi's reader last started, add to: the asker's name. handled with replyTo confirms a relayed original to its desk without replying to the sender.
+send and ask accept cc: ["name", ...]. to: is for whoever must act, and wakes them unless quiet: true requests next-turn or digest delivery. quiet is not for asks. cc: is for whoever should know: a quiet copy that does not wake. A send whose message or summary addresses a cc'd name (@name, or an "ask for name" line) is refused; pass ccOnPurpose: true if the cc is deliberate. reply defaults to reply-all; replyAll: false answers only the sender. To answer a message that arrived before this Pi's reader last started, add to: the asker's name. handled with replyTo confirms a relayed original to its desk without replying to the sender.
 
 Give every send, ask and reply a summary: one line, at most 280 characters; longer is trimmed and the full text leads the message. Lead with the point or the ask. Phones and compact views show it first; the message holds the detail.
 
@@ -551,6 +555,19 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
                   call: (call) => toolCall(tool, call),
                 }),
             { code: error.code }
+          )
+        ),
+      QuietAsk: (error) =>
+        Effect.succeed(
+          loud(
+            literalPrompt({
+              accepted: "quiet messages and replies; asks without quiet",
+              debug: error.debug,
+              fix: error.fix,
+              tag: error._tag,
+              why: error.why,
+            }),
+            { code: error._tag }
           )
         ),
     }),

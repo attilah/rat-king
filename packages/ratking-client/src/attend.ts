@@ -11,6 +11,7 @@ export interface Arrival {
   readonly from?: string;
   readonly group?: string;
   readonly kind: KindValue;
+  readonly quiet?: boolean;
   readonly sender?: string;
   readonly sentBy?: string;
   readonly thread?: string;
@@ -27,7 +28,15 @@ export interface Levers {
 
 export type TurnFold = Readonly<Record<string, never>>;
 
-export type Fact = "to" | "cc" | "ask" | "reply" | "relay" | "digest" | "wake";
+export type Fact =
+  | "to"
+  | "cc"
+  | "quiet"
+  | "ask"
+  | "reply"
+  | "relay"
+  | "digest"
+  | "wake";
 
 export type Reason = Data.TaggedEnum<{
   intent: { readonly facts: readonly Fact[] };
@@ -115,7 +124,11 @@ export const forwardNames = (
     : [];
 
 const intent = (arrival: Arrival): Verdict => {
-  const facts: Fact[] = [arrival.copy === true ? "cc" : "to"];
+  const addressed = arrival.copy === true ? "cc" : "to";
+
+  const facts: Fact[] = [
+    arrival.quiet === true && arrival.kind !== "ask" ? "quiet" : addressed,
+  ];
 
   if (arrival.kind === "ask" || arrival.kind === "reply") {
     facts.push(arrival.kind);
@@ -126,7 +139,7 @@ const intent = (arrival: Arrival): Verdict => {
   }
 
   const quiet =
-    arrival.copy === true &&
+    (arrival.copy === true || arrival.quiet === true) &&
     arrival.kind !== "ask" &&
     arrival.relay === undefined;
 
@@ -141,7 +154,7 @@ const intent = (arrival: Arrival): Verdict => {
 
   const reason = Reasons.intent({ facts });
 
-  if (arrival.wakeStatus !== undefined) {
+  if (arrival.quiet !== true && arrival.wakeStatus !== undefined) {
     return arrival.wakeStatus === "matched" || arrival.wakeStatus === "timedOut"
       ? Verdicts.Next({ reason })
       : Verdicts.Now({ reason });
@@ -177,7 +190,7 @@ export const reasonTone = (reason: Reason): "held" | "quiet" | "woken" => {
     return "held";
   }
 
-  return reason.facts.includes("cc") &&
+  return (reason.facts.includes("cc") || reason.facts.includes("quiet")) &&
     !reason.facts.includes("ask") &&
     !reason.facts.includes("relay")
     ? "quiet"
@@ -188,11 +201,17 @@ export const formatReason = (reason: Reason): string => {
   const tone = reasonTone(reason);
 
   if (tone === "held") {
-    return Reasons.$is("lever")(reason) ? "held: digest" : "held: cc digest";
+    if (Reasons.$is("lever")(reason)) {
+      return "held: digest";
+    }
+
+    return reason.facts.includes("quiet")
+      ? "held: quiet digest"
+      : "held: cc digest";
   }
 
   if (tone === "quiet") {
-    return "quiet: cc";
+    return reason.facts.includes("quiet") ? "quiet: sender" : "quiet: cc";
   }
 
   if (reason.facts.includes("ask")) {

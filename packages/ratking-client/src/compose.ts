@@ -5,6 +5,7 @@ import type { ClampedSummary } from "./summary.ts";
 export interface SendingInput {
   readonly ccOnPurpose?: boolean | undefined;
   readonly encrypt?: boolean | undefined;
+  readonly quiet?: boolean | undefined;
   readonly summary?: string | undefined;
 }
 
@@ -25,6 +26,10 @@ export const sendingOptions = (input: SendingInput): Sending => {
 
   if (input.ccOnPurpose !== undefined) {
     Object.assign(options, { ccOnPurpose: input.ccOnPurpose });
+  }
+
+  if (input.quiet === true) {
+    Object.assign(options, { quiet: true });
   }
 
   if (input.summary !== undefined) {

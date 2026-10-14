@@ -32,7 +32,16 @@ export const Recipients = Schema.Array(RecipientLevel);
 export const DeliveryReason = Schema.Struct({
   _tag: Schema.Literals(["intent", "lever", "judge", "joel"]),
   facts: Schema.Array(
-    Schema.Literals(["to", "cc", "ask", "reply", "relay", "digest", "wake"])
+    Schema.Literals([
+      "to",
+      "cc",
+      "quiet",
+      "ask",
+      "reply",
+      "relay",
+      "digest",
+      "wake",
+    ])
   ),
 });
 
@@ -61,6 +70,10 @@ export const storedReason = (
 ): Reason | undefined =>
   Match.value(reason).pipe(
     Match.when("held: cc digest", () => DIGEST_REASON),
+    Match.when("held: quiet digest", () =>
+      Reasons.intent({ facts: ["quiet", "digest"] })
+    ),
+    Match.when("quiet: sender", () => Reasons.intent({ facts: ["quiet"] })),
     Match.when("held: digest", () => Reasons.lever({ facts: ["digest"] })),
     Match.when("quiet: cc", () => Reasons.intent({ facts: ["cc"] })),
     Match.when("woken: ask", () => Reasons.intent({ facts: ["ask"] })),
@@ -73,9 +86,10 @@ export const storedReason = (
 export const recipientLevels = (
   to: string,
   cc: readonly string[],
-  kind: KindValue
+  kind: KindValue,
+  quiet?: boolean
 ): readonly RecipientLevelValue[] => [
-  { level: "wake", name: to },
+  { level: quiet === true && kind !== "ask" ? "quiet" : "wake", name: to },
   ...cc.map((name): RecipientLevelValue => ({
     level: kind === "ask" ? "wake" : "quiet",
     name,
@@ -84,7 +98,9 @@ export const recipientLevels = (
 
 const levelText = (recipient: RecipientLevelValue, index: number) => {
   if (index === 0) {
-    return "woken (to)";
+    return recipient.level === "quiet"
+      ? "quiet copy, no wake (to: shows next turn or at its digest)"
+      : "woken (to)";
   }
 
   return recipient.level === "wake"

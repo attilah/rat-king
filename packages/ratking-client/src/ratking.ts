@@ -65,7 +65,8 @@ import type { RecipientLevelValue } from "./delivery.ts";
 import { digestFor } from "./digest.ts";
 import { Directory, writePrivateJson } from "./directory.ts";
 import type { Listed, Resolved } from "./directory.ts";
-import { reasonOf } from "./errors.ts";
+import { quietAsk, reasonOf } from "./errors.ts";
+import type { QuietAsk } from "./errors.ts";
 import { claimName, ensureIdentity } from "./identity.ts";
 import type { SessionFacts } from "./identity.ts";
 import { Issuer } from "./issuer.ts";
@@ -294,6 +295,7 @@ export interface SendOptions {
   readonly copyTo?: string;
   readonly encrypt?: boolean;
   readonly kind?: KindValue;
+  readonly quiet?: true;
   readonly replyTo?: { readonly messageId: string; readonly senderDid: string };
   readonly summary?: string;
   readonly cc?: readonly string[];
@@ -302,7 +304,7 @@ export interface SendOptions {
 
 export type AskOptions = Pick<
   SendOptions,
-  "ccOnPurpose" | "encrypt" | "cc" | "summary"
+  "ccOnPurpose" | "encrypt" | "cc" | "quiet" | "summary"
 > & {
   readonly dueBy?: number;
   readonly wait?: boolean;
@@ -351,24 +353,24 @@ export class RatKing extends Context.Service<
       to: string,
       body: string | LexiconRecordValue,
       options?: SendOptions
-    ) => Effect.Effect<Delivered, NotDelivered>;
+    ) => Effect.Effect<Delivered, NotDelivered | QuietAsk>;
     readonly ask: (
       to: string,
       body: string,
       timeout?: Duration.Input,
       options?: AskOptions
-    ) => Effect.Effect<Asked, NotDelivered | AskFailed>;
+    ) => Effect.Effect<Asked, NotDelivered | AskFailed | QuietAsk>;
     readonly reply: (
       id: string,
       body: string | LexiconRecordValue,
       options?: Pick<
         SendOptions,
-        "ccOnPurpose" | "encrypt" | "kind" | "summary"
+        "ccOnPurpose" | "encrypt" | "kind" | "quiet" | "summary"
       > & {
         readonly replyAll?: boolean;
         readonly to?: string | undefined;
       }
-    ) => Effect.Effect<Delivered, NotDelivered | AskFailed>;
+    ) => Effect.Effect<Delivered, NotDelivered | AskFailed | QuietAsk>;
     readonly handled: (
       id: string
     ) => Effect.Effect<Delivered | HandledAck, NotDelivered | AskFailed>;
@@ -777,6 +779,10 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       }
 
       if (Option.isSome(payload)) {
+        if (payload.value.quiet !== undefined) {
+          Object.assign(inbound, { quiet: payload.value.quiet });
+        }
+
         if (payload.value.reply !== undefined) {
           Object.assign(inbound, { reply: payload.value.reply });
         }
@@ -796,7 +802,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
 
           const digest = digestFor(settings.ccDigestMinutes ?? {}, own.name);
 
-          if (copy && Option.isSome(digest)) {
+          if ((copy || inbound.quiet === true) && Option.isSome(digest)) {
             Object.assign(inbound, { digestMinutes: digest.value });
           }
         }
@@ -1334,6 +1340,10 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
           Object.assign(payload, { label: label.value });
         }
 
+        if (options.quiet === true) {
+          Object.assign(payload, { quiet: true });
+        }
+
         if (options.kind !== undefined) {
           Object.assign(payload, { kind: options.kind });
         }
@@ -1494,7 +1504,8 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       const recipients = recipientLevels(
         primary.name,
         targets.slice(1).map((target) => target.name),
-        options.kind ?? "message"
+        options.kind ?? "message",
+        options.quiet
       );
 
       const delivered: Delivered = Option.match(line, {
@@ -2504,6 +2515,10 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
 
   const ratking = RatKing.of({
     ask: Effect.fn("RatKing.ask")(function* ask(to, body, timeout, options) {
+      if (options?.quiet === true) {
+        return yield* quietAsk();
+      }
+
       yield* awaitLive;
 
       const pending = yield* Ref.make(Option.none<string>());
@@ -2664,6 +2679,10 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       ];
     }),
     reply: Effect.fn("RatKing.reply")(function* reply(id, body, options) {
+      if (options?.quiet === true && options.kind === "ask") {
+        return yield* quietAsk();
+      }
+
       const stored = yield* threads.lookup(id);
 
       const record = Option.isSome(stored)
@@ -2817,6 +2836,10 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
     }),
     run,
     send: Effect.fn("RatKing.send")(function* send(to, body, options) {
+      if (options?.quiet === true && options.kind === "ask") {
+        return yield* quietAsk();
+      }
+
       const { delivered, sent } = yield* transmit(
         to,
         body,

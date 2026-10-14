@@ -16,6 +16,7 @@ export declare const Payload: Schema.Struct<{
     readonly from: Schema.String;
     readonly kind: Schema.optionalKey<Schema.Literals<readonly ["message", "ask", "reply", "data"]>>;
     readonly label: Schema.optionalKey<Schema.String>;
+    readonly quiet: Schema.optionalKey<Schema.Literal<true>>;
     readonly reply: Schema.optionalKey<Schema.Struct<{
         readonly parent: Schema.String;
         readonly root: Schema.String;
@@ -32,6 +33,7 @@ export declare const PayloadJson: Schema.fromJsonString<Schema.Struct<{
     readonly from: Schema.String;
     readonly kind: Schema.optionalKey<Schema.Literals<readonly ["message", "ask", "reply", "data"]>>;
     readonly label: Schema.optionalKey<Schema.String>;
+    readonly quiet: Schema.optionalKey<Schema.Literal<true>>;
     readonly reply: Schema.optionalKey<Schema.Struct<{
         readonly parent: Schema.String;
         readonly root: Schema.String;
@@ -47,6 +49,7 @@ export declare const encodePayload: (payload: {
     readonly from: string;
     readonly kind?: "ask" | "data" | "message" | "reply";
     readonly label?: string;
+    readonly quiet?: true;
     readonly reply?: {
         readonly parent: string;
         readonly root: string;
