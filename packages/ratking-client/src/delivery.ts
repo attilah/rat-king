@@ -32,7 +32,7 @@ export const Recipients = Schema.Array(RecipientLevel);
 export const DeliveryReason = Schema.Struct({
   _tag: Schema.Literals(["intent", "lever", "judge", "joel"]),
   facts: Schema.Array(
-    Schema.Literals(["to", "cc", "ask", "reply", "relay", "digest"])
+    Schema.Literals(["to", "cc", "ask", "reply", "relay", "digest", "wake"])
   ),
 });
 

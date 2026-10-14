@@ -137,11 +137,19 @@ const wakeLines = (
   const labels = input.labels ?? noLabels;
   const entries = threaded(messages);
 
+  const typedWake = Option.match(
+    Schema.decodeUnknownOption(DigestDetails)(input.details),
+    {
+      onNone: () => false,
+      onSome: (value) => value.reason?.facts.includes("wake") === true,
+    }
+  );
+
   const header = Header({
     facts: [String(messages.length)],
     theme: input.theme,
     variant: "digest",
-    verb: "while you were away",
+    verb: typedWake ? "wake" : "while you were away",
   });
 
   const rows = entries.map(({ depth, value }) =>
@@ -158,8 +166,8 @@ const wakeLines = (
   if (!input.expanded) {
     return [
       header,
-      ...rows.slice(0, 8),
-      ...(rows.length > 8
+      ...(typedWake ? rows : rows.slice(0, 8)),
+      ...(!typedWake && rows.length > 8
         ? [input.theme.fg("dim", `+${rows.length - 8} more`)]
         : []),
       input.theme.fg("dim", "ctrl+o expands"),

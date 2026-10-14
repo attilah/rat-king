@@ -27,7 +27,7 @@ export interface Levers {
 
 export type TurnFold = Readonly<Record<string, never>>;
 
-export type Fact = "to" | "cc" | "ask" | "reply" | "relay" | "digest";
+export type Fact = "to" | "cc" | "ask" | "reply" | "relay" | "digest" | "wake";
 
 export type Reason = Data.TaggedEnum<{
   intent: { readonly facts: readonly Fact[] };

@@ -65,6 +65,8 @@ import {
   MAIL_MESSAGE,
   shownIds,
   verdictToHold,
+  WAKE_MESSAGE,
+  WAKE_REASON,
 } from "./pending.ts";
 import type { DigestVariant, PendingMail } from "./pending.ts";
 import { callView, resultView } from "./tool-view.ts";
@@ -149,7 +151,7 @@ export const renderDigest = (
 ) =>
   variant === "wake"
     ? [
-        `**🐀 while you were away** · ${mails.length}`,
+        `**🐀 ${mails.every((mail) => mail.wake === true) ? "wake" : "while you were away"}** · ${mails.length}`,
         ...mails.map(wakeLine),
         "",
         ...mails.flatMap((mail) => (mail.wake === true ? [mail.content] : [])),
@@ -178,7 +180,15 @@ export const digestDetails = (
     reason: digestReason(mails),
   };
 
-  return variant === "wake" ? { ...details, variant } : details;
+  return variant === "wake"
+    ? {
+        ...details,
+        reason: mails.every((mail) => mail.wake === true)
+          ? WAKE_REASON
+          : details.reason,
+        variant,
+      }
+    : details;
 };
 
 export { injects } from "@rat-king/ratking-client/delivery";
@@ -685,22 +695,24 @@ export const ratkingExtension = (options: ExtensionOptions) =>
         })
     );
 
-    pi.registerMessageRenderer(
-      DIGEST_MESSAGE,
-      (message, renderOptions, theme) =>
-        digestView({
-          content: Schema.is(Schema.String)(message.content)
-            ? message.content
-            : message.content
-                .flatMap((part) => (part.type === "text" ? [part.text] : []))
-                .join("\n"),
-          details: message.details,
-          expanded: renderOptions.expanded,
-          labels,
-          theme,
-          tool,
-        })
-    );
+    const renderDigestMessage: Parameters<
+      PiHost["registerMessageRenderer"]
+    >[1] = (message, renderOptions, theme) =>
+      digestView({
+        content: Schema.is(Schema.String)(message.content)
+          ? message.content
+          : message.content
+              .flatMap((part) => (part.type === "text" ? [part.text] : []))
+              .join("\n"),
+        details: message.details,
+        expanded: renderOptions.expanded,
+        labels,
+        theme,
+        tool,
+      });
+
+    pi.registerMessageRenderer(DIGEST_MESSAGE, renderDigestMessage);
+    pi.registerMessageRenderer(WAKE_MESSAGE, renderDigestMessage);
     pi.registerMessageRenderer(
       "ratking_record_notice",
       (message, renderOptions, theme) =>
@@ -776,7 +788,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
           pi,
           {
             content: renderDigest(tool, mails, "wake"),
-            customType: DIGEST_MESSAGE,
+            customType: WAKE_MESSAGE,
             details: {
               ...digestDetails(mails, "wake"),
               messages: mails.map((held) => held.details),
@@ -789,7 +801,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
         pi.sendMessage(
           {
             content: renderDigest(tool, [pending], "wake"),
-            customType: DIGEST_MESSAGE,
+            customType: WAKE_MESSAGE,
             details: {
               ...digestDetails([pending], "wake"),
               messages: [pending.details],

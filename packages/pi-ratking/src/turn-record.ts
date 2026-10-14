@@ -59,7 +59,10 @@ export const turnReporter = (
       const ratking = yield* RatKing;
       const status = yield* ratking.status;
 
-      if (Option.isNone(status.self)) {
+      if (
+        Option.isNone(status.self) ||
+        owner.value === status.self.value.name
+      ) {
         return;
       }
 

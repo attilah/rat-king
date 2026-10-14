@@ -177,9 +177,17 @@ export const resolveTurnOwner = Effect.fn("RatKing.resolveTurnOwner")(
   function* resolveTurnOwner() {
     const turnOwner = yield* Config.option(Config.String("RATKING_TURN_OWNER"));
 
-    return Option.isSome(turnOwner)
+    const owner = Option.isSome(turnOwner)
       ? turnOwner
       : yield* Config.option(Config.String("MUSTER_OWNER_NAME"));
+
+    const own = yield* Config.option(Config.String("RATKING_NAME"));
+    const printName = yield* Config.option(Config.String("RATKING_PRINT_NAME"));
+    const name = Option.orElse(own, () => printName);
+
+    return owner.pipe(
+      Option.filter((value) => Option.getOrUndefined(name) !== value)
+    );
   }
 );
 
