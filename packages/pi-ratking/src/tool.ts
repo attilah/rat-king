@@ -10,6 +10,7 @@ import { sendingOptions } from "@rat-king/ratking-client/compose";
 import type { NotConfigured } from "@rat-king/ratking-client/config";
 import { recipientLines } from "@rat-king/ratking-client/delivery";
 import type { RecipientLevelValue } from "@rat-king/ratking-client/delivery";
+import { listView } from "@rat-king/ratking-client/directory-view";
 import type { QuietAsk } from "@rat-king/ratking-client/errors";
 import { LexiconRecord } from "@rat-king/ratking-client/payload";
 import { literalPrompt } from "@rat-king/ratking-client/prompt";
@@ -60,6 +61,7 @@ export const Attachment = Schema.Struct({
 
 export const ToolParams = Schema.Struct({
   action: Action,
+  all: Schema.optionalKey(Schema.Boolean),
   attachments: Schema.optionalKey(Schema.Array(Attachment)),
   cc: Schema.optionalKey(Schema.Array(Schema.String)),
   ccOnPurpose: Schema.optionalKey(Schema.Boolean),
@@ -67,9 +69,16 @@ export const ToolParams = Schema.Struct({
   dueBy: Schema.optionalKey(Schema.Finite),
   encrypt: Schema.optionalKey(Schema.Boolean),
   focus: Schema.optionalKey(Schema.Boolean),
+  limit: Schema.optionalKey(
+    Schema.Int.check(Schema.isBetween({ maximum: 200, minimum: 1 }))
+  ),
+  match: Schema.optionalKey(Schema.String),
   message: Schema.optionalKey(Schema.String),
   messageId: Schema.optionalKey(Schema.String),
   note: Schema.optionalKey(Schema.String),
+  offset: Schema.optionalKey(
+    Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
+  ),
   openProjectPaneIfMissing: Schema.optionalKey(Schema.Boolean),
   prefs: Schema.optionalKey(Schema.Json),
   quiet: Schema.optionalKey(Schema.Boolean),
@@ -263,7 +272,7 @@ export const description = (tool: string) =>
 
 Messages are signed plaintext by default, readable by operators and observers such as Joel's phone feed. Pass encrypt: true on send, ask or reply to end-to-end encrypt anything containing secrets, credentials, customer data or private transcripts.
 
-Address agents by Rat King name (for example switchboard, or project/row).
+Address agents by Rat King name (for example switchboard, or project/row). list shows at most 50 names, hides session/probe/canary names, and stays under 4 KB. match filters names (a trailing / means prefix); all includes ephemeral names and DIDs. Page with limit (1–200, default 50) and offset, following the returned offset.
 
 send and ask accept cc: ["name", ...]. to: is for whoever must act, and wakes them unless quiet: true requests next-turn or digest delivery. quiet is not for asks. cc: is for whoever should know: a quiet copy that does not wake. A send whose message or summary addresses a cc'd name (@name, or an "ask for name" line) is refused; pass ccOnPurpose: true if the cc is deliberate. reply defaults to reply-all; replyAll: false answers only the sender. To answer a message that arrived before this Pi's reader last started, add to: the asker's name. handled with replyTo confirms a relayed original to its desk without replying to the sender.
 
@@ -276,7 +285,8 @@ Usage:
   ${tool}({ action: "ask", to: "name", summary: "...", message: "..." }) → Ask and get the reply as a message; your turn is not blocked
   ${tool}({ action: "reply", replyTo: "<id>", summary: "...", message: "..." }) → Answer a message by its id
   ${tool}({ action: "pending" })                                     → Unanswered inbound asks and open outbound asks
-  ${tool}({ action: "list" })                                        → The Rat King directory
+  ${tool}({ action: "list", match: "muster/" })                     → Matching names, bounded
+  ${tool}({ action: "list", all: true, limit: 50, offset: 0 })       → Full directory page with DIDs
   ${tool}({ action: "status" })                                      → This Pi's name and reader
   ${tool}({ action: "attention" })                                   → Public status and private preferences; status/until/note sets status, prefs replaces preferences (Jev now/later use decimals 0..1)
   ${tool}({ action: "retire", successor: "name" })                   → Retire this Pi's own name; mail to it is refused naming the successor, and this reader stops`;
@@ -392,21 +402,12 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
       Effect.gen(function* list() {
         const status = yield* ratking.status;
         const entries = yield* ratking.list;
-        const own = status.self.pipe(Option.map(({ name }) => name));
 
-        return ok(
-          [
-            statusText(tool, status),
-            "",
-            "**Directory:**",
-            ...(entries.length === 0
-              ? ["- empty"]
-              : entries.map(
-                  (entry) =>
-                    `- ${entry.name}${entry.aliases.length === 0 ? "" : ` (alias ${entry.aliases.join(", ")})`} · ${entry.did}${entry.reserved ? " · reserved" : ""}${own.pipe(Option.contains(entry.name)) ? " · you" : ""}`
-                )),
-          ].join("\n")
+        const own = Option.getOrUndefined(
+          status.self.pipe(Option.map(({ name }) => name))
         );
+
+        return ok(listView(entries, own, params).text);
       })
     ),
     Match.when("attention", () =>
