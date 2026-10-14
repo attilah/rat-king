@@ -7,6 +7,10 @@ export const MAIL_MESSAGE = "ratking_message";
 
 export const DIGEST_MESSAGE = "ratking_cc_digest";
 
+export const WAKE_MESSAGE = "ratking_wake";
+
+export const WAKE_REASON = Reasons.intent({ facts: ["wake"] });
+
 export const DEFAULT_DIGEST_MINUTES = 30;
 
 export type DeliverAs = "followUp" | "nextTurn" | "steer";
@@ -78,7 +82,7 @@ const ShownMail = Schema.Struct({
 });
 
 const ShownDigest = Schema.Struct({
-  customType: Schema.Literal(DIGEST_MESSAGE),
+  customType: Schema.Literals([DIGEST_MESSAGE, WAKE_MESSAGE]),
   details: Schema.Struct({ ids: Schema.Array(Schema.String) }),
 });
 
