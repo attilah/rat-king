@@ -935,12 +935,15 @@ export const ratkingExtension = (options: ExtensionOptions) =>
 
     const { mail } = dispatch;
 
-    const turnMail = turnInbox({
-      consume,
-      take: (pending) => {
-        mail.take(pending, isIdle() ? "followUp" : "steer");
+    const turnMail = turnInbox(
+      {
+        consume,
+        take: (pending) => {
+          mail.take(pending, isIdle() ? "followUp" : "steer");
+        },
       },
-    });
+      () => ownName
+    );
 
     const wakes = inbox({
       digest: (mails) => {
@@ -1493,7 +1496,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
       let recorded = names.at(-1);
 
       knownLabels.clear();
-      ownName = undefined;
+      ownName = Option.getOrUndefined(collected.env);
       ownLabel = collected.label ?? (() => collected.pane);
 
       turns = turnReporter(collected, start.turnCount, start.rememberTurn);
@@ -1533,6 +1536,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
           const named = stateName(reader);
 
           if (Option.isSome(named)) {
+            ownName = named.value;
             remember(named.value);
           }
 

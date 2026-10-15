@@ -36,15 +36,26 @@ export const shownTurnKeys = (
 export const turnKey = (turn: Pick<TurnValue, "state" | "turnId">): string =>
   JSON.stringify([turn.turnId, turn.state]);
 
+const projectOf = (name: string | undefined): string | undefined =>
+  name?.match(/^(?<project>[^/]+)\/[^/]+$/u)?.groups?.project;
+
+const sameProject = (receiver: string | undefined, agent: string): boolean => {
+  const project = projectOf(receiver);
+
+  return project !== undefined && project === projectOf(agent);
+};
+
 export const turnWake = (
   inbound: InboundRecord,
   settled: boolean,
-  seen: ReadonlySet<string>
+  seen: ReadonlySet<string>,
+  receiver: string | undefined
 ): Option.Option<TurnValue> =>
   signedTurn(inbound.record, inbound.from, inbound.verified).pipe(
     Option.filter(
       (turn) =>
         !settled &&
+        sameProject(receiver, turn.agent) &&
         (turn.state === "done" ||
           turn.state === "blocked" ||
           turn.state === "crashed") &&
@@ -57,7 +68,10 @@ export interface TurnWakeHost {
   readonly take: (mail: PendingMail, hold: Hold) => void;
 }
 
-export const turnInbox = (host: TurnWakeHost) => {
+export const turnInbox = (
+  host: TurnWakeHost,
+  receiver: () => string | undefined
+) => {
   const displayed = new Set<string>();
   const pending = new Map<string, Set<string>>();
   let remember: ((key: string) => void) | undefined;
@@ -67,7 +81,8 @@ export const turnInbox = (host: TurnWakeHost) => {
       const turn = turnWake(
         inbound,
         settled,
-        new Set([...displayed, ...pending.keys()])
+        new Set([...displayed, ...pending.keys()]),
+        receiver()
       );
 
       if (Option.isNone(turn)) {
@@ -76,6 +91,7 @@ export const turnInbox = (host: TurnWakeHost) => {
           inbound.from,
           inbound.verified
         ).pipe(
+          Option.filter((value) => sameProject(receiver(), value.agent)),
           Option.flatMap((value) =>
             Option.fromUndefinedOr(pending.get(turnKey(value)))
           )
