@@ -80,11 +80,12 @@ import {
   inbox,
   MAIL_MESSAGE,
   shownIds,
+  shownInHistory,
   verdictToHold,
   WAKE_MESSAGE,
   WAKE_REASON,
 } from "./pending.ts";
-import type { DigestVariant, PendingMail } from "./pending.ts";
+import type { DigestVariant, HistoryEntry, PendingMail } from "./pending.ts";
 import { callView, resultView } from "./tool-view.ts";
 import {
   cancelledText,
@@ -395,6 +396,8 @@ export interface PiHost {
   readonly onApproval?: (handler: () => Promise<void>) => void;
   readonly events: EventBus;
   readonly onMessageShown?: (handler: (id: string) => void) => void;
+  readonly onTurnEnd?: (handler: () => void) => void;
+  readonly shownInSession?: () => ReadonlySet<string>;
   readonly registerMessageRenderer: ExtensionAPI["registerMessageRenderer"];
   readonly registerTool: ExtensionAPI["registerTool"];
   readonly sendMessage: ExtensionAPI["sendMessage"];
@@ -409,91 +412,105 @@ interface MailDispatch {
   readonly send: PiHost["sendMessage"];
 }
 
-export const piHost = (pi: ExtensionAPI): PiHost => ({
-  events: pi.events,
-  noteSettledRecord: (id, type) => {
-    pi.appendEntry("ratking.record.settled", { id, type });
-  },
-  onAgentEnd: (handler) => {
-    pi.on("agent_end", async (event) => {
-      await handler(event.messages);
-    });
-  },
-  onAgentStart: (handler) => {
-    pi.on("agent_start", handler);
-  },
-  onApproval: (handler) => {
-    pi.on("ui_prompt_start", async (event) => {
-      if (event.kind === "confirm") {
-        await handler();
-      }
-    });
-  },
-  onBeforeAgentStart: (handler) => {
-    pi.on("before_agent_start", handler);
-  },
-  onMessageShown: (handler) => {
-    pi.on("message_end", (event) => {
-      for (const id of shownIds(event.message)) {
-        handler(id);
-      }
-    });
-  },
-  onSessionEnd: (handler) => {
-    pi.on("session_shutdown", handler);
-  },
-  onSessionStart: (handler) => {
-    pi.on("session_start", async (_event, ctx) => {
-      const Counter = Schema.Struct({ n: Schema.Int });
+const noEntries = (): readonly HistoryEntry[] => [];
 
-      let turnCount = 0;
+export const piHost = (pi: ExtensionAPI): PiHost => {
+  let history = noEntries;
 
-      for (const entry of ctx.sessionManager.getEntries()) {
-        if (entry.type === "custom" && entry.customType === "ratking.turn") {
-          const data = Schema.decodeUnknownOption(Counter)(entry.data);
+  return {
+    events: pi.events,
+    noteSettledRecord: (id, type) => {
+      pi.appendEntry("ratking.record.settled", { id, type });
+    },
+    onAgentEnd: (handler) => {
+      pi.on("agent_end", async (event) => {
+        await handler(event.messages);
+      });
+    },
+    onAgentStart: (handler) => {
+      pi.on("agent_start", handler);
+    },
+    onApproval: (handler) => {
+      pi.on("ui_prompt_start", async (event) => {
+        if (event.kind === "confirm") {
+          await handler();
+        }
+      });
+    },
+    onBeforeAgentStart: (handler) => {
+      pi.on("before_agent_start", handler);
+    },
+    onMessageShown: (handler) => {
+      pi.on("message_end", (event) => {
+        for (const id of shownIds(event.message)) {
+          handler(id);
+        }
+      });
+    },
+    onSessionEnd: (handler) => {
+      pi.on("session_shutdown", handler);
+    },
+    onSessionStart: (handler) => {
+      pi.on("session_start", async (_event, ctx) => {
+        history = () => ctx.sessionManager.getEntries();
 
-          if (Option.isSome(data)) {
-            turnCount = Math.max(turnCount, data.value.n);
+        const Counter = Schema.Struct({ n: Schema.Int });
+
+        let turnCount = 0;
+
+        for (const entry of ctx.sessionManager.getEntries()) {
+          if (entry.type === "custom" && entry.customType === "ratking.turn") {
+            const data = Schema.decodeUnknownOption(Counter)(entry.data);
+
+            if (Option.isSome(data)) {
+              turnCount = Math.max(turnCount, data.value.n);
+            }
           }
         }
-      }
 
-      await handler({
-        interactive: ctx.hasUI,
-        isIdle: () => ctx.isIdle(),
-        names: parseNameEntries(ctx.sessionManager.getEntries()),
-        rememberName: (entry) => {
-          pi.appendEntry(NAME_ENTRY, entry);
-        },
-        rememberShownTurn: (key) => {
-          pi.appendEntry(TURN_SHOWN_ENTRY, { key });
-        },
-        rememberTurn: (n) => {
-          pi.appendEntry("ratking.turn", { n });
-        },
-        session: ctx.sessionManager.getSessionId(),
-        sessionName: () => pi.getSessionName(),
-        shownTurns: shownTurnKeys(ctx.sessionManager.getEntries()),
-        status: (text) => {
-          ctx.ui.setStatus("ratking", text);
-        },
-        turnCount,
-        warn: (message) => {
-          ctx.ui.notify(message, "warning");
-        },
+        await handler({
+          interactive: ctx.hasUI,
+          isIdle: () => ctx.isIdle(),
+          names: parseNameEntries(ctx.sessionManager.getEntries()),
+          rememberName: (entry) => {
+            pi.appendEntry(NAME_ENTRY, entry);
+          },
+          rememberShownTurn: (key) => {
+            pi.appendEntry(TURN_SHOWN_ENTRY, { key });
+          },
+          rememberTurn: (n) => {
+            pi.appendEntry("ratking.turn", { n });
+          },
+          session: ctx.sessionManager.getSessionId(),
+          sessionName: () => pi.getSessionName(),
+          shownTurns: shownTurnKeys(ctx.sessionManager.getEntries()),
+          status: (text) => {
+            ctx.ui.setStatus("ratking", text);
+          },
+          turnCount,
+          warn: (message) => {
+            ctx.ui.notify(message, "warning");
+          },
+        });
       });
-    });
-  },
-  registerMessageRenderer: (customType, renderer) => {
-    pi.registerMessageRenderer(customType, renderer);
-  },
-  registerTool: (tool) => {
-    pi.registerTool(tool);
-  },
-  sendMessage: (message, delivery) => {
-    pi.sendMessage(message, delivery);
-  },
-});
+    },
+    onTurnEnd: (handler) => {
+      pi.on("turn_end", () => {
+        handler();
+      });
+    },
+    registerMessageRenderer: (customType, renderer) => {
+      pi.registerMessageRenderer(customType, renderer);
+    },
+    registerTool: (tool) => {
+      pi.registerTool(tool);
+    },
+    sendMessage: (message, delivery) => {
+      pi.sendMessage(message, delivery);
+    },
+    shownInSession: () => shownInHistory(history()),
+  };
+};
 
 type TurnAction = Pick<typeof ToolParams.Type, "action" | "wait">;
 
@@ -843,6 +860,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
     const controlRecords = new Map<string, string>();
     let isIdle = idle;
     let flushing = false;
+    const sweeps: (() => void)[] = [];
 
     const consume = (id: string) => {
       const type = controlRecords.get(id);
@@ -908,6 +926,10 @@ export const ratkingExtension = (options: ExtensionOptions) =>
         }
 
         pi.sendMessage(message, delivery);
+
+        for (const run of sweeps) {
+          run();
+        }
       },
     };
 
@@ -951,23 +973,39 @@ export const ratkingExtension = (options: ExtensionOptions) =>
       },
     });
 
+    const markShown = (id: string) => {
+      mail.shown(id);
+      wakes.shown(id);
+      turnMail.shown(id);
+      consume(id);
+    };
+
+    const inSession = () => pi.shownInSession?.() ?? new Set<string>();
+
+    const sweep = () => {
+      for (const id of inSession()) {
+        markShown(id);
+      }
+    };
+
+    sweeps.push(sweep);
+
+    pi.onTurnEnd?.(sweep);
+
     pi.onAgentEnd?.(async (messages) => {
+      sweep();
       busy = false;
       wakes.flushNext();
       await reportTurn(turns?.done(stopReason(messages)));
     });
 
     pi.onBeforeAgentStart?.(() => {
+      sweep();
       busy = true;
       mail.flushNext();
     });
 
-    pi.onMessageShown?.((id) => {
-      mail.shown(id);
-      wakes.shown(id);
-      turnMail.shown(id);
-      consume(id);
-    });
+    pi.onMessageShown?.(markShown);
 
     const digestTicks = Clock.currentTimeMillis.pipe(
       Effect.flatMap((now) =>
@@ -997,6 +1035,12 @@ export const ratkingExtension = (options: ExtensionOptions) =>
 
         if (ack !== undefined) {
           acknowledgments.set(inbound.id, ack);
+        }
+
+        if (inSession().has(inbound.id)) {
+          consume(inbound.id);
+
+          return;
         }
 
         if (
@@ -1069,7 +1113,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
             if (notice === undefined) {
               consume(inbound.id);
             } else {
-              pi.sendMessage(
+              dispatch.send(
                 {
                   content: notice,
                   customType: "ratking_record_notice",
@@ -1085,7 +1129,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
         }
 
         if (inbound.sentBy !== undefined || settled) {
-          pi.sendMessage(
+          dispatch.send(
             {
               content: renderInbound(tool, inbound),
               customType: "ratking_message",
@@ -1104,7 +1148,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
           inbound.kind === "data" ? recordNotice(inbound, settled) : undefined;
 
         if (notice !== undefined) {
-          pi.sendMessage(
+          dispatch.send(
             {
               content: notice,
               customType: "ratking_record_notice",
