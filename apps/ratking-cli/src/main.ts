@@ -3,6 +3,7 @@ import { Effect } from "effect";
 import { Command } from "effect/cli";
 
 import { attentionCommand } from "./attention.ts";
+import { filterCommand } from "./filter.ts";
 import { doctorCommand, whoamiCommand } from "./identity.ts";
 import { inboxCommand, readCommand, threadCommand } from "./inbox.ts";
 import {
@@ -28,6 +29,7 @@ export const command = Command.make("ratking").pipe(
     whoamiCommand,
     doctorCommand,
     attentionCommand,
+    filterCommand,
     ...operatorCommands,
   ])
 );

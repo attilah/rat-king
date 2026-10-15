@@ -1,6 +1,6 @@
 import type * as Prefs from "@rat-king/lexicon/attention.prefs";
 import type * as Status from "@rat-king/lexicon/attention.status";
-import { Data, Option } from "effect";
+import { Data, Match, Option } from "effect";
 
 import type { KindValue } from "../../mailbox-client/src/payload.ts";
 
@@ -15,6 +15,7 @@ export interface Arrival {
   readonly sender?: string;
   readonly sentBy?: string;
   readonly thread?: string;
+  readonly type?: string;
   readonly verified?: boolean;
   readonly relay?: unknown;
 }
@@ -42,7 +43,7 @@ export type Reason = Data.TaggedEnum<{
   intent: { readonly facts: readonly Fact[] };
   judge: { readonly facts: readonly Fact[] };
   joel: { readonly facts: readonly Fact[] };
-  lever: { readonly facts: readonly Fact[] };
+  lever: { readonly facts: readonly Fact[]; readonly rule?: string };
 }>;
 
 export const Reasons = Data.taggedEnum<Reason>();
@@ -66,6 +67,77 @@ const joelVerdict = (arrival: Arrival, levers: Levers): Verdict | undefined =>
   levers.enabled === true && isOperator(arrival)
     ? Verdicts.Now({ reason: Reasons.joel({ facts: ["to"] }) })
     : undefined;
+
+const matchesRule = (
+  arrival: Arrival,
+  rule: Prefs.RuleValue,
+  now: number
+): boolean => {
+  const sender = senderOf(arrival);
+  const { match } = rule;
+
+  return (
+    (rule.until === undefined || Date.parse(rule.until) > now) &&
+    (match.type === undefined || match.type === (arrival.type ?? "message")) &&
+    (match.project === undefined ||
+      (sender?.includes("/") === true &&
+        match.project === sender.split("/")[0])) &&
+    (match.from === undefined ||
+      (match.from.endsWith("*")
+        ? sender?.startsWith(match.from.slice(0, -1)) === true
+        : sender === match.from))
+  );
+};
+
+export const ruleVerdict = (
+  arrival: Arrival,
+  rules: readonly Prefs.RuleValue[] | undefined,
+  now: number
+): Verdict | undefined => {
+  if (
+    isOperator(arrival) ||
+    (arrival.kind === "ask" && arrival.copy !== true)
+  ) {
+    return undefined;
+  }
+
+  const rule = rules?.find((candidate) => matchesRule(arrival, candidate, now));
+
+  if (rule === undefined) {
+    return undefined;
+  }
+
+  const reason = Reasons.lever({
+    facts: Match.value(rule.route).pipe(
+      Match.when("digest", (): readonly Fact[] => ["digest"]),
+      Match.when("quiet", (): readonly Fact[] => ["quiet"]),
+      Match.orElse((): readonly Fact[] => [])
+    ),
+    rule: rule.id,
+  });
+
+  switch (rule.route) {
+    case "wake": {
+      return Verdicts.Now({ reason });
+    }
+
+    case "quiet": {
+      return Verdicts.Next({ reason });
+    }
+
+    case "digest": {
+      return Verdicts.Later({ reason, window: (rule.minutes ?? 1) * 60_000 });
+    }
+
+    case "hide": {
+      return Verdicts.Never({ reason });
+    }
+
+    default: {
+      return undefined;
+    }
+  }
+};
 
 const leverVerdict = (
   arrival: Arrival,
@@ -181,6 +253,9 @@ export const attend = (
 ): Verdict =>
   joelVerdict(arrival, levers) ??
   ownerVerdict(arrival, levers) ??
+  (levers.enabled === true
+    ? ruleVerdict(arrival, levers.prefs?.rules, now)
+    : undefined) ??
   leverVerdict(arrival, levers, now) ??
   Option.getOrUndefined(suggestion) ??
   intent(arrival);
@@ -198,6 +273,10 @@ export const reasonTone = (reason: Reason): "held" | "quiet" | "woken" => {
 };
 
 export const formatReason = (reason: Reason): string => {
+  if (Reasons.$is("lever")(reason) && reason.rule !== undefined) {
+    return `filter: ${reason.rule}`;
+  }
+
   const tone = reasonTone(reason);
 
   if (tone === "held") {

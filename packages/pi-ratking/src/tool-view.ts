@@ -20,7 +20,9 @@ export interface CallArgs {
   readonly action?: string | undefined;
   readonly cc?: readonly string[] | undefined;
   readonly encrypt?: boolean | undefined;
+  readonly id?: string | undefined;
   readonly message?: string | undefined;
+  readonly op?: string | undefined;
   readonly replyAll?: boolean | undefined;
   readonly replyTo?: string | undefined;
   readonly successor?: string | undefined;
@@ -60,6 +62,11 @@ const lines = (render: (width: number) => readonly string[]): Component => {
   };
 };
 
+const callVerb = (call: CallArgs, action: string): string =>
+  action === "filter"
+    ? oneLine([action, call.op ?? "", call.id ?? ""].join(" ").trim())
+    : action;
+
 export const callLines = (
   _tool: string,
   call: CallArgs,
@@ -88,8 +95,10 @@ export const callLines = (
     ...(call.encrypt === true ? [theme.fg("success", "🔒 encrypted")] : []),
   ];
 
+  const verb = callVerb(call, action);
+
   const head = [
-    theme.fg(ACTION_COLOURS.get(action) ?? "accent", action),
+    theme.fg(ACTION_COLOURS.get(action) ?? "accent", verb),
     ...targets,
   ].join(" ");
 

@@ -32,6 +32,18 @@ export declare const Input: Schema.StructWithRest<Schema.Struct<{
             readonly group: Schema.String;
         }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>]>>;
         readonly refuse: Schema.$Array<Schema.String>;
+        readonly rules: Schema.optionalKey<Schema.$Array<Schema.StructWithRest<Schema.Struct<{
+            readonly id: Schema.String;
+            readonly match: Schema.StructWithRest<Schema.Struct<{
+                readonly from: Schema.optionalKey<Schema.String>;
+                readonly project: Schema.optionalKey<Schema.String>;
+                readonly type: Schema.optionalKey<Schema.String>;
+            }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
+            readonly minutes: Schema.optionalKey<Schema.Int>;
+            readonly note: Schema.optionalKey<Schema.String>;
+            readonly route: Schema.compose<Schema.Literals<readonly ["wake", "quiet", "digest", "hide"]>, Schema.String>;
+            readonly until: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:datetime">>;
+        }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>>>;
         readonly version: Schema.compose<Schema.Literal<"0.1">, Schema.String>;
     }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
     readonly signature: Schema.decodeTo<Schema.Uint8Array, Schema.compose<Schema.Struct<{
@@ -69,6 +81,18 @@ export declare const Output: Schema.StructWithRest<Schema.Struct<{
             readonly group: Schema.String;
         }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>]>>;
         readonly refuse: Schema.$Array<Schema.String>;
+        readonly rules: Schema.optionalKey<Schema.$Array<Schema.StructWithRest<Schema.Struct<{
+            readonly id: Schema.String;
+            readonly match: Schema.StructWithRest<Schema.Struct<{
+                readonly from: Schema.optionalKey<Schema.String>;
+                readonly project: Schema.optionalKey<Schema.String>;
+                readonly type: Schema.optionalKey<Schema.String>;
+            }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
+            readonly minutes: Schema.optionalKey<Schema.Int>;
+            readonly note: Schema.optionalKey<Schema.String>;
+            readonly route: Schema.compose<Schema.Literals<readonly ["wake", "quiet", "digest", "hide"]>, Schema.String>;
+            readonly until: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:datetime">>;
+        }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>>>;
         readonly version: Schema.compose<Schema.Literal<"0.1">, Schema.String>;
     }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
 }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
@@ -117,6 +141,18 @@ export declare const Method: {
                 readonly group: Schema.String;
             }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>]>>;
             readonly refuse: Schema.$Array<Schema.String>;
+            readonly rules: Schema.optionalKey<Schema.$Array<Schema.StructWithRest<Schema.Struct<{
+                readonly id: Schema.String;
+                readonly match: Schema.StructWithRest<Schema.Struct<{
+                    readonly from: Schema.optionalKey<Schema.String>;
+                    readonly project: Schema.optionalKey<Schema.String>;
+                    readonly type: Schema.optionalKey<Schema.String>;
+                }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
+                readonly minutes: Schema.optionalKey<Schema.Int>;
+                readonly note: Schema.optionalKey<Schema.String>;
+                readonly route: Schema.compose<Schema.Literals<readonly ["wake", "quiet", "digest", "hide"]>, Schema.String>;
+                readonly until: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:datetime">>;
+            }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>>>;
             readonly version: Schema.compose<Schema.Literal<"0.1">, Schema.String>;
         }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
         readonly signature: Schema.decodeTo<Schema.Uint8Array, Schema.compose<Schema.Struct<{
@@ -156,6 +192,18 @@ export declare const Method: {
                 readonly group: Schema.String;
             }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>]>>;
             readonly refuse: Schema.$Array<Schema.String>;
+            readonly rules: Schema.optionalKey<Schema.$Array<Schema.StructWithRest<Schema.Struct<{
+                readonly id: Schema.String;
+                readonly match: Schema.StructWithRest<Schema.Struct<{
+                    readonly from: Schema.optionalKey<Schema.String>;
+                    readonly project: Schema.optionalKey<Schema.String>;
+                    readonly type: Schema.optionalKey<Schema.String>;
+                }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
+                readonly minutes: Schema.optionalKey<Schema.Int>;
+                readonly note: Schema.optionalKey<Schema.String>;
+                readonly route: Schema.compose<Schema.Literals<readonly ["wake", "quiet", "digest", "hide"]>, Schema.String>;
+                readonly until: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:datetime">>;
+            }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>>>;
             readonly version: Schema.compose<Schema.Literal<"0.1">, Schema.String>;
         }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
     }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
