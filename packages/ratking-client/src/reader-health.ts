@@ -1,4 +1,4 @@
-import { DateTime, Predicate, Schema } from "effect";
+import { DateTime, Option, Predicate, Schema } from "effect";
 
 import { AgentName } from "./name.ts";
 
@@ -69,3 +69,20 @@ export const readerVerdict = (
 
   return now - progress > READER_STUCK_MS ? "stuck" : "running";
 };
+
+export const heldReason = (name: string) =>
+  `name ${name} is held by another live Pi; not reading`;
+
+export const blockedByAncestor = (
+  heartbeat: Option.Option<ReaderHeartbeatValue>,
+  ancestors: readonly number[],
+  session: string,
+  alive: (pid: number) => boolean
+) =>
+  Option.exists(
+    heartbeat,
+    (beat) =>
+      beat.session !== session &&
+      ancestors.includes(beat.pid) &&
+      alive(beat.pid)
+  );

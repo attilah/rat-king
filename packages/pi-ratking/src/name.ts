@@ -2,6 +2,7 @@ import type { SessionFacts } from "@rat-king/ratking-client/identity";
 import { AgentName } from "@rat-king/ratking-client/name";
 import { ReaderState } from "@rat-king/ratking-client/ratking";
 import type { LeaseHolder } from "@rat-king/ratking-client/ratking";
+import { heldReason as readerHeld } from "@rat-king/ratking-client/reader-health";
 import { Option, Schema } from "effect";
 
 export const NAME_ENTRY = "ratking.name";
@@ -84,7 +85,6 @@ export const heldElsewhere = (
   session: string
 ) => Option.exists(holder, (held) => held.live && held.session !== session);
 
-export const heldReason = (name: string) =>
-  `name ${name} is held by another live Pi; not reading`;
+export { heldReason } from "@rat-king/ratking-client/reader-health";
 
-export const heldNotice = (name: string) => `🐀 ${heldReason(name)}`;
+export const heldNotice = (name: string) => `🐀 ${readerHeld(name)}`;
