@@ -136,6 +136,23 @@ export const shownIds = (message: SessionMessage): readonly string[] =>
     ? shownIn({ customType: message.customType, details: message.details })
     : [];
 
+export interface HistoryEntry {
+  readonly customType?: string;
+  readonly details?: unknown;
+  readonly type: string;
+}
+
+export const shownInHistory = (
+  entries: readonly HistoryEntry[]
+): ReadonlySet<string> =>
+  new Set(
+    entries.flatMap((entry) =>
+      entry.type === "custom_message" && entry.customType !== undefined
+        ? shownIn({ customType: entry.customType, details: entry.details })
+        : []
+    )
+  );
+
 export interface FlushDelivery {
   readonly deliverAs: DeliverAs;
   readonly triggerTurn: boolean;
