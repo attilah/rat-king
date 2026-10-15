@@ -19,7 +19,7 @@ export const retentionService = "rat-king-storage-retention.service";
 
 export const freshBackupHours = 36;
 
-export const stopMsLimit = 60_000;
+export const stopMsLimit = 75_000;
 
 export const freeSlotFloor = 0.25;
 
