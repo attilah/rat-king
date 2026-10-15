@@ -51,7 +51,7 @@ const record = (kind: typeof Cases.Type): LexiconRecordValue =>
       }
     : {
         $type: "sh.mschf.agentgraph.turn",
-        agent: "peer",
+        agent: "fleet/peer",
         at: "2030-01-01T00:00:00Z",
         session: "peer-session",
         state: kind.endsWith("crashed") ? "crashed" : "working",
@@ -101,7 +101,7 @@ it.effect.prop(
           facts: (session) =>
             Effect.succeed({
               alive: () => true,
-              env: Option.none(),
+              env: Option.some("fleet/owner"),
               pane: Option.none(),
               pid: 1,
               session,
@@ -127,7 +127,7 @@ it.effect.prop(
 
       const facts = {
         did: "did:web:peer.example.invalid",
-        from: "peer",
+        from: "fleet/peer",
         id: "3control1234",
         replyTo: Option.none<string>(),
         verified: true,

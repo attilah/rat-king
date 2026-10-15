@@ -64,7 +64,7 @@ const Input = Schema.Struct({
   idle: Schema.Boolean,
   n: Schema.Int.check(Schema.isBetween({ maximum: 999, minimum: 1 })),
   settled: Schema.Boolean,
-  signer: Schema.Literals(["peer", "operator", "impostor"]),
+  signer: Schema.Literals(["fleet/peer", "operator", "impostor"]),
   state: State,
   verified: Schema.Boolean,
 });
@@ -72,7 +72,7 @@ const Input = Schema.Struct({
 const record = (state: typeof State.Type, n = 1) => {
   const value = {
     $type: "sh.mschf.agentgraph.turn" as const,
-    agent: "peer",
+    agent: "fleet/peer",
     at: "2030-01-01T00:00:00Z",
     session: "peer-session",
     state,
@@ -87,15 +87,15 @@ const arrival = (
   value: ReturnType<typeof record>,
   id: string,
   verified = true,
-  from = "peer"
+  from = "fleet/peer"
 ) => ({
   did: "did:web:peer.example.invalid",
   from,
   id,
   levers: {
     enabled: true,
-    owner: "owner",
-    prefs: { ...defaultPreferences(), refuse: ["peer"] },
+    owner: "fleet/owner",
+    prefs: { ...defaultPreferences(), refuse: ["fleet/peer"] },
     status: { ...defaultStatus(), state: "dnd" },
   },
   record: value,
@@ -192,7 +192,7 @@ const reader = (
         facts: (session) =>
           Effect.succeed({
             alive: () => true,
-            env: Option.some("owner"),
+            env: Option.some("fleet/owner"),
             pane: Option.none(),
             pid: 1,
             reads: true,
@@ -276,9 +276,11 @@ it.effect.prop(
       yield* real.deliver(inbound, input.settled, ack("first"));
       expect(real.events).toHaveLength(1);
       expect(real.sends).toHaveLength(wakes ? 1 : 0);
-      expect(Option.isSome(turnWake(inbound, input.settled, new Set()))).toBe(
-        wakes
-      );
+      expect(
+        Option.isSome(
+          turnWake(inbound, input.settled, new Set(), "fleet/owner")
+        )
+      ).toBe(wakes);
 
       if (!wakes) {
         yield* Deferred.await(acked);
@@ -291,7 +293,7 @@ it.effect.prop(
         { deliverAs: input.idle ? "followUp" : "steer", triggerTurn: true },
       ]);
       expect(real.sends[0]?.content).toBe(
-        `turn · peer · ${input.state} · ${"stopReason" in turn ? turn.stopReason : ""}`
+        `turn · fleet/peer · ${input.state} · ${"stopReason" in turn ? turn.stopReason : ""}`
       );
       expect(real.keys).toEqual([]);
       expect(acknowledgments).toEqual([]);
@@ -432,14 +434,17 @@ it.effect.prop(
         const keys: string[] = [];
         const mails: PendingMail[] = [];
 
-        const box = turnInbox({
-          consume: (id) => {
-            acked.push(id);
+        const box = turnInbox(
+          {
+            consume: (id) => {
+              acked.push(id);
+            },
+            take: (mail) => {
+              mails.push(mail);
+            },
           },
-          take: (mail) => {
-            mails.push(mail);
-          },
-        });
+          () => "fleet/owner"
+        );
 
         box.restore([], (key) => {
           keys.push(key);
@@ -464,12 +469,15 @@ it("turn receipts at width 60 retain done, blocked and crashed glyphs; replay re
   for (const state of ["done", "blocked", "crashed"] as const) {
     const mails: PendingMail[] = [];
 
-    const box = turnInbox({
-      consume: nothing,
-      take: (mail) => {
-        mails.push(mail);
+    const box = turnInbox(
+      {
+        consume: nothing,
+        take: (mail) => {
+          mails.push(mail);
+        },
       },
-    });
+      () => "fleet/owner"
+    );
 
     const value = record(state);
     box.receive(arrival(value, "capture"), false);
@@ -552,8 +560,8 @@ it.live.prop(
     Effect.gen(function* mailboxCustody() {
       const fs = yield* FileSystem.FileSystem;
       const state = yield* fs.makeTempDirectoryScoped();
-      const own = yield* identity("did:web:owner.agents.example.invalid");
-      const peer = yield* identity("did:web:peer.agents.example.invalid");
+      const own = yield* identity("did:web:fleet.owner.agents.example.invalid");
+      const peer = yield* identity("did:web:fleet.peer.agents.example.invalid");
       const ownDocument = yield* document(own);
       const peerDocument = yield* document(peer);
 
@@ -686,11 +694,11 @@ it.live.prop(
           const secrets = yield* SecretStore;
           const directory = yield* Directory;
           yield* secrets.add(
-            "rat_king_fleet_agent_owner_identity",
+            "rat_king_fleet_agent_fleet.owner_identity",
             Redacted.make(JSON.stringify(own))
           );
-          yield* directory.record("owner", ownDocument);
-          yield* directory.record("peer", peerDocument);
+          yield* directory.record("fleet/owner", ownDocument);
+          yield* directory.record("fleet/peer", peerDocument);
         })
       ).pipe(
         Layer.orDie,
@@ -709,7 +717,7 @@ it.live.prop(
       yield* real.start(true);
       yield* Deferred.await(displayed);
       expect(real.sends.map((message) => message.content)).toEqual([
-        "turn · peer · done · stop",
+        "turn · fleet/peer · done · stop",
       ]);
       expect(acknowledgments).toBe(0);
       expect(real.keys).toEqual([]);
