@@ -34,9 +34,19 @@
         "model": { "ref": "#model", "type": "ref" },
         "mute": { "items": { "closed": true, "refs": ["#thread", "#group"], "type": "union" }, "maxLength": 256, "type": "array" },
         "refuse": { "items": { "ref": "#name", "type": "ref" }, "maxLength": 256, "type": "array" },
+        "rules": { "items": { "ref": "#rule", "type": "ref" }, "maxLength": 32, "type": "array" },
         "version": { "const": "0.1", "type": "string" }
       },
       "required": ["allow", "forward", "log", "model", "mute", "refuse", "version"],
+      "type": "object",
+      "x-strict": true
+    },
+    "match": {
+      "properties": {
+        "from": { "maxLength": 129, "minLength": 1, "type": "string", "x-pattern": "^(?:[a-z][a-z0-9_-]*(?:/[a-z][a-z0-9_-]*)*|[a-z][a-z0-9_/-]*\\*|\\*)$" },
+        "project": { "maxLength": 128, "minLength": 1, "type": "string", "x-pattern": "^[a-z][a-z0-9_-]*$" },
+        "type": { "maxLength": 256, "minLength": 1, "type": "string" }
+      },
       "type": "object",
       "x-strict": true
     },
@@ -54,6 +64,21 @@
       "x-strict": true
     },
     "name": { "maxLength": 128, "minLength": 1, "type": "string", "x-pattern": "^[a-z][a-z0-9_-]*(?:/[a-z][a-z0-9_-]*)*$" },
+    "rule": {
+      "properties": {
+        "id": { "maxLength": 64, "minLength": 1, "type": "string", "x-pattern": "^[a-zA-Z0-9_-]+$" },
+        "match": { "ref": "#match", "type": "ref" },
+        "minutes": { "maximum": 1440, "minimum": 1, "type": "integer" },
+        "note": { "maxLength": 280, "type": "string" },
+        "route": { "enum": ["wake", "quiet", "digest", "hide"], "type": "string" },
+        "until": { "format": "datetime", "type": "string" }
+      },
+      "required": ["id", "match", "route"],
+      "type": "object",
+      "x-allowedWhen": { "field": "route", "property": "minutes", "value": "digest" },
+      "x-requiredWhen": { "field": "route", "required": "minutes", "value": "digest" },
+      "x-strict": true
+    },
     "thread": {
       "properties": { "thread": { "maxLength": 256, "minLength": 1, "type": "string" } },
       "required": ["thread"],

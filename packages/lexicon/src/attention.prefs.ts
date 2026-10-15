@@ -115,6 +115,92 @@ export const Model = Schema.StructWithRest(
 
 export type ModelValue = typeof Model.Type;
 
+export const Match = Schema.StructWithRest(
+  Schema.Struct({
+    from: Schema.optionalKey(
+      Runtime.lexString({ maxLength: 129, minLength: 1, type: "string" }).check(
+        Schema.isPattern(
+          /^(?:[a-z][a-z0-9_-]*(?:\/[a-z][a-z0-9_-]*)*|[a-z][a-z0-9_/-]*\*|\*)$/u
+        )
+      )
+    ),
+    project: Schema.optionalKey(
+      Runtime.lexString({ maxLength: 128, minLength: 1, type: "string" }).check(
+        Schema.isPattern(/^[a-z][a-z0-9_-]*$/u)
+      )
+    ),
+    type: Schema.optionalKey(
+      Runtime.lexString({ maxLength: 256, minLength: 1, type: "string" })
+    ),
+  }),
+  [Schema.Record(Schema.String, Runtime.Data)]
+).check(
+  Schema.makeFilter(
+    (value) =>
+      Object.keys(value).every((key) =>
+        ["from", "project", "type"].includes(key)
+      ),
+    { expected: "only allowed keys: from, project, type" }
+  )
+);
+
+export type MatchValue = typeof Match.Type;
+
+export const Rule = Schema.StructWithRest(
+  Schema.Struct({
+    id: Runtime.lexString({
+      maxLength: 64,
+      minLength: 1,
+      type: "string",
+    }).check(Schema.isPattern(/^[a-zA-Z0-9_-]+$/u)),
+    match: Match,
+    minutes: Schema.optionalKey(
+      Schema.Int.check(
+        Schema.isGreaterThanOrEqualTo(1),
+        Schema.isLessThanOrEqualTo(1440)
+      )
+    ),
+    note: Schema.optionalKey(
+      Runtime.lexString({ maxLength: 280, type: "string" })
+    ),
+    route: Runtime.lexString({
+      enum: ["wake", "quiet", "digest", "hide"],
+      type: "string",
+    }).pipe(
+      Schema.decodeTo(Schema.Literals(["wake", "quiet", "digest", "hide"]))
+    ),
+    until: Schema.optionalKey(
+      Runtime.lexString({ format: "datetime", type: "string" }).pipe(
+        Schema.brand("Lexicon:datetime")
+      )
+    ),
+  }),
+  [Schema.Record(Schema.String, Runtime.Data)]
+)
+  .check(
+    Schema.makeFilter(
+      (value) =>
+        Object.keys(value).every((key) =>
+          ["id", "match", "minutes", "note", "route", "until"].includes(key)
+        ),
+      { expected: "only allowed keys: id, match, minutes, note, route, until" }
+    )
+  )
+  .check(
+    Schema.makeFilter(
+      (value) => value.route !== "digest" || value.minutes !== undefined,
+      { expected: "minutes: required when route is digest" }
+    )
+  )
+  .check(
+    Schema.makeFilter(
+      (value) => !("minutes" in value) || value.route === "digest",
+      { expected: "minutes: allowed only when route is digest" }
+    )
+  );
+
+export type RuleValue = typeof Rule.Type;
+
 export const Main = Schema.StructWithRest(
   Schema.Struct({
     allow: Schema.Array(Name).check(
@@ -176,6 +262,9 @@ export const Main = Schema.StructWithRest(
       Schema.isMinLength(0),
       Schema.isMaxLength(256)
     ),
+    rules: Schema.optionalKey(
+      Schema.Array(Rule).check(Schema.isMinLength(0), Schema.isMaxLength(32))
+    ),
     version: Runtime.lexString({ const: "0.1", type: "string" }).pipe(
       Schema.decodeTo(Schema.Literal("0.1"))
     ),
@@ -193,12 +282,13 @@ export const Main = Schema.StructWithRest(
           "model",
           "mute",
           "refuse",
+          "rules",
           "version",
         ].includes(key)
       ),
     {
       expected:
-        "only allowed keys: allow, digest, forward, log, model, mute, refuse, version",
+        "only allowed keys: allow, digest, forward, log, model, mute, refuse, rules, version",
     }
   )
 );

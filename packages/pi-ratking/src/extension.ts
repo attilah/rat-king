@@ -8,6 +8,8 @@ import { NodeServices } from "@effect/platform-node";
 import { recordType } from "@rat-king/mailbox-client";
 import { decodeAgentGraphBody } from "@rat-king/ratking-client/agentgraph";
 import { attend, formatReason } from "@rat-king/ratking-client/attend";
+import type { Verdict } from "@rat-king/ratking-client/attend";
+import { countFilterHit, filterHits } from "@rat-king/ratking-client/attention";
 import {
   NotConfigured,
   resolveTurnOwner,
@@ -24,7 +26,7 @@ import {
   LexiconRecord,
   renderInbound,
 } from "@rat-king/ratking-client/payload";
-import type { Inbound } from "@rat-king/ratking-client/payload";
+import type { Inbound, InboundRecord } from "@rat-king/ratking-client/payload";
 import {
   NotDelivered,
   Inbox,
@@ -35,6 +37,7 @@ import type { Deliver, SendOptions } from "@rat-king/ratking-client/ratking";
 import {
   CONTROL_RECORD_TYPES,
   recordNotice,
+  recordRuleVerdict,
 } from "@rat-king/ratking-client/record-visibility";
 import { secretStoreLayer } from "@rat-king/ratking-client/secrets";
 import {
@@ -630,6 +633,7 @@ const parameters = Type.Object({
   action: Type.Union(
     [
       "attention",
+      "filter",
       "list",
       "list-cwd",
       "send",
@@ -692,6 +696,7 @@ const parameters = Type.Object({
     })
   ),
   focus: Type.Optional(Type.Boolean({ description: "Unused." })),
+  id: Type.Optional(Type.String()),
   message: Type.Optional(
     Type.String({ description: "Message text for send, ask or reply." })
   ),
@@ -699,6 +704,9 @@ const parameters = Type.Object({
     Type.String({ description: "Accepted for compatibility; unused." })
   ),
   note: Type.Optional(Type.String({ maxLength: 120 })),
+  op: Type.Optional(
+    Type.Union(["add", "remove", "list"].map((op) => Type.Literal(op)))
+  ),
   openProjectPaneIfMissing: Type.Optional(
     Type.Boolean({ description: "Not available on Rat King." })
   ),
@@ -731,6 +739,7 @@ const parameters = Type.Object({
   retryOf: Type.Optional(
     Type.String({ description: "Accepted for compatibility; unused." })
   ),
+  rule: Type.Optional(Type.Unknown()),
   status: Type.Optional(
     Type.Union([
       Type.Literal("available"),
@@ -776,6 +785,9 @@ const parameters = Type.Object({
 });
 
 const idle = () => true;
+
+const ignoreFilterHit = (_verdict: Verdict | undefined): Effect.Effect<void> =>
+  Effect.void;
 
 export const ratkingExtension = (options: ExtensionOptions) =>
   async function piRatking(pi: PiHost) {
@@ -938,8 +950,12 @@ export const ratkingExtension = (options: ExtensionOptions) =>
     const turnMail = turnInbox(
       {
         consume,
-        take: (pending) => {
-          mail.take(pending, isIdle() ? "followUp" : "steer");
+        take: (pending, hold) => {
+          if (hold === "steer") {
+            mail.take(pending, isIdle() ? "followUp" : "steer");
+          } else {
+            mail.take(pending, hold);
+          }
         },
       },
       () => ownName
@@ -971,7 +987,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
             },
             display: true,
           },
-          { deliverAs, triggerTurn: true }
+          { deliverAs, triggerTurn: deliverAs !== "nextTurn" }
         );
       },
     });
@@ -1031,6 +1047,113 @@ export const ratkingExtension = (options: ExtensionOptions) =>
       }
     };
 
+    let recordHit = ignoreFilterHit;
+
+    const deliverRecord = Effect.fn("RatKing.deliverRecord")(
+      function* deliverRecord(
+        inbound: InboundRecord,
+        settled: boolean,
+        now: number
+      ) {
+        pi.events.emit(RECORD_EVENT, {
+          did: inbound.did,
+          from: inbound.from,
+          id: inbound.id,
+          record: inbound.record,
+          ...Option.match(inbound.replyTo, {
+            onNone: () => ({}),
+            onSome: (replyTo) => ({ replyTo }),
+          }),
+          verified: inbound.verified,
+        });
+
+        const filtered = settled ? undefined : recordRuleVerdict(inbound, now);
+        const quiet = filtered?._tag === "Next" || filtered?._tag === "Later";
+
+        yield* recordHit(filtered);
+
+        if (inbound.record.$type === WAKE_RECORD) {
+          receiveWake(
+            {
+              consume,
+              take: quiet ? mail.take : wakes.take,
+              withdraw: wakes.withdraw,
+            },
+            inbound,
+            settled,
+            now,
+            filtered
+          );
+
+          if (!busy && !quiet && filtered?._tag !== "Never") {
+            wakes.flushNext();
+          }
+
+          return;
+        }
+
+        if (filtered?._tag === "Never") {
+          consume(inbound.id);
+
+          return;
+        }
+
+        if (inbound.record.$type === "sh.mschf.agentgraph.turn") {
+          turnMail.receive(inbound, settled, filtered);
+
+          return;
+        }
+
+        const body = JSON.stringify(inbound.record);
+
+        if (
+          !settled &&
+          (Option.isSome(decodeAgentGraphBody(body)) ||
+            (quiet &&
+              recordNotice({ ...inbound, body }, settled) !== undefined))
+        ) {
+          const { levers: _levers, ...recordInbound } = inbound;
+
+          const message: Inbound = {
+            ...recordInbound,
+            body,
+            cc: false,
+            kind: "data",
+            label: Option.none(),
+            summary: Option.none(),
+          };
+
+          mail.take(
+            {
+              coalesce: quiet,
+              content: renderInbound(tool, message),
+              details: inboundDetails(message, settled),
+              id: message.id,
+            },
+            quiet ? "nextTurn" : "steer"
+          );
+
+          return;
+        }
+
+        const notice = recordNotice({ ...inbound, body }, settled);
+
+        if (notice === undefined) {
+          consume(inbound.id);
+        } else {
+          dispatch.send(
+            {
+              content: notice,
+              customType: "ratking_record_notice",
+              details: { from: inbound.from, id: inbound.id },
+              display: true,
+            },
+            { deliverAs: "followUp", triggerTurn: false }
+          );
+        }
+      }
+    );
+
     const deliver: Deliver = (inbound, settled, ack) =>
       Effect.gen(function* deliverMail() {
         const now = yield* Clock.currentTimeMillis;
@@ -1055,78 +1178,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
         }
 
         if ("record" in inbound) {
-          if (inbound.record.$type === WAKE_RECORD) {
-            receiveWake(
-              { consume, take: wakes.take, withdraw: wakes.withdraw },
-              inbound,
-              settled,
-              now
-            );
-
-            if (!busy) {
-              wakes.flushNext();
-            }
-
-            return;
-          }
-
-          pi.events.emit(RECORD_EVENT, {
-            did: inbound.did,
-            from: inbound.from,
-            id: inbound.id,
-            record: inbound.record,
-            ...Option.match(inbound.replyTo, {
-              onNone: () => ({}),
-              onSome: (replyTo) => ({ replyTo }),
-            }),
-            verified: inbound.verified,
-          });
-
-          if (inbound.record.$type === "sh.mschf.agentgraph.turn") {
-            turnMail.receive(inbound, settled);
-
-            return;
-          }
-
-          const body = JSON.stringify(inbound.record);
-
-          if (!settled && Option.isSome(decodeAgentGraphBody(body))) {
-            const { levers: _levers, ...recordInbound } = inbound;
-
-            const message: Inbound = {
-              ...recordInbound,
-              body,
-              cc: false,
-              kind: "data",
-              label: Option.none(),
-              summary: Option.none(),
-            };
-
-            mail.take(
-              {
-                content: renderInbound(tool, message),
-                details: inboundDetails(message, settled),
-                id: message.id,
-              },
-              "steer"
-            );
-          } else {
-            const notice = recordNotice({ ...inbound, body }, settled);
-
-            if (notice === undefined) {
-              consume(inbound.id);
-            } else {
-              dispatch.send(
-                {
-                  content: notice,
-                  customType: "ratking_record_notice",
-                  details: { from: inbound.from, id: inbound.id },
-                  display: true,
-                },
-                { deliverAs: "followUp", triggerTurn: false }
-              );
-            }
-          }
+          yield* deliverRecord(inbound, settled, now);
 
           return;
         }
@@ -1147,6 +1199,30 @@ export const ratkingExtension = (options: ExtensionOptions) =>
 
         pi.events.emit(MESSAGE_EVENT, inboundDetails(inbound, settled));
 
+        const verdict = attend(
+          {
+            ...inbound,
+            type:
+              inbound.kind === "data" ? recordType(inbound.body) : "message",
+          },
+          inbound.levers ?? {},
+          now,
+          undefined,
+          Option.none()
+        );
+
+        yield* recordHit(verdict);
+
+        if (
+          Predicate.isTagged(verdict, "Never") &&
+          Predicate.isTagged(verdict.reason, "lever") &&
+          verdict.reason.rule !== undefined
+        ) {
+          consume(inbound.id);
+
+          return;
+        }
+
         const notice =
           inbound.kind === "data" ? recordNotice(inbound, settled) : undefined;
 
@@ -1163,14 +1239,6 @@ export const ratkingExtension = (options: ExtensionOptions) =>
         }
 
         if (injects(inbound, settled)) {
-          const verdict = attend(
-            inbound,
-            inbound.levers ?? {},
-            now,
-            undefined,
-            Option.none()
-          );
-
           yield* applyDelivery(verdictToHold(verdict), {
             inject: (hold) =>
               Effect.sync(() => {
@@ -1178,7 +1246,9 @@ export const ratkingExtension = (options: ExtensionOptions) =>
                   coalesce:
                     pi.onBeforeAgentStart !== undefined &&
                     hold === "nextTurn" &&
-                    (inbound.cc ||
+                    ((Predicate.isTagged(verdict.reason, "lever") &&
+                      verdict.reason.rule !== undefined) ||
+                      inbound.cc ||
                       inbound.copy === true ||
                       inbound.quiet === true) &&
                     inbound.kind !== "ask",
@@ -1291,6 +1361,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
                   yield* Schema.decodeUnknownEffect(ToolParams)(params);
 
                 const settings = yield* Settings;
+                const context = yield* Effect.context<Services>();
 
                 const status = yield* RatKing.use((ratking) => ratking.status);
 
@@ -1301,7 +1372,13 @@ export const ratkingExtension = (options: ExtensionOptions) =>
                 return yield* withTurnWait(
                   turns,
                   decoded,
-                  runAction(tool, settings.askTimeoutMs, decoded, phase)
+                  runAction(
+                    tool,
+                    settings.askTimeoutMs,
+                    decoded,
+                    phase,
+                    filterHits.pipe(Effect.provideContext(context))
+                  )
                 );
               }).pipe(
                 Effect.orElseSucceed((): ToolText => ({
@@ -1563,11 +1640,20 @@ export const ratkingExtension = (options: ExtensionOptions) =>
 
       const live: Runtime = ManagedRuntime.make(
         Layer.effectDiscard(
-          digestTicks.pipe(
-            Effect.andThen(
-              RatKing.use((ratking) => ratking.run(facts, deliver))
-            )
-          )
+          Effect.gen(function* startReader() {
+            const context = yield* Effect.context<Services>();
+            recordHit = (verdict) =>
+              countFilterHit(verdict).pipe(
+                Effect.provideContext(context),
+                Effect.matchEffect({
+                  onFailure: (failure) =>
+                    Effect.logWarning("Filter hit count unavailable", failure),
+                  onSuccess: () => Effect.void,
+                })
+              );
+            yield* digestTicks;
+            yield* RatKing.use((ratking) => ratking.run(facts, deliver));
+          })
         ).pipe(Layer.provideMerge(options.layer))
       );
 

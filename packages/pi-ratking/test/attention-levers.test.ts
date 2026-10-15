@@ -43,6 +43,7 @@ const PreferencesSample = Schema.Struct({
       }),
     ])
   ),
+  rules: Schema.optionalKey(Schema.Tuple([])),
 });
 
 const prefs = Arbitrary.schema(PreferencesSample);

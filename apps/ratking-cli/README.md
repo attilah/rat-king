@@ -20,6 +20,9 @@ ratking attention allow|refuse|forward <name>... [--remove]
 ratking attention mute (--thread <ref> | --group <ref>) [--remove]
 ratking attention test [--message <id> | --from <name> --kind message|ask|reply|data [--cc] [--thread <ref>] [--group <ref>]]
 ratking attention log [on|off]
+ratking filter add '<rule-json>'
+ratking filter remove <id>
+ratking filter list
 ratking identity | provision | retire | unretire | retired | traffic
 ```
 
@@ -36,6 +39,8 @@ Config is the Pi tool's: `RATKING_CONFIG`, else `~/.config/rat-king/pi.json`, wi
 - `inbox --hold` alone consumes: it acquires the lease, delivers each unsettled message, acks it after it is shown, and releases. If a live holder exists it refuses `LeaseHeld`, names the holder's session, and takes nothing.
 
 ## Attention
+
+`ratking filter add '{"id":"quiet-fleet","match":{"from":"fleet/*"},"route":"quiet"}'` adds or replaces a first-match receiver rule; `remove <id>` deletes it and `list` shows local hits and expiry (`--json` includes full rules). Routes are `wake`, `quiet`, `digest` with `minutes` (1–1440), and `hide`, with optional ISO `until`; filters never change durable delivery, operator mail or direct asks.
 
 Writes read the stored preferences, change one thing and put the whole record back, so model, mutes, lists and probabilities you did not name stay as they were. Probabilities are decimals 0..1 at the shell. `attention test` is read-only: it loads your levers, runs the same `attend` the reader runs and prints the verdict, and calls neither `putPreferences` nor `putStatus`. If levers are switched off (`RATKING_ATTENTION`), it says so and the verdict is the plain intent default. `attention log` only shows and toggles the `log` preference; no outcome store exists yet, so it lists no outcomes.
 

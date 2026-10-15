@@ -4,7 +4,12 @@ import {
   validateRecord,
 } from "@rat-king/ratking-client/agentgraph";
 import { askAge } from "@rat-king/ratking-client/asks";
-import { decimalPreferences } from "@rat-king/ratking-client/attention";
+import {
+  decimalPreferences,
+  FilterInput,
+  filterRules,
+  filterLines,
+} from "@rat-king/ratking-client/attention";
 import { ccRefusalPrompt } from "@rat-king/ratking-client/cc-lint";
 import { sendingOptions } from "@rat-king/ratking-client/compose";
 import type { NotConfigured } from "@rat-king/ratking-client/config";
@@ -35,9 +40,11 @@ import {
   Schema,
 } from "effect";
 import type { Duration } from "effect";
+import type { PlatformError } from "effect/PlatformError";
 
 export const Action = Schema.Literals([
   "attention",
+  "filter",
   "list",
   "list-cwd",
   "send",
@@ -69,6 +76,7 @@ export const ToolParams = Schema.Struct({
   dueBy: Schema.optionalKey(Schema.Finite),
   encrypt: Schema.optionalKey(Schema.Boolean),
   focus: Schema.optionalKey(Schema.Boolean),
+  id: Schema.optionalKey(Schema.String),
   limit: Schema.optionalKey(
     Schema.Int.check(Schema.isBetween({ maximum: 200, minimum: 1 }))
   ),
@@ -79,6 +87,7 @@ export const ToolParams = Schema.Struct({
   offset: Schema.optionalKey(
     Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
   ),
+  op: Schema.optionalKey(FilterInput.fields.op),
   openProjectPaneIfMissing: Schema.optionalKey(Schema.Boolean),
   prefs: Schema.optionalKey(Schema.Json),
   quiet: Schema.optionalKey(Schema.Boolean),
@@ -86,6 +95,7 @@ export const ToolParams = Schema.Struct({
   replyAll: Schema.optionalKey(Schema.Boolean),
   replyTo: Schema.optionalKey(Schema.String),
   retryOf: Schema.optionalKey(Schema.String),
+  rule: Schema.optionalKey(Schema.Json),
   status: Schema.optionalKey(Schema.Literals(["available", "busy", "dnd"])),
   successor: Schema.optionalKey(Schema.String),
   summary: Schema.optionalKey(Schema.String),
@@ -278,6 +288,8 @@ send and ask accept cc: ["name", ...]. to: is for whoever must act, and wakes th
 
 Give every send, ask and reply a summary: one line, at most 280 characters; longer is trimmed and the full text leads the message. Lead with the point or the ask. Phones and compact views show it first; the message holds the detail.
 
+filter add|remove|list changes receiver wake and display rules only; operator mail and direct asks bypass filters.
+
 Usage:
   ${tool}({ action: "send", to: "name", summary: "...", message: "..." }) → Deliver a message
   ${tool}({ action: "send", to: "name", message: "...", encrypt: true }) → Deliver an encrypted message
@@ -289,6 +301,7 @@ Usage:
   ${tool}({ action: "list", all: true, limit: 50, offset: 0 })       → Full directory page with DIDs
   ${tool}({ action: "status" })                                      → This Pi's name and reader
   ${tool}({ action: "attention" })                                   → Public status and private preferences; status/until/note sets status, prefs replaces preferences (Jev now/later use decimals 0..1)
+  ${tool}({ action: "filter", op: "add", rule: { id: "quiet", match: { from: "project/*" }, route: "quiet" } }) → Add a rule; remove uses id, list shows local hits and expiry, 8/page via offset
   ${tool}({ action: "retire", successor: "name" })                   → Retire this Pi's own name; mail to it is refused naming the successor, and this reader stops`;
 
 export const promptSnippet = (tool: string) =>
@@ -374,7 +387,11 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
   tool: string,
   askTimeout: Duration.Input,
   params: ToolParamsValue,
-  dispatch?: Dispatch
+  dispatch?: Dispatch,
+  localHits: Effect.Effect<
+    Readonly<Record<string, number>>,
+    PlatformError | Schema.SchemaError
+  > = Effect.succeed({})
 ) {
   const ratking = tracked(yield* RatKing, dispatch);
 
@@ -409,6 +426,26 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
 
         return ok(listView(entries, own, params).text);
       })
+    ),
+    Match.when("filter", () =>
+      Effect.gen(function* filter() {
+        const input = yield* Schema.decodeUnknownEffect(FilterInput)(params);
+        const rules = yield* filterRules(ratking.attention, input);
+        const hits = yield* localHits;
+
+        return ok(
+          filterLines(
+            rules,
+            hits,
+            params.offset ?? 0,
+            Math.min(params.limit ?? 8, 8)
+          ).join("\n")
+        );
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.succeed(loud(`Filter refused: ${String(error)}`))
+        )
+      )
     ),
     Match.when("attention", () =>
       ratking.attention(params).pipe(

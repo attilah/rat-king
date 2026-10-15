@@ -6,8 +6,9 @@ import type { TurnValue } from "@rat-king/lexicon/turns";
 import { Option, Predicate, Schema } from "effect";
 
 import { attend } from "../../ratking-client/src/attend.ts";
-import type { Verdict } from "../../ratking-client/src/attend.ts";
+import type { Levers, Verdict } from "../../ratking-client/src/attend.ts";
 import type { InboundRecord } from "../../ratking-client/src/payload.ts";
+import { recordRuleVerdict } from "../../ratking-client/src/record-visibility.ts";
 import { Dispositions, verdictToHold } from "./pending.ts";
 import type { Hold, PendingMail } from "./pending.ts";
 
@@ -77,7 +78,13 @@ export const turnInbox = (
   let remember: ((key: string) => void) | undefined;
 
   return {
-    receive: (inbound: InboundRecord, settled: boolean) => {
+    receive: (inbound: InboundRecord, settled: boolean, verdict?: Verdict) => {
+      if (verdict?._tag === "Never") {
+        host.consume(inbound.id);
+
+        return;
+      }
+
       const turn = turnWake(
         inbound,
         settled,
@@ -110,6 +117,7 @@ export const turnInbox = (
       pending.set(key, new Set([inbound.id]));
       host.take(
         {
+          coalesce: verdict?._tag === "Next" || verdict?._tag === "Later",
           content: `turn · ${turn.value.agent} · ${turn.value.state} · ${turn.value.stopReason ?? turn.value.reason ?? ""}`,
           details: {
             body: JSON.stringify(inbound.record),
@@ -122,7 +130,9 @@ export const turnInbox = (
           },
           id: inbound.id,
         },
-        "steer"
+        verdict?._tag === "Next" || verdict?._tag === "Later"
+          ? "nextTurn"
+          : "steer"
       );
     },
     restore: (
@@ -266,7 +276,8 @@ export const receiveWake = (
   host: WakeHost,
   inbound: InboundRecord,
   settled: boolean,
-  now: number
+  now: number,
+  filtered?: Verdict
 ) => {
   const decoded = Schema.decodeUnknownOption(WakeRecord)(inbound.record);
 
@@ -288,27 +299,42 @@ export const receiveWake = (
     return;
   }
 
-  const verdict = attend(
-    {
-      from: inbound.from,
-      kind: "data",
-      verified: inbound.verified,
-      wakeStatus: record.status,
-    },
-    Option.getOrElse(
-      Schema.decodeUnknownOption(WakeLevers)(inbound.levers),
-      () => ({})
-    ),
-    now,
-    undefined,
-    Option.none()
+  const filter = filtered ?? recordRuleVerdict(inbound, now);
+
+  const levers: Levers = Option.getOrElse(
+    Schema.decodeUnknownOption(WakeLevers)(inbound.levers),
+    (): Levers => ({})
   );
+
+  const baseline: Levers =
+    levers.prefs === undefined
+      ? levers
+      : { ...levers, prefs: { ...levers.prefs, rules: [] } };
+
+  const verdict =
+    (filter?._tag === "Now" ? undefined : filter) ??
+    attend(
+      {
+        from: inbound.from,
+        kind: "data",
+        type: inbound.record.$type,
+        verified: inbound.verified,
+        wakeStatus: record.status,
+      },
+      baseline,
+      now,
+      undefined,
+      Option.none()
+    );
 
   const decision = verdictToHold(verdict);
 
   Dispositions.$match(decision, {
     Inject: ({ hold }) => {
-      host.take(pendingWake(inbound, record, verdict, now), hold);
+      host.take(
+        pendingWake(inbound, record, verdict, now),
+        filter?._tag === "Next" || filter?._tag === "Later" ? "nextTurn" : hold
+      );
     },
     Settle: () => {
       host.consume(inbound.id);

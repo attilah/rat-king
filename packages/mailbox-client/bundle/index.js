@@ -892,6 +892,81 @@ var Model = Schema8.StructWithRest(
     { expected: "jev: required when kind is jev" }
   )
 );
+var Match = Schema8.StructWithRest(
+  Schema8.Struct({
+    from: Schema8.optionalKey(
+      lexString({ maxLength: 129, minLength: 1, type: "string" }).check(
+        Schema8.isPattern(
+          /^(?:[a-z][a-z0-9_-]*(?:\/[a-z][a-z0-9_-]*)*|[a-z][a-z0-9_/-]*\*|\*)$/u
+        )
+      )
+    ),
+    project: Schema8.optionalKey(
+      lexString({ maxLength: 128, minLength: 1, type: "string" }).check(
+        Schema8.isPattern(/^[a-z][a-z0-9_-]*$/u)
+      )
+    ),
+    type: Schema8.optionalKey(
+      lexString({ maxLength: 256, minLength: 1, type: "string" })
+    )
+  }),
+  [Schema8.Record(Schema8.String, Data)]
+).check(
+  Schema8.makeFilter(
+    (value) => Object.keys(value).every(
+      (key) => ["from", "project", "type"].includes(key)
+    ),
+    { expected: "only allowed keys: from, project, type" }
+  )
+);
+var Rule = Schema8.StructWithRest(
+  Schema8.Struct({
+    id: lexString({
+      maxLength: 64,
+      minLength: 1,
+      type: "string"
+    }).check(Schema8.isPattern(/^[a-zA-Z0-9_-]+$/u)),
+    match: Match,
+    minutes: Schema8.optionalKey(
+      Schema8.Int.check(
+        Schema8.isGreaterThanOrEqualTo(1),
+        Schema8.isLessThanOrEqualTo(1440)
+      )
+    ),
+    note: Schema8.optionalKey(
+      lexString({ maxLength: 280, type: "string" })
+    ),
+    route: lexString({
+      enum: ["wake", "quiet", "digest", "hide"],
+      type: "string"
+    }).pipe(
+      Schema8.decodeTo(Schema8.Literals(["wake", "quiet", "digest", "hide"]))
+    ),
+    until: Schema8.optionalKey(
+      lexString({ format: "datetime", type: "string" }).pipe(
+        Schema8.brand("Lexicon:datetime")
+      )
+    )
+  }),
+  [Schema8.Record(Schema8.String, Data)]
+).check(
+  Schema8.makeFilter(
+    (value) => Object.keys(value).every(
+      (key) => ["id", "match", "minutes", "note", "route", "until"].includes(key)
+    ),
+    { expected: "only allowed keys: id, match, minutes, note, route, until" }
+  )
+).check(
+  Schema8.makeFilter(
+    (value) => value.route !== "digest" || value.minutes !== void 0,
+    { expected: "minutes: required when route is digest" }
+  )
+).check(
+  Schema8.makeFilter(
+    (value) => !("minutes" in value) || value.route === "digest",
+    { expected: "minutes: allowed only when route is digest" }
+  )
+);
 var Main = Schema8.StructWithRest(
   Schema8.Struct({
     allow: Schema8.Array(Name).check(
@@ -951,6 +1026,9 @@ var Main = Schema8.StructWithRest(
       Schema8.isMinLength(0),
       Schema8.isMaxLength(256)
     ),
+    rules: Schema8.optionalKey(
+      Schema8.Array(Rule).check(Schema8.isMinLength(0), Schema8.isMaxLength(32))
+    ),
     version: lexString({ const: "0.1", type: "string" }).pipe(
       Schema8.decodeTo(Schema8.Literal("0.1"))
     )
@@ -967,11 +1045,12 @@ var Main = Schema8.StructWithRest(
         "model",
         "mute",
         "refuse",
+        "rules",
         "version"
       ].includes(key)
     ),
     {
-      expected: "only allowed keys: allow, digest, forward, log, model, mute, refuse, version"
+      expected: "only allowed keys: allow, digest, forward, log, model, mute, refuse, rules, version"
     }
   )
 );
@@ -3352,7 +3431,7 @@ import {
   Data as Data2,
   Effect as Effect22,
   Layer as Layer5,
-  Match as Match2,
+  Match as Match3,
   Predicate as Predicate2,
   Result as Result3,
   Schema as Schema42
@@ -3380,7 +3459,7 @@ import {
   Clock as Clock4,
   DateTime,
   Effect as Effect21,
-  Match,
+  Match as Match2,
   Option as Option4,
   Schedule as Schedule2,
   Schema as Schema41,
@@ -3579,16 +3658,16 @@ var consume = (mailbox, did, handler, options) => Effect21.scoped(
             const input = { ...fence(), message: event.receipt.message };
             const delivered = yield* mailbox.deliver(input).pipe(
               Effect21.map(
-                ({ receipt }) => Match.value(receipt.state).pipe(
-                  Match.when(
+                ({ receipt }) => Match2.value(receipt.state).pipe(
+                  Match2.when(
                     "expired",
                     () => Option4.some("expired")
                   ),
-                  Match.when(
+                  Match2.when(
                     "acked",
                     () => Option4.some("settled")
                   ),
-                  Match.orElse(() => Option4.none())
+                  Match2.orElse(() => Option4.none())
                 )
               ),
               Effect21.catchIf(
@@ -3715,9 +3794,9 @@ var prepare = Effect22.fn("Mailbox.prepare")(function* prepare2(options) {
       const messageId = randomTid(now);
       const text = yield* Effect22.try({
         catch: () => new MailboxClientError({ reason: "Invalid message body factory" }),
-        try: () => Match2.value(body).pipe(
-          Match2.when(Match2.string, (value) => value),
-          Match2.orElse((factory) => factory(messageId))
+        try: () => Match3.value(body).pipe(
+          Match3.when(Match3.string, (value) => value),
+          Match3.orElse((factory) => factory(messageId))
         )
       });
       const raw = {
