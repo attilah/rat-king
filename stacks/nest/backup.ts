@@ -58,15 +58,38 @@ const bounded = <A, E>(
     )
   );
 
+export const phase = <A, E, R>(name: string, effect: Effect.Effect<A, E, R>) =>
+  Clock.currentTimeMillis.pipe(
+    Effect.flatMap((began) =>
+      effect.pipe(
+        Effect.ensuring(
+          Clock.currentTimeMillis.pipe(
+            Effect.flatMap((ended) =>
+              Effect.log("BACKUP_PHASE", name, ended - began)
+            )
+          )
+        )
+      )
+    )
+  );
+
 export const startMailbox = (shell: Pick<Interface, "exec">) =>
   Effect.gen(function* startUnits() {
     const ctl = (action: string, unit: string) =>
       must(shell, ["systemctl", "--user", action, unit]);
 
-    yield* ctl("start", storeService);
-    yield* ctl("is-active", storeService);
-    yield* ctl("start", nodeService);
-    yield* ctl("is-active", nodeService);
+    yield* phase(
+      "start-store",
+      ctl("start", storeService).pipe(
+        Effect.andThen(ctl("is-active", storeService))
+      )
+    );
+    yield* phase(
+      "start-node",
+      ctl("start", nodeService).pipe(
+        Effect.andThen(ctl("is-active", nodeService))
+      )
+    );
   });
 
 export const runBackup = Effect.fn("Nest.backup")(function* runBackup(
@@ -96,13 +119,13 @@ export const runBackup = Effect.fn("Nest.backup")(function* runBackup(
       ...args,
     ]);
 
-  const memory = (phase: string) =>
+  const memory = (moment: string) =>
     bounded("cgroup", stepLimit, script("cgroup")).pipe(
       Effect.flatMap((report) =>
-        Effect.log("BACKUP_MEMORY", phase, report.trim())
+        Effect.log("BACKUP_MEMORY", moment, report.trim())
       ),
       Effect.catchTag("HostError", (failure) =>
-        Effect.logWarning("BACKUP_MEMORY_UNAVAILABLE", phase, failure)
+        Effect.logWarning("BACKUP_MEMORY_UNAVAILABLE", moment, failure)
       )
     );
 
@@ -119,14 +142,13 @@ export const runBackup = Effect.fn("Nest.backup")(function* runBackup(
   const stoppedAt = yield* Clock.currentTimeMillis;
 
   yield* Effect.gen(function* quiesce() {
-    yield* ctl("stop", nodeService);
-    yield* ctl("stop", storeService);
+    yield* phase("stop-node", ctl("stop", nodeService));
+    yield* phase("stop-store", ctl("stop", storeService));
     yield* checkpoint("stopped");
     yield* Effect.log(
-      (yield* bounded(
+      (yield* phase(
         "snapshot",
-        snapshotLimit,
-        script("snapshot", staging)
+        bounded("snapshot", snapshotLimit, script("snapshot", staging))
       )).trim()
     );
     yield* checkpoint("copied");
