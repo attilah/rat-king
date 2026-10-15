@@ -373,7 +373,7 @@ exports[`default plan preserves baseline with structural storage alarms 1`] = `
       "rotationOwner": {
         "home": "/home/example",
         "name": "rat-king-seaweedfs.service",
-        "sha256": "29dc71890743477d6a414fff272eeebb39645af4cc7e045f9bb5acdebb216277",
+        "sha256": "e3034806894ca0cf45d67e26d24b950a03e91130aeebb60ee7e6c1c26e9fe718",
       },
     },
     "provider": {},
@@ -433,7 +433,7 @@ exports[`default plan preserves baseline with structural storage alarms 1`] = `
           "lines": [
             [
               "ExecStart",
-              ""/home/example/.local/share/rat-king/bin/weed" server -ip=127.0.0.1 -ip.bind=127.0.0.1 -filer.port=18888 -filer.port.grpc=28888 -master.port=19333 -master.port.grpc=29333 -s3.port=18333 -s3.port.grpc=28333 -volume.port=18081 -volume.port.grpc=28081 -filer -s3 -s3.port.iceberg=0 -s3.port.lance=0 -dir="/srv/example/mailbox/seaweedfs" -s3.config="/home/example/.config/rat-king/s3.json" -master.telemetry=false -metricsPort=0 -debug=false -volume.pprof=false -master.volumeSizeLimitMB=64 -volume.max=512",
+              ""/home/example/.local/share/rat-king/bin/weed" server -ip=127.0.0.1 -ip.bind=127.0.0.1 -filer.port=18888 -filer.port.grpc=28888 -master.port=19333 -master.port.grpc=29333 -s3.port=18333 -s3.port.grpc=28333 -volume.port=18081 -volume.port.grpc=28081 -filer -s3 -s3.port.iceberg=0 -s3.port.lance=0 -dir="/srv/example/mailbox/seaweedfs" -s3.config="/home/example/.config/rat-king/s3.json" -master.telemetry=false -metricsPort=0 -debug=false -volume.pprof=false -master.volumeSizeLimitMB=64 -volume.max=512 -volume.preStopSeconds=0",
             ],
             [
               "WorkingDirectory",
@@ -766,7 +766,7 @@ Description=Rat King object storage
 StartLimitIntervalSec=0
 
 [Service]
-ExecStart="/home/example/.local/share/rat-king/bin/weed" server -ip=127.0.0.1 -ip.bind=127.0.0.1 -filer.port=18888 -filer.port.grpc=28888 -master.port=19333 -master.port.grpc=29333 -s3.port=18333 -s3.port.grpc=28333 -volume.port=18081 -volume.port.grpc=28081 -filer -s3 -s3.port.iceberg=0 -s3.port.lance=0 -dir="/srv/example/mailbox/seaweedfs" -s3.config="/home/example/.config/rat-king/s3.json" -master.telemetry=false -metricsPort=0 -debug=false -volume.pprof=false -master.volumeSizeLimitMB=64 -volume.max=512
+ExecStart="/home/example/.local/share/rat-king/bin/weed" server -ip=127.0.0.1 -ip.bind=127.0.0.1 -filer.port=18888 -filer.port.grpc=28888 -master.port=19333 -master.port.grpc=29333 -s3.port=18333 -s3.port.grpc=28333 -volume.port=18081 -volume.port.grpc=28081 -filer -s3 -s3.port.iceberg=0 -s3.port.lance=0 -dir="/srv/example/mailbox/seaweedfs" -s3.config="/home/example/.config/rat-king/s3.json" -master.telemetry=false -metricsPort=0 -debug=false -volume.pprof=false -master.volumeSizeLimitMB=64 -volume.max=512 -volume.preStopSeconds=0
 WorkingDirectory=/srv/example/mailbox/seaweedfs
 Environment=SENTRY_DSN=
 Environment=OTEL_SDK_DISABLED=true
