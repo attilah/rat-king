@@ -99,7 +99,13 @@ import { PRESENCE_TTL_MS, PresenceTimeout, presenceLine } from "./presence.ts";
 import type { PresenceValue } from "./presence.ts";
 import { quarantined, recover } from "./quarantine.ts";
 import type { Quarantined } from "./quarantine.ts";
-import { errorTag, HEARTBEAT_EVERY, HeartbeatJson } from "./reader-health.ts";
+import {
+  blockedByAncestor,
+  errorTag,
+  HEARTBEAT_EVERY,
+  heldReason,
+  HeartbeatJson,
+} from "./reader-health.ts";
 import type { ReaderHeartbeatValue } from "./reader-health.ts";
 import { RENDERS } from "./record-visibility.ts";
 import {
@@ -579,6 +585,14 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
 
   const heartbeatFile = (name: string) =>
     path.join(settings.state, "readers", `${provisionLabel(name)}.json`);
+
+  const readHeartbeat = (name: string) =>
+    fs
+      .readFileString(heartbeatFile(name))
+      .pipe(
+        Effect.flatMap(Schema.decodeUnknownEffect(HeartbeatJson)),
+        Effect.option
+      );
 
   const publish = beatLock
     .withPermits(1)(
@@ -1806,7 +1820,16 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       ).pipe(Effect.asVoid);
     }
 
-    if (facts.reads !== false) {
+    const barred =
+      facts.reads !== false &&
+      blockedByAncestor(
+        yield* readHeartbeat(claimed.name),
+        facts.ancestors?.() ?? [],
+        facts.session,
+        facts.alive
+      );
+
+    if (facts.reads !== false && !barred) {
       yield* Ref.set(heartbeat, Option.some({ name: claimed.name, startedAt }));
     }
 
@@ -1841,14 +1864,15 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       )
     );
 
-    if (facts.reads === false) {
+    if (facts.reads === false || barred) {
       yield* Ref.set(adopting, true);
 
       return yield* setState(
         ReaderState.SendOnly({
           name: own.name,
-          reason:
-            "Non-interactive Pi: send-only, no reader and no lease. Set RATKING_PRINT_NAME to read a name",
+          reason: barred
+            ? heldReason(own.name)
+            : "Non-interactive Pi: send-only, no reader and no lease. Set RATKING_PRINT_NAME to read a name",
         })
       );
     }

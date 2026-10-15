@@ -61,6 +61,7 @@ import {
 import { FetchHttpClient } from "effect/http";
 import { Type } from "typebox";
 
+import { ancestorsOf, parentOfProcess } from "./ancestry.ts";
 import { paneLabel } from "./herdr.ts";
 import { messageView } from "./message-view.ts";
 import {
@@ -314,6 +315,7 @@ export const collectFacts = (
 
     return {
       alive,
+      ancestors: () => ancestorsOf(process.pid, parentOfProcess),
       env,
       label: () =>
         Option.orElse(
@@ -1621,7 +1623,13 @@ export const ratkingExtension = (options: ExtensionOptions) =>
             degraded = undefined;
           }
 
-          if (degraded === undefined) {
+          if (
+            Predicate.isTagged(reader, "SendOnly") &&
+            reader.reason === heldReason(reader.name)
+          ) {
+            start.status?.(heldNotice(reader.name));
+            start.warn(heldNotice(reader.name));
+          } else if (degraded === undefined) {
             start.status?.(readerFooter(reader));
           }
 
