@@ -74,6 +74,7 @@ const summaries: Record<AlarmKeyValue, string> = {
   "issuer.broken": "Identity configuration is broken",
   "quarantine.growth": "Quarantine is growing",
   "readers.stuck": "Desk readers are stuck",
+  "recall.flowing-canary": "Flowing recall canary failed",
   "ship.failed": "Candidate deployment failed",
 };
 

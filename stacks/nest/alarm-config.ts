@@ -14,6 +14,7 @@ export const AlarmKey = Schema.Literals([
   "cache.rewrites",
   "instance.down",
   "backup.sessions-index",
+  "recall.flowing-canary",
 ]);
 
 export type AlarmKeyValue = typeof AlarmKey.Type;
@@ -66,6 +67,12 @@ export const AlarmSettings = Schema.Struct({
     )
   ),
   readers: Schema.optionalKey(Schema.Array(IgnoredAliveProbe)),
+  recallCanary: Schema.optionalKey(
+    Schema.Struct({
+      alarmFile: Schema.NonEmptyString,
+      receipt: Schema.NonEmptyString,
+    })
+  ),
   renotifyMinutes: Schema.optionalKey(
     Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))
   ),
@@ -120,4 +127,5 @@ export const alarmKeys: readonly AlarmKeyValue[] = [
   "cache.rewrites",
   "instance.down",
   "backup.sessions-index",
+  "recall.flowing-canary",
 ];

@@ -14,6 +14,7 @@ import { shellQuote } from "../../packages/alchemy-nest/src/ssh.ts";
 import { HeartbeatJson } from "../../packages/ratking-client/src/reader-health.ts";
 import { collectSessionsBackup } from "./alarm-backups.ts";
 import { collectInstanceHealth } from "./alarm-instances.ts";
+import { collectRecallCanary } from "./alarm-recall.ts";
 import type { DeployMarker } from "./alarm-sources.ts";
 import { AlarmFacts, CacheBreach, sightReaders } from "./alarm-sources.ts";
 import { collectComms } from "./comms.ts";
@@ -280,6 +281,10 @@ export const collectAlarmFacts = Effect.fn("Alarm.collect")(
           Effect.option
         ),
         readers: observeReaders(config.alarm.readerHeartbeats),
+        recallCanary:
+          config.alarm.recallCanary === undefined
+            ? Effect.succeed("off" as const)
+            : collectRecallCanary(config.alarm.recallCanary),
         receipts: fs.exists(config.ship.receipts).pipe(
           Effect.flatMap((exists) =>
             exists
@@ -346,6 +351,7 @@ export const collectAlarmFacts = Effect.fn("Alarm.collect")(
       measurementFailed: failed.length > 0,
       quarantinedHour: Option.getOrNull(observations.quarantine),
       readers: observations.readers.facts,
+      recallCanary: observations.recallCanary,
       receipts: Option.getOrElse(observations.receipts, () => []),
       receiptsKnown: Option.isSome(observations.receipts),
       sessionsBackup: observations.sessionsBackup,
