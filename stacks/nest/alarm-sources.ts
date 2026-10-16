@@ -5,6 +5,7 @@ import type { ReaderHeartbeatValue } from "../../packages/ratking-client/src/rea
 import { SessionsBackupFact, sessionsBackupReading } from "./alarm-backups.ts";
 import { AlarmKey, AlarmReading } from "./alarm-config.ts";
 import type { AlarmReadingValue } from "./alarm-config.ts";
+import { RecallCanaryFact, recallCanaryReading } from "./alarm-recall.ts";
 import { Sha, ShipReceipt } from "./ship-config.ts";
 import { sanitizeCandidateStderr } from "./ship-diagnostics.ts";
 
@@ -106,6 +107,9 @@ export const AlarmFacts = Schema.Struct({
       complete: Schema.Boolean,
       seen: Schema.Array(ReaderSighting),
     })
+  ),
+  recallCanary: Schema.optionalKey(
+    Schema.Union([Schema.Literal("off"), Schema.NullOr(RecallCanaryFact)])
   ),
   receipts: Schema.Array(ShipReceipt),
   receiptsKnown: Schema.Boolean,
@@ -486,6 +490,7 @@ export const observeAlarms = (
     "issuer.broken": doctorReading(facts, sources),
     "quarantine.growth": quarantineReading(facts),
     "readers.stuck": readerReading(facts),
+    "recall.flowing-canary": recallCanaryReading(facts.recallCanary),
     "ship.failed": shipReading(facts),
   };
 
