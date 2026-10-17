@@ -61,7 +61,7 @@ it.effect.prop(
         exec: (argv: readonly string[]) =>
           fake.shell.exec(argv).pipe(
             Effect.map((result) =>
-              argv.includes("show")
+              argv.includes("show") && !argv.includes("--value")
                 ? {
                     ...result,
                     stdout: `${result.stdout}InvocationID=${invocation}\n`,
