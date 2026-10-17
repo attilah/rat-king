@@ -96,7 +96,11 @@ it.effect.prop(
   ({ fault }) =>
     Effect.gen(function* failureContract() {
       const fs = yield* FileSystem.FileSystem;
-      const dataRoot = yield* fs.makeTempDirectoryScoped();
+
+      const dataRoot = yield* fs
+        .makeTempDirectoryScoped()
+        .pipe(Effect.flatMap((path) => fs.realPath(path)));
+
       const real = yield* localExec;
       const calls: string[] = [];
 
@@ -124,6 +128,7 @@ it.effect.prop(
 
           if (["prune-staging", "stage", "cleanup-staging"].includes(label)) {
             const result = yield* real.exec(argv);
+            expect(result.code, `Real backup ${label} failed`).toBe(0);
 
             if (label === "stage") {
               staging = result.stdout.trim();
