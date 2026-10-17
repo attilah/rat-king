@@ -10,7 +10,7 @@
   "dependencies": {
     "@rat-king/capability": "workspace:*",
     "@rat-king/lexicon": "workspace:*",
-    "alchemy": "2.0.0-beta.81",
+    "alchemy": "2.0.0-beta.83",
     "effect": "4.0.1",
     "foldkit": "0.167.0",
     "xstate": "6.0.0-alpha.65"
