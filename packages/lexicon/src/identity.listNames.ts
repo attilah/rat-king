@@ -4,6 +4,20 @@ import * as Defs from "./defs.ts";
 import * as Query from "./query.ts";
 import * as Runtime from "./runtime.ts";
 
+export const Parent = Schema.StructWithRest(
+  Schema.Struct({
+    name: Runtime.lexString({ maxLength: 128, type: "string" }).check(
+      Schema.isPattern(
+        /^(?:[a-z0-9]+(?:-[a-z0-9]+)*\/)?[a-z][a-z0-9_-]{0,31}$/u
+      )
+    ),
+    session: Runtime.lexString({ minLength: 1, type: "string" }),
+  }),
+  [Schema.Record(Schema.String, Runtime.Data)]
+);
+
+export type ParentValue = typeof Parent.Type;
+
 export const Entry = Schema.StructWithRest(
   Schema.Struct({
     did: Runtime.lexString({ format: "did", type: "string" }).pipe(
@@ -11,6 +25,7 @@ export const Entry = Schema.StructWithRest(
     ),
     document: Defs.DidDocument,
     name: Runtime.lexString({ maxLength: 128, type: "string" }),
+    parent: Schema.optionalKey(Parent),
   }),
   [Schema.Record(Schema.String, Runtime.Data)]
 );

@@ -232,9 +232,27 @@ export const issuerHandlers = (policy: IssuerPolicy) =>
             tx.names(params.cursor ?? "", limit + 1)
           );
 
-          const names = rows
-            .slice(0, limit)
-            .map(({ did, document, name }) => ({ did, document, name }));
+          const names = yield* Effect.forEach(rows.slice(0, limit), (row) =>
+            Effect.gen(function* encodeName() {
+              const entry = {
+                did: row.did,
+                document: row.document,
+                name: row.name,
+              };
+
+              if (row.parent !== undefined) {
+                Object.assign(entry, {
+                  parent: yield* Schema.encodeEffect(ListNames.Parent)(
+                    row.parent
+                  ).pipe(
+                    Effect.mapError(() => failure("MailboxUnavailable", 503))
+                  ),
+                });
+              }
+
+              return entry;
+            })
+          );
 
           const last = names.at(-1);
 
@@ -279,6 +297,18 @@ export const issuerHandlers = (policy: IssuerPolicy) =>
           }
         ),
         register: Effect.fn("Issuer.register")(function* register(input) {
+          if (
+            input.parent !== undefined &&
+            (!isName(input.parent.name) ||
+              input.parent.session.trim().length === 0)
+          ) {
+            return yield* failure(
+              "InvalidRequest",
+              400,
+              "Invalid parent lineage"
+            );
+          }
+
           const config = yield* Option.match(policy.config, {
             onNone: () =>
               Effect.fail(
@@ -314,7 +344,12 @@ export const issuerHandlers = (policy: IssuerPolicy) =>
                   Result.isSuccess(settled) &&
                   settled.success.kind === "bind"
                 ) {
-                  tx.bind(input.name, settled.success.binding, document);
+                  tx.bind(
+                    input.name,
+                    settled.success.binding,
+                    document,
+                    input.parent
+                  );
                 }
 
                 return settled;

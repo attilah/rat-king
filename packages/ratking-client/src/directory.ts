@@ -14,10 +14,15 @@ import {
 
 import { Settings } from "./config.ts";
 import { suggestNames } from "./directory-view.ts";
+import { ForkParent } from "./fork.ts";
 import { withLock } from "./lock.ts";
 import { AgentName, canonicalName, Did } from "./name.ts";
 
-export const Entry = Schema.Struct({ did: Did, document: Document });
+export const Entry = Schema.Struct({
+  did: Did,
+  document: Document,
+  parent: Schema.optionalKey(ForkParent),
+});
 
 export const Entries = Schema.Record(AgentName, Entry);
 
@@ -27,6 +32,7 @@ export interface Resolved {
   readonly name: string;
   readonly did: string;
   readonly document: PeerDocument;
+  readonly parent?: typeof ForkParent.Type;
 }
 
 export interface Listed {
@@ -34,6 +40,7 @@ export interface Listed {
   readonly did: string;
   readonly reserved: boolean;
   readonly aliases: readonly string[];
+  readonly parent?: typeof ForkParent.Type;
 }
 
 export class UnknownName extends Schema.TaggedError<UnknownName>()(
@@ -59,7 +66,8 @@ export class Directory extends Context.Service<
     readonly documents: Effect.Effect<readonly PeerDocument[]>;
     readonly record: (
       name: string,
-      document: PeerDocument
+      document: PeerDocument,
+      parent?: typeof ForkParent.Type
     ) => Effect.Effect<void, DirectoryError>;
   }
 >()("pi-ratking/Directory") {}
@@ -146,7 +154,14 @@ export const directoryLayer = Layer.effect(
         });
       }
 
-      return { did: did.value, document, name };
+      const resolved: Resolved = { did: did.value, document, name };
+      const parent = known[name]?.parent;
+
+      if (parent !== undefined) {
+        Object.assign(resolved, { parent });
+      }
+
+      return resolved;
     });
 
     return Directory.of({
@@ -173,12 +188,20 @@ export const directoryLayer = Layer.effect(
 
         const minted = Object.entries(known)
           .filter(([name]) => !Object.hasOwn(settings.reserved, name))
-          .map(([name, entry]) => ({
-            aliases: [],
-            did: entry.did,
-            name,
-            reserved: false,
-          }));
+          .map(([name, entry]) => {
+            const listed: Listed = {
+              aliases: [],
+              did: entry.did,
+              name,
+              reserved: false,
+            };
+
+            if (entry.parent !== undefined) {
+              Object.assign(listed, { parent: entry.parent });
+            }
+
+            return listed;
+          });
 
         return [...reserved, ...minted].toSorted((a, b) =>
           a.name.localeCompare(b.name)
@@ -198,16 +221,23 @@ export const directoryLayer = Layer.effect(
         return Option.fromNullishOr((reserved ?? minted)?.[0]);
       }),
       record: Effect.fn("Directory.record")(
-        function* record(name, document) {
+        function* record(name, document, parent) {
           yield* withLock(
             path.join(settings.state, "locks"),
             "directory",
             Effect.gen(function* write() {
               const known = yield* entries;
 
+              const entry: typeof Entry.Type = { did: document.id, document };
+              const lineage = parent ?? known[name]?.parent;
+
+              if (lineage !== undefined) {
+                Object.assign(entry, { parent: lineage });
+              }
+
               const next = yield* Schema.encodeEffect(
                 Schema.fromJsonString(Entries)
-              )({ ...known, [name]: { did: document.id, document } });
+              )({ ...known, [name]: entry });
 
               yield* writePrivateJson(settings.directory, next);
             })

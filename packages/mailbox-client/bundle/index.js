@@ -3476,6 +3476,7 @@ var Main4 = Schema40.StructWithRest(
 import {
   Clock as Clock4,
   DateTime,
+  Duration as Duration2,
   Effect as Effect21,
   Match as Match2,
   Option as Option4,
@@ -3490,7 +3491,11 @@ var consumerMachine = createMachine({
   initial: "acquiring",
   states: {
     acquiring: {
-      on: { ACQUIRED: { target: "consuming" }, HELD: { target: "waiting" } }
+      on: {
+        ACQUIRED: { target: "consuming" },
+        HELD: { target: "waiting" },
+        REFUSED: { target: "closed" }
+      }
     },
     closed: { type: "final" },
     consuming: {
@@ -3530,10 +3535,22 @@ var consume = (mailbox, did, handler, options) => Effect21.scoped(
           leaseId: options.resume.leaseId
         });
       }
+      yield* Effect21.logInfo(
+        `lease acquire-attempt name=${options.leaseName ?? did} generation=${input.generation ?? "new"} expiresAt=${input.expiresAt} reason=acquire requested`
+      );
       return yield* mailbox.lease.acquire(input).pipe(
+        Effect21.tapError(
+          (error) => Effect21.logInfo(
+            `lease acquire-failed name=${options.leaseName ?? did} generation=${input.generation ?? "new"} expiresAt=${input.expiresAt} reason=${JSON.stringify(error.error ?? error.reason)}`
+          )
+        ),
         Effect21.catchIf(
           (error) => error.error === "LeaseHeld",
           (error) => Effect21.gen(function* waitHolder() {
+            if (options.failOnHeld === true) {
+              yield* step("REFUSED");
+              return yield* Effect21.fail(error);
+            }
             yield* step("HELD");
             const holder = yield* mailbox.lease.resolve(did).pipe(
               Effect21.catchIf(
@@ -3558,13 +3575,18 @@ var consume = (mailbox, did, handler, options) => Effect21.scoped(
       Effect21.retry(
         Schedule2.spaced("1 millis").pipe(
           Schedule2.while(
-            ({ input }) => input.error === "LeaseHeld"
+            ({ input }) => input.error === "LeaseHeld" && options.failOnHeld !== true
           )
         )
       )
     );
+    const logLease = (event, lease, reason) => Effect21.logInfo(
+      `lease ${event} name=${options.leaseName ?? did} generation=${lease.generation} expiresAt=${lease.expiresAt} reason=${JSON.stringify(reason)}`
+    );
     let current = yield* Effect21.acquireRelease(
-      acquire,
+      acquire.pipe(
+        Effect21.tap((lease) => logLease("acquire", lease, "acquired"))
+      ),
       () => Effect21.gen(function* release() {
         yield* step("STOP");
         yield* mailbox.lease.release({
@@ -3572,9 +3594,20 @@ var consume = (mailbox, did, handler, options) => Effect21.scoped(
           generation: current.generation,
           leaseId: current.leaseId
         }).pipe(
-          Effect21.catchIf(releasedRefusal, () => Effect21.void),
+          Effect21.tap(() => logLease("release", current, "scope closed")),
+          Effect21.catchIf(
+            releasedRefusal,
+            () => logLease("loss", current, "release fence mismatch")
+          ),
           Effect21.tapError(
-            (error) => Effect21.logWarning("Mailbox lease release not confirmed", error)
+            (error) => logLease("release-failed", current, error.reason).pipe(
+              Effect21.andThen(
+                Effect21.logWarning(
+                  "Mailbox lease release not confirmed",
+                  error
+                )
+              )
+            )
           ),
           Effect21.ignore
         );
@@ -3593,10 +3626,9 @@ var consume = (mailbox, did, handler, options) => Effect21.scoped(
     const lost = (error) => Effect21.gen(function* classifyLoss() {
       yield* step("LOST");
       const actual = yield* mailbox.lease.resolve(did).pipe(
-        Effect21.catchIf(
-          (failure3) => failure3.error === "LeaseNotFound",
-          () => Effect21.void
-        )
+        Effect21.timeout("2 seconds"),
+        Effect21.option,
+        Effect21.map(Option4.getOrUndefined)
       );
       const now = yield* Clock4.currentTimeMillis;
       let reason = "LeaseRenewalFailed";
@@ -3606,6 +3638,11 @@ var consume = (mailbox, did, handler, options) => Effect21.scoped(
       if (actual !== void 0 && (actual.leaseId !== current.leaseId || actual.generation !== current.generation)) {
         reason = "LeaseTakenOver";
       }
+      yield* logLease(
+        reason === "LeaseExpired" ? "lapse" : "loss",
+        current,
+        `${reason}: ${error.reason}`
+      );
       return yield* Effect21.fail(
         new MailboxClientError({ error: reason, reason: error.reason })
       );
@@ -3630,7 +3667,61 @@ var consume = (mailbox, did, handler, options) => Effect21.scoped(
       if (options.renders !== void 0) {
         Object.assign(renewal, { renders: options.renders });
       }
-      current = yield* mailbox.lease.renew(renewal);
+      current = yield* Effect21.suspend(
+        () => Clock4.currentTimeMillis.pipe(
+          Effect21.flatMap((time) => {
+            const left = Date.parse(current.expiresAt) - time;
+            if (left <= 0) {
+              return Effect21.fail(
+                new MailboxClientError({
+                  error: "LeaseExpired",
+                  reason: "Lease expired during renewal retries"
+                })
+              );
+            }
+            return logLease("renew-attempt", current, "renew requested").pipe(
+              Effect21.andThen(mailbox.lease.renew(renewal)),
+              Effect21.timeoutOrElse({
+                duration: left,
+                orElse: () => Effect21.fail(
+                  new MailboxClientError({
+                    error: "LeaseExpired",
+                    reason: "Renewal exceeded lease expiry"
+                  })
+                )
+              })
+            );
+          })
+        )
+      ).pipe(
+        Effect21.tapError(
+          (error) => logLease("renew-failed", current, error.reason)
+        ),
+        Effect21.retry(
+          Schedule2.spaced("1 second").pipe(
+            Schedule2.modifyDelay(
+              () => Clock4.currentTimeMillis.pipe(
+                Effect21.map(
+                  (time) => Duration2.millis(
+                    Math.max(
+                      1,
+                      Math.min(1e3, Date.parse(current.expiresAt) - time)
+                    )
+                  )
+                )
+              )
+            ),
+            Schedule2.while(
+              ({ input }) => Clock4.currentTimeMillis.pipe(
+                Effect21.map(
+                  (time) => (input.status === void 0 ? input.error === void 0 || input.error === "MailboxUnavailable" : input.status >= 500 || input.status === 429) && Date.parse(current.expiresAt) > time
+                )
+              )
+            )
+          )
+        )
+      );
+      yield* logLease("renew", current, "renewed");
       if (options.onLease !== void 0) {
         yield* options.onLease(current);
       }

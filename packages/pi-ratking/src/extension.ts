@@ -11,6 +11,7 @@ import { attend, formatReason } from "@rat-king/ratking-client/attend";
 import type { Verdict } from "@rat-king/ratking-client/attend";
 import { countFilterHit, filterHits } from "@rat-king/ratking-client/attention";
 import {
+  loadSettings,
   NotConfigured,
   resolveTurnOwner,
   settingsLayer,
@@ -21,6 +22,8 @@ import { deliveryReason, injects } from "@rat-king/ratking-client/delivery";
 import { directoryLayer } from "@rat-king/ratking-client/directory";
 import type { SessionFacts } from "@rat-king/ratking-client/identity";
 import { issuerLayer } from "@rat-king/ratking-client/issuer";
+import { canonicalName } from "@rat-king/ratking-client/name";
+import type { ReservedValue } from "@rat-king/ratking-client/name";
 import {
   COPY_NOTE,
   LexiconRecord,
@@ -71,6 +74,7 @@ import {
   heldReason,
   NAME_ENTRY,
   parseNameEntries,
+  parentEntry,
   shouldRecord,
   stateName,
 } from "./name.ts";
@@ -90,6 +94,7 @@ import {
   WAKE_REASON,
 } from "./pending.ts";
 import type { DigestVariant, HistoryEntry, PendingMail } from "./pending.ts";
+import { forkLabel, parentSessionId } from "./session-parent.ts";
 import { callView, resultView } from "./tool-view.ts";
 import {
   cancelledText,
@@ -289,16 +294,41 @@ export const collectFacts = (
   session: string,
   sessionName?: () => string | undefined,
   interactive = true,
-  entries: readonly NameEntryValue[] = []
+  entries: readonly NameEntryValue[] = [],
+  parentSession?: string
 ) =>
   Effect.gen(function* sessionFacts() {
     const given = yield* Config.option(
       Config.String(interactive ? "RATKING_NAME" : "RATKING_PRINT_NAME")
     );
 
+    const label = yield* Config.option(Config.String("RATKING_FORK_LABEL"));
+
+    const fork = parentSession !== undefined && parentSession !== session;
+
+    const configured = fork
+      ? yield* loadSettings().pipe(Effect.option)
+      : Option.none();
+
+    const reserved: ReservedValue = configured.pipe(
+      Option.map((settings) => settings.reserved),
+      Option.getOrElse(() => ({}))
+    );
+
+    const parent = Option.fromNullishOr(
+      parentEntry(entries, parentSession)
+    ).pipe(Option.map((entry) => canonicalName(reserved, entry.name)));
+
     const choice = chooseName({
       entries: interactive ? entries : [],
-      env: given,
+      env: fork
+        ? given.pipe(Option.map((name) => canonicalName(reserved, name)))
+        : given,
+      fork,
+      label: forkLabel(label, sessionName?.(), session),
+      parent,
+      parentSession,
+      session,
     });
 
     const env = choice.name;
@@ -316,7 +346,9 @@ export const collectFacts = (
     return {
       alive,
       ancestors: () => ancestorsOf(process.pid, parentOfProcess),
+      disabled: Option.contains(given, "off"),
       env,
+      fork: choice.fork,
       label: () =>
         Option.orElse(
           Option.filter(
@@ -327,6 +359,7 @@ export const collectFacts = (
         ),
       owner,
       pane,
+      parent: choice.parent,
       pid: process.pid,
       reads: interactive || Option.isSome(env),
       session,
@@ -382,6 +415,7 @@ export interface SessionStart {
   readonly rememberTurn?: (n: number) => void;
   readonly interactive?: boolean;
   readonly names?: readonly NameEntryValue[];
+  readonly parentSession?: string | undefined;
   readonly rememberName?: (entry: NameEntryValue) => void;
   readonly shownTurns?: readonly string[];
   readonly rememberShownTurn?: (key: string) => void;
@@ -477,6 +511,12 @@ export const piHost = (pi: ExtensionAPI): PiHost => {
           interactive: ctx.hasUI,
           isIdle: () => ctx.isIdle(),
           names: parseNameEntries(ctx.sessionManager.getEntries()),
+          parentSession: await Effect.runPromise(
+            parentSessionId(ctx.sessionManager.getHeader()?.parentSession).pipe(
+              Effect.provide(NodeServices.layer),
+              Effect.map(Option.getOrUndefined)
+            )
+          ),
           rememberName: (entry) => {
             pi.appendEntry(NAME_ENTRY, entry);
           },
@@ -534,7 +574,8 @@ export interface ExtensionOptions {
     session: string,
     sessionName?: () => string | undefined,
     interactive?: boolean,
-    entries?: readonly NameEntryValue[]
+    entries?: readonly NameEntryValue[],
+    parentSession?: string
   ) => Effect.Effect<NamedFacts, Config.ConfigError>;
   readonly tool: Effect.Effect<string>;
 }
@@ -646,12 +687,13 @@ const parameters = Type.Object({
       "pending",
       "handled",
       "status",
+      "claim",
       "cancel",
       "retire",
     ].map((action) => Type.Literal(action)),
     {
       description:
-        "send, ask (returns immediately; the reply arrives as a message), reply, handled (confirm a relayed original id), pending, list, status, retire (retire this Pi's own name, optionally naming a successor, and stop its reader). handover and cancel are refused on Rat King.",
+        "send, ask (returns immediately; the reply arrives as a message), reply, handled (confirm a relayed original id), pending, list, status, claim (retry a blocked lease once), retire (retire this Pi's own name, optionally naming a successor, and stop its reader). handover and cancel are refused on Rat King.",
     }
   ),
   attachments: Type.Optional(
@@ -1582,7 +1624,8 @@ export const ratkingExtension = (options: ExtensionOptions) =>
           start.session,
           start.sessionName,
           start.interactive,
-          names
+          names,
+          start.parentSession
         )
       );
 
@@ -1598,7 +1641,15 @@ export const ratkingExtension = (options: ExtensionOptions) =>
       turns = turnReporter(collected, start.turnCount, start.rememberTurn);
 
       const remember = (name: string) => {
-        const entry: NameEntryValue = { name, source };
+        if (collected.disabled === true) {
+          return;
+        }
+
+        const entry: NameEntryValue = { name, session: start.session, source };
+
+        if (collected.parent !== undefined) {
+          Object.assign(entry, { parent: collected.parent });
+        }
 
         if (start.rememberName !== undefined && shouldRecord(recorded, entry)) {
           recorded = entry;
@@ -1645,7 +1696,12 @@ export const ratkingExtension = (options: ExtensionOptions) =>
             reader.reason === heldReason(reader.name)
           ) {
             start.status?.(heldNotice(reader.name));
-            start.warn(heldNotice(reader.name));
+
+            if (degraded !== heldReason(reader.name)) {
+              start.warn(heldNotice(reader.name));
+            }
+
+            degraded = heldReason(reader.name);
           } else if (degraded === undefined) {
             start.status?.(readerFooter(reader));
           }

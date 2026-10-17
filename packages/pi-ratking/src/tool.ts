@@ -19,7 +19,11 @@ import { listView } from "@rat-king/ratking-client/directory-view";
 import type { QuietAsk } from "@rat-king/ratking-client/errors";
 import { LexiconRecord } from "@rat-king/ratking-client/payload";
 import { literalPrompt } from "@rat-king/ratking-client/prompt";
-import { RatKing, ReaderState } from "@rat-king/ratking-client/ratking";
+import {
+  RatKing,
+  ReaderControl,
+  ReaderState,
+} from "@rat-king/ratking-client/ratking";
 import type {
   AskOptions,
   Delivered,
@@ -56,6 +60,7 @@ export const Action = Schema.Literals([
   "handled",
   "status",
   "cancel",
+  "claim",
   "retire",
 ]);
 
@@ -290,6 +295,8 @@ Give every send, ask and reply a summary: one line, at most 280 characters; long
 
 filter add|remove|list changes receiver wake and display rules only; operator mail and direct asks bypass filters.
 
+A name held by another reader stays send-only, without background acquisition. claim retries that name once. RATKING_NAME=off disables name claims and leases. Forks mint their own derived names; they never inherit a parent's reader.
+
 Usage:
   ${tool}({ action: "send", to: "name", summary: "...", message: "..." }) → Deliver a message
   ${tool}({ action: "send", to: "name", message: "...", encrypt: true }) → Deliver an encrypted message
@@ -300,6 +307,7 @@ Usage:
   ${tool}({ action: "list", match: "muster/" })                     → Matching names, bounded
   ${tool}({ action: "list", all: true, limit: 50, offset: 0 })       → Full directory page with DIDs
   ${tool}({ action: "status" })                                      → This Pi's name and reader
+  ${tool}({ action: "claim" })                                       → Retry a blocked name claim once
   ${tool}({ action: "attention" })                                   → Public status and private preferences; status/until/note sets status, prefs replaces preferences (Jev now/later use decimals 0..1)
   ${tool}({ action: "filter", op: "add", rule: { id: "quiet", match: { from: "project/*" }, route: "quiet" } }) → Add a rule; remove uses id, list shows local hits and expiry, 8/page via offset
   ${tool}({ action: "retire", successor: "name" })                   → Retire this Pi's own name; mail to it is refused naming the successor, and this reader stops`;
@@ -406,6 +414,28 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
   }
 
   return yield* Match.value(params.action).pipe(
+    Match.when("claim", () =>
+      Effect.serviceOption(ReaderControl).pipe(
+        Effect.flatMap((control) =>
+          Option.match(control, {
+            onNone: () =>
+              Effect.succeed(
+                loud("Reader claim is unavailable in this runtime")
+              ),
+            onSome: (reader) =>
+              reader.claim.pipe(
+                Effect.map((requested) =>
+                  requested
+                    ? ok(
+                        "One explicit name claim requested. Check status for the lease outcome."
+                      )
+                    : loud("No blocked name claim is waiting. Check status.")
+                )
+              ),
+          })
+        )
+      )
+    ),
     Match.when("status", () =>
       ratking.status.pipe(
         Effect.map((status) =>

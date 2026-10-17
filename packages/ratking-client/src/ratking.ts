@@ -9,6 +9,7 @@ import type * as Lease from "@rat-king/lexicon/runtime.lease";
 import { Transport } from "@rat-king/lexicon/transport";
 import { signedTurn } from "@rat-king/lexicon/turns";
 import {
+  MailboxClientError,
   ownIdentity,
   prepare,
   readerCannotRender,
@@ -17,7 +18,6 @@ import {
   transportLayer,
 } from "@rat-king/mailbox-client";
 import type {
-  MailboxClientError,
   ConsumeOptions,
   IdentityValue,
   LeaseFence,
@@ -244,6 +244,11 @@ export type ReaderState = Data.TaggedEnum<{
 }>;
 
 export const ReaderState = Data.taggedEnum<ReaderState>();
+
+export class ReaderControl extends Context.Service<
+  ReaderControl,
+  { readonly claim: Effect.Effect<boolean> }
+>()("ratking/ReaderControl") {}
 
 export const ADMISSION_TRIES = 10;
 
@@ -492,6 +497,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
   });
 
   const session = yield* Ref.make(Option.none<SessionFacts>());
+  const claimGate = yield* Ref.make(Option.none<Deferred.Deferred<boolean>>());
 
   const leaseHealth = yield* Ref.make({
     acquisitionSince: 0,
@@ -961,10 +967,12 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       const options: ConsumeOptions = {
         ackOnReturn: false,
         afterSeq,
+        failOnHeld: true,
         harness: {
           $type: "sh.mschf.ratking.runtime.lease#pi",
           sessionId: facts.session,
         },
+        leaseName: own.name,
         onAttentionReceipt: () =>
           refreshAttention.pipe(
             Effect.timeout("2 seconds"),
@@ -999,6 +1007,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
                   leaseUntil: Option.some(lease.expiresAt),
                 })),
                 Ref.set(attempts, 0),
+                Ref.set(adopting, false),
                 Clock.currentTimeMillis.pipe(
                   Effect.flatMap((now) =>
                     Ref.update(health, (current) => ({
@@ -1812,6 +1821,20 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
     });
   };
 
+  const waitForClaim = (name: string) =>
+    Effect.gen(function* awaitClaim() {
+      const gate = yield* Deferred.make<boolean>();
+
+      yield* Ref.set(adopting, true);
+      yield* Ref.set(claimGate, Option.some(gate));
+      yield* setState(ReaderState.SendOnly({ name, reason: heldReason(name) }));
+      yield* Effect.logWarning(
+        `Rat King ${name}: ${heldReason(name)}; use claim to retry once`
+      );
+      yield* Deferred.await(gate);
+      yield* Ref.set(claimGate, Option.none());
+    });
+
   const loop = Effect.fn("RatKing.run")(function* loop(
     facts: SessionFacts,
     deliver: Deliver,
@@ -1851,7 +1874,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       Effect.gen(function* establish() {
         yield* setState(ReaderState.Minting({ name: claimed.name }));
 
-        const identity = yield* ensureIdentity(claimed.name);
+        const identity = yield* ensureIdentity(claimed.name, facts.parent);
 
         return {
           did: identity.did,
@@ -1877,17 +1900,20 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       )
     );
 
-    if (facts.reads === false || barred) {
+    if (facts.reads === false) {
       yield* Ref.set(adopting, true);
 
       return yield* setState(
         ReaderState.SendOnly({
           name: own.name,
-          reason: barred
-            ? heldReason(own.name)
-            : "Non-interactive Pi: send-only, no reader and no lease. Set RATKING_PRINT_NAME to read a name",
+          reason:
+            "Non-interactive Pi: send-only, no reader and no lease. Set RATKING_PRINT_NAME to read a name",
         })
       );
+    }
+
+    if (barred) {
+      yield* waitForClaim(own.name);
     }
 
     const route = yield* supervise(
@@ -1986,6 +2012,11 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
               reason: "Reader stopped; restarting",
             })
           )
+        ),
+        Effect.catchIf(
+          (error) =>
+            Schema.is(MailboxClientError)(error) && error.error === "LeaseHeld",
+          () => waitForClaim(own.name)
         )
       )
     ).pipe(Effect.forever);
@@ -1996,12 +2027,23 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       const startedAt = yield* Clock.currentTimeMillis;
 
       yield* Ref.set(session, Option.some(facts));
+
+      if (facts.disabled === true) {
+        return yield* setState(
+          ReaderState.SendOnly({
+            name: "off",
+            reason: "RATKING_NAME=off: no name claim, no reader and no lease",
+          })
+        );
+      }
+
       yield* loop(facts, deliver, startedAt).pipe(Effect.forkScoped);
       yield* publish.pipe(
         Effect.repeat(Schedule.spaced(HEARTBEAT_EVERY)),
         Effect.forkScoped
       );
-      yield* Effect.addFinalizer(() => retireHeartbeat);
+
+      return yield* Effect.addFinalizer(() => retireHeartbeat);
     });
 
   type Prepared = Effect.Success<ReturnType<typeof prepare>>;
@@ -2704,12 +2746,14 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
           !isReserved(settings.reserved, entry.name) &&
           entry.document.id === entry.did
         ) {
-          yield* directory.record(entry.name, entry.document).pipe(
-            Effect.tapError(() =>
-              Effect.logWarning("Rat King directory entry not recorded")
-            ),
-            Effect.ignore
-          );
+          yield* directory
+            .record(entry.name, entry.document, entry.parent)
+            .pipe(
+              Effect.tapError(() =>
+                Effect.logWarning("Rat King directory entry not recorded")
+              ),
+              Effect.ignore
+            );
         }
       }
 
@@ -2938,6 +2982,19 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
   });
 
   return Context.make(RatKing, ratking).pipe(
+    Context.add(
+      ReaderControl,
+      ReaderControl.of({
+        claim: Ref.get(claimGate).pipe(
+          Effect.flatMap((gate) =>
+            Option.match(gate, {
+              onNone: () => Effect.succeed(false),
+              onSome: (request) => Deferred.succeed(request, true),
+            })
+          )
+        ),
+      })
+    ),
     Context.add(
       Inbox,
       Inbox.of({

@@ -5,6 +5,7 @@ import type * as Lease from "@rat-king/lexicon/runtime.lease";
 import {
   Clock,
   DateTime,
+  Duration,
   Effect,
   Match,
   Option,
@@ -28,7 +29,11 @@ export const consumerMachine = createMachine({
   initial: "acquiring",
   states: {
     acquiring: {
-      on: { ACQUIRED: { target: "consuming" }, HELD: { target: "waiting" } },
+      on: {
+        ACQUIRED: { target: "consuming" },
+        HELD: { target: "waiting" },
+        REFUSED: { target: "closed" },
+      },
     },
     closed: { type: "final" },
     consuming: {
@@ -71,6 +76,8 @@ export interface ConsumeOptions {
   readonly resume?: LeaseFence;
   readonly afterSeq?: number;
   readonly onLease?: (lease: Lease.MainValue) => Effect.Effect<void>;
+  readonly leaseName?: string;
+  readonly failOnHeld?: boolean;
   readonly unopenable?: (
     event: Defs.MessageEventValue,
     error: MailboxClientError
@@ -122,11 +129,26 @@ export const consume = <E, R>(
           });
         }
 
+        yield* Effect.logInfo(
+          `lease acquire-attempt name=${options.leaseName ?? did} generation=${input.generation ?? "new"} expiresAt=${input.expiresAt} reason=acquire requested`
+        );
+
         return yield* mailbox.lease.acquire(input).pipe(
+          Effect.tapError((error) =>
+            Effect.logInfo(
+              `lease acquire-failed name=${options.leaseName ?? did} generation=${input.generation ?? "new"} expiresAt=${input.expiresAt} reason=${JSON.stringify(error.error ?? error.reason)}`
+            )
+          ),
           Effect.catchIf(
             (error) => error.error === "LeaseHeld",
             (error) =>
               Effect.gen(function* waitHolder() {
+                if (options.failOnHeld === true) {
+                  yield* step("REFUSED");
+
+                  return yield* Effect.fail(error);
+                }
+
                 yield* step("HELD");
 
                 const holder = yield* mailbox.lease.resolve(did).pipe(
@@ -157,30 +179,53 @@ export const consume = <E, R>(
           Schedule.spaced("1 millis").pipe(
             Schedule.while(
               ({ input }: { readonly input: MailboxClientError }) =>
-                input.error === "LeaseHeld"
+                input.error === "LeaseHeld" && options.failOnHeld !== true
             )
           )
         )
       );
 
-      let current: Lease.MainValue = yield* Effect.acquireRelease(acquire, () =>
-        Effect.gen(function* release() {
-          yield* step("STOP");
-          yield* mailbox.lease
-            .release({
-              did,
-              generation: current.generation,
-              leaseId: current.leaseId,
-            })
-            .pipe(
-              Effect.catchIf(releasedRefusal, () => Effect.void),
-              Effect.tapError((error) =>
-                Effect.logWarning("Mailbox lease release not confirmed", error)
-              ),
-              Effect.ignore
-            );
-          yield* step("RELEASED");
-        })
+      const logLease = (
+        event: string,
+        lease: Lease.MainValue,
+        reason: string
+      ) =>
+        Effect.logInfo(
+          `lease ${event} name=${options.leaseName ?? did} generation=${lease.generation} expiresAt=${lease.expiresAt} reason=${JSON.stringify(reason)}`
+        );
+
+      let current: Lease.MainValue = yield* Effect.acquireRelease(
+        acquire.pipe(
+          Effect.tap((lease) => logLease("acquire", lease, "acquired"))
+        ),
+        () =>
+          Effect.gen(function* release() {
+            yield* step("STOP");
+            yield* mailbox.lease
+              .release({
+                did,
+                generation: current.generation,
+                leaseId: current.leaseId,
+              })
+              .pipe(
+                Effect.tap(() => logLease("release", current, "scope closed")),
+                Effect.catchIf(releasedRefusal, () =>
+                  logLease("loss", current, "release fence mismatch")
+                ),
+                Effect.tapError((error) =>
+                  logLease("release-failed", current, error.reason).pipe(
+                    Effect.andThen(
+                      Effect.logWarning(
+                        "Mailbox lease release not confirmed",
+                        error
+                      )
+                    )
+                  )
+                ),
+                Effect.ignore
+              );
+            yield* step("RELEASED");
+          })
       );
 
       yield* step("ACQUIRED");
@@ -199,12 +244,13 @@ export const consume = <E, R>(
         Effect.gen(function* classifyLoss() {
           yield* step("LOST");
 
-          const actual = yield* mailbox.lease.resolve(did).pipe(
-            Effect.catchIf(
-              (failure) => failure.error === "LeaseNotFound",
-              () => Effect.void
-            )
-          );
+          const actual = yield* mailbox.lease
+            .resolve(did)
+            .pipe(
+              Effect.timeout("2 seconds"),
+              Effect.option,
+              Effect.map(Option.getOrUndefined)
+            );
 
           const now = yield* Clock.currentTimeMillis;
 
@@ -221,6 +267,12 @@ export const consume = <E, R>(
           ) {
             reason = "LeaseTakenOver";
           }
+
+          yield* logLease(
+            reason === "LeaseExpired" ? "lapse" : "loss",
+            current,
+            `${reason}: ${error.reason}`
+          );
 
           return yield* Effect.fail(
             new MailboxClientError({ error: reason, reason: error.reason })
@@ -252,7 +304,70 @@ export const consume = <E, R>(
           Object.assign(renewal, { renders: options.renders });
         }
 
-        current = yield* mailbox.lease.renew(renewal);
+        current = yield* Effect.suspend(() =>
+          Clock.currentTimeMillis.pipe(
+            Effect.flatMap((time) => {
+              const left = Date.parse(current.expiresAt) - time;
+
+              if (left <= 0) {
+                return Effect.fail(
+                  new MailboxClientError({
+                    error: "LeaseExpired",
+                    reason: "Lease expired during renewal retries",
+                  })
+                );
+              }
+
+              return logLease("renew-attempt", current, "renew requested").pipe(
+                Effect.andThen(mailbox.lease.renew(renewal)),
+                Effect.timeoutOrElse({
+                  duration: left,
+                  orElse: () =>
+                    Effect.fail(
+                      new MailboxClientError({
+                        error: "LeaseExpired",
+                        reason: "Renewal exceeded lease expiry",
+                      })
+                    ),
+                })
+              );
+            })
+          )
+        ).pipe(
+          Effect.tapError((error) =>
+            logLease("renew-failed", current, error.reason)
+          ),
+          Effect.retry(
+            Schedule.spaced("1 second").pipe(
+              Schedule.modifyDelay(() =>
+                Clock.currentTimeMillis.pipe(
+                  Effect.map((time) =>
+                    Duration.millis(
+                      Math.max(
+                        1,
+                        Math.min(1000, Date.parse(current.expiresAt) - time)
+                      )
+                    )
+                  )
+                )
+              ),
+              Schedule.while(
+                ({ input }: { readonly input: MailboxClientError }) =>
+                  Clock.currentTimeMillis.pipe(
+                    Effect.map(
+                      (time) =>
+                        (input.status === undefined
+                          ? input.error === undefined ||
+                            input.error === "MailboxUnavailable"
+                          : input.status >= 500 || input.status === 429) &&
+                        Date.parse(current.expiresAt) > time
+                    )
+                  )
+              )
+            )
+          )
+        );
+        yield* logLease("renew", current, "renewed");
 
         if (options.onLease !== undefined) {
           yield* options.onLease(current);

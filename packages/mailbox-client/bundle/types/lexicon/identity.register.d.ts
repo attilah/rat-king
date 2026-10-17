@@ -19,6 +19,10 @@ export declare const Input: Schema.StructWithRest<Schema.Struct<{
         }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>>;
     }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
     readonly name: Schema.String;
+    readonly parent: Schema.optionalKey<Schema.StructWithRest<Schema.Struct<{
+        readonly name: Schema.String;
+        readonly session: Schema.String;
+    }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>>;
 }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
 export type InputValue = typeof Input.Type;
 export declare const Output: Schema.StructWithRest<Schema.Struct<{
@@ -56,6 +60,10 @@ export declare const Method: {
             }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>>;
         }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
         readonly name: Schema.String;
+        readonly parent: Schema.optionalKey<Schema.StructWithRest<Schema.Struct<{
+            readonly name: Schema.String;
+            readonly session: Schema.String;
+        }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>>;
     }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
     readonly inputEncoding: "application/json";
     readonly method: "POST";

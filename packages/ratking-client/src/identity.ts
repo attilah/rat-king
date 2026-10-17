@@ -15,6 +15,8 @@ import {
 import { Settings } from "./config.ts";
 import { Directory, writePrivateJson } from "./directory.ts";
 import { reasonOf } from "./errors.ts";
+import { forkName } from "./fork.ts";
+import type { ForkIdentity, ForkParent } from "./fork.ts";
 import { Issuer } from "./issuer.ts";
 import { withLock } from "./lock.ts";
 import {
@@ -35,6 +37,9 @@ export class IdentityError extends Schema.TaggedError<IdentityError>()(
 
 export interface SessionFacts {
   readonly session: string;
+  readonly disabled?: boolean;
+  readonly fork?: ForkIdentity | undefined;
+  readonly parent?: typeof ForkParent.Type | undefined;
   readonly pid: number;
   readonly env: Option.Option<string>;
   readonly pane: Option.Option<string>;
@@ -135,7 +140,10 @@ export const claimName = Effect.fn("RatKing.claimName")(function* claimName(
 
       const own: OwnName = yield* Result.match(
         deriveName({
-          env: facts.env,
+          env:
+            facts.fork === undefined
+              ? facts.env
+              : Option.some(forkName(facts.fork, facts.session, taken)),
           pane: facts.pane,
           reserved: settings.reserved,
           session: facts.session,
@@ -167,7 +175,7 @@ export const claimName = Effect.fn("RatKing.claimName")(function* claimName(
 });
 
 export const ensureIdentity = Effect.fn("RatKing.ensureIdentity")(
-  function* ensureIdentity(name: string) {
+  function* ensureIdentity(name: string, parent?: typeof ForkParent.Type) {
     const settings = yield* Settings;
     const store = yield* SecretStore;
     const issuer = yield* Issuer;
@@ -201,7 +209,7 @@ export const ensureIdentity = Effect.fn("RatKing.ensureIdentity")(
           }
 
           if (!reserved && !registered) {
-            yield* issuer.ensure(name, publicDocument(identity));
+            yield* issuer.ensure(name, publicDocument(identity), parent);
           }
 
           return identity;
@@ -226,7 +234,7 @@ export const ensureIdentity = Effect.fn("RatKing.ensureIdentity")(
         }).pipe(Effect.mapError(() => fail("Generated identity is invalid")));
 
         yield* store.add(secret, Redacted.make(JSON.stringify(identity)));
-        yield* issuer.ensure(name, publicDocument(identity));
+        yield* issuer.ensure(name, publicDocument(identity), parent);
 
         return identity;
       })
