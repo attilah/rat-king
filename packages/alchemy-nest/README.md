@@ -9,14 +9,14 @@ Alchemy v2 providers for Linux hosts over SSH. They run as a non-root user. `Sys
 - `ReleaseSource` owns downloads. `sourceLayer` needs an Effect HTTP client. Tests replace both ports with in-memory implementations.
 - `providers()` registers all four resources. Individual provider layers are exported too. Each provider layer captures its host shell; use separate stack namespaces and state for separate hosts.
 
-Keep host facts and Alchemy state outside this repository. Pass runtime inventory values to declarations. Never put plaintext credentials in resource props. Secret file content uses Effect `Redacted`; Alchemy persists the secret in external state. Keep that state in an owner-only directory.
+Keep host facts and Alchemy state outside this repository. Pass runtime inventory values to declarations. Real secret files use `contentFrom`, never inline values or `Redacted` props. Alchemy beta.83 encodes the inner value of `Redacted` in state. `Redacted` protects in-memory display, not persistence. Keep external state in an owner-only directory.
 
 ## Resources
 
 | Resource | Inputs | Behavior |
 | --- | --- | --- |
 | `SystemdUnit` | `scope: "user"`, `home`, `name`, `sections`, optional `enabled`, `started`, `restartOn` | Writes under the supplied home's `.config/systemd/user/`. Renders ordered section/key/value pairs, including repeated directives. Supports `.service` and `.slice`. An Install section defaults enablement on; slices without one stay static. |
-| `RemoteFile` | Absolute `path`, `content`, optional numeric `mode` | Atomic write and digest/mode readback. Mode-only updates use chmod. Redacted content requires mode `0o600`. |
+| `RemoteFile` | Absolute `path`, exactly one of `content` or `contentFrom`, optional numeric `mode` | Atomic write and digest/mode readback. Mode-only updates use chmod. Secret references and legacy Redacted content require mode `0o600`. |
 | `HostDirectory` | Absolute `path`, optional numeric `mode` | Creates one directory, not its parents. Defaults to rmdir and refuses nonempty directories. Explicit `purgeOnDelete: true` needs a `purgeRoot` from the shell's inventory-derived owned roots. |
 | `ReleaseBinary` | Absolute `path`, GitHub release `url`, mandatory archive `sha256` and `size`, `asset`, optional numeric `mode` | Verifies the download before any installation. Raw assets use `{ format: "raw" }`. Gzip tar assets use `{ format: "tar.gz", member, memberSha256, root? }`. Standalone gzip uses `{ format: "gz", memberSha256 }`. Verifies the expanded binary too. Default mode is `0o755`. |
 
@@ -42,7 +42,15 @@ Existing resources read as `Unowned`; adoption needs Alchemy's explicit adopt po
 
 ## Object storage and cell nodes
 
-`ObjectStore.Bucket(id, { host, name, slice, purgeOnDelete? })` composes the pinned SeaweedFS 4.48 binary, generated Alchemy `Random` secrets, a mode-600 identity file, owned directories and a user service. Its final `ObjectStore.Bucket` resource creates a non-versioned bucket through signed S3 requests. Outputs include `endpoint`, `bucketName`, `region`, `accessKey` and `secretKey`; credentials remain redacted outputs.
+`ObjectStore.Bucket(id, { credentials: { accessKey, secretKey }, host, name, slice, purgeOnDelete? })` takes two names from the `agent-secrets` store. It composes the pinned SeaweedFS 4.48 binary, a reference-rendered mode-600 identity file, owned directories and a user service. Its final bucket resource creates a non-versioned bucket through signed S3 requests. Outputs include `endpoint`, `bucketName`, `region` and a discriminated `credentials` descriptor. Reference mode carries names, not credential values.
+
+The deprecated `legacyRandomCredentials: true` option preserves the existing `access-key` and `secret-key` Random resources and their inline Redacted file props. It cannot be combined with credential references. Omitting both options fails closed. Existing stacks select legacy mode explicitly until the desk switches them.
+
+The fleet reads both names from the private inventory's optional `s3Credentials` object, with `accessKey` and `secretKey` fields. Public code has no name defaults. Once reference mode is selected, missing names fail with `InventoryError`; they never select legacy mode. Keep these names in the inventory's `secretNames` publication-fence list too. `SecretSource.layer` leases them on the stack runner with `secrets lease <name> --ttl 5m`. Provide Node process services and this layer when constructing reference-mode file providers. Providers capture the source at construction. Tests use `SecretSource.fromRecord`.
+
+`contentFrom: { secret: name }` installs one secret verbatim. The template form is `{ format, secrets: { KEY: name }, template }`. Placeholders use `{{KEY}}`; rendering substitutes each placeholder once. `format: "json"` inserts a complete JSON string literal, `"environment"` inserts a quoted systemd environment value, and `"text"` or no format inserts text verbatim. Keep literal credentials out of the template. Props contain names and literal template text; attributes contain names, mode, path and the rendered sha256, never the rendered secret text.
+
+A changed value under the same name plans an update by sha. Changing the content source also updates state metadata, even when the bytes match, because Alchemy's noop path retains old props. A same-sha source change exposes stable digest attributes to dependents and writes nothing. See [the switch and rotation procedure](../../stacks/nest/SECRET-REFERENCES.md).
 
 Declare `ObjectStore.Slice(host.home)` once per stack. Pass its `sha256` output to each bucket's `slice` input. The user slice caps aggregate memory, swap, CPU and tasks. SeaweedFS binds its eight fixed listeners to loopback, disables master telemetry, clears the Sentry DSN and disables the OTEL SDK. It explicitly sets `-s3.port.iceberg=0` and `-s3.port.lance=0`: pinned 4.48 `weed/command/server.go:170–171` documents zero as disabled; `weed/command/s3.go:401–408` guards both startup paths.
 

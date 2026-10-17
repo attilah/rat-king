@@ -8,27 +8,23 @@ import { Config, Effect, Layer, Option, Schema } from "effect";
 import { absent } from "./absent.ts";
 import { ownedPath, recovering, rotatingFile } from "./adoption.ts";
 import { legacyDeploymentFile } from "./deployment-file-adoption.ts";
+import { resolveFileContent } from "./file-content.ts";
 import { HostShell, HostError } from "./host-shell.ts";
 import {
   deleteDirectory,
   deleteFile,
-  fileText,
-  FileSchema,
   DirectorySchema,
   directoryPolicy,
   readDirectory,
   readFile,
   reconcileDirectory,
-  reconcileFile,
   textDigest,
   validateDirectory,
-  validateFile,
 } from "./instance-files.ts";
 import type {
   DirectoryAttributes,
   DirectoryProps,
   FileAttributes,
-  FileProps,
 } from "./instance-files.ts";
 import {
   BinarySchema,
@@ -38,6 +34,9 @@ import {
   validateBinary,
 } from "./release.ts";
 import type { BinaryProps } from "./release.ts";
+import { FileSchema, reconcileFile, validateFile } from "./remote-file.ts";
+import type { FileProps } from "./remote-file.ts";
+import { SecretSource } from "./secret-source.ts";
 import {
   needsUpdate,
   readUnit,
@@ -99,12 +98,22 @@ export const RemoteFileProvider = () =>
     RemoteFile,
     Effect.gen(function* makeRemoteFileProvider() {
       const shell = yield* HostShell;
+      const source = yield* Effect.serviceOption(SecretSource);
+
+      const secrets = Option.match(source, {
+        onNone: () => Layer.empty,
+        onSome: (service) => Layer.succeed(SecretSource, service),
+      });
+
+      const content = (props: FileProps) =>
+        resolveFileContent(props).pipe(Effect.provide(secrets));
 
       return RemoteFile.Provider.of({
         delete: ({ output }) =>
           output === undefined ? Effect.void : deleteFile(shell, output),
         diff: Effect.fn("RemoteFile.provider.diff")(function* operation({
           news,
+          olds,
           output,
         }) {
           if (!isResolved(news)) {
@@ -122,14 +131,21 @@ export const RemoteFileProvider = () =>
           }
 
           const live = yield* readFile(shell, news.path);
+          const sha256 = textDigest(yield* content(news));
 
-          return {
-            action:
-              live?.sha256 === textDigest(fileText(news.content)) &&
-              live.mode === (news.mode ?? 0o644)
-                ? "noop"
-                : "update",
-          };
+          const unchanged =
+            live?.sha256 === sha256 && live.mode === (news.mode ?? 0o644);
+
+          if (
+            JSON.stringify(news.contentFrom) !==
+            JSON.stringify(olds?.contentFrom)
+          ) {
+            return unchanged && output.sha256 === sha256
+              ? { action: "update", stables: ["mode", "path", "sha256"] }
+              : { action: "update" };
+          }
+
+          return unchanged ? { action: "noop" } : { action: "update" };
         }),
         list: () => Effect.succeed([]),
         read: Effect.fn("RemoteFile.provider.read")(function* operation({
@@ -145,16 +161,23 @@ export const RemoteFileProvider = () =>
           const live = yield* readFile(shell, olds.path);
 
           if (live === undefined || output !== undefined) {
-            return live;
+            return live === undefined || olds.contentFrom === undefined
+              ? live
+              : { ...live, contentFrom: olds.contentFrom };
           }
 
-          const rotation = yield* rotatingFile(shell, olds);
+          const rotation = yield* rotatingFile(
+            shell,
+            olds,
+            yield* content(olds)
+          );
+
           const transferred = yield* legacyDeploymentFile(shell, fqn, live);
 
           if (
             !rotation &&
             !transferred &&
-            (live.sha256 !== textDigest(fileText(olds.content)) ||
+            (live.sha256 !== textDigest(yield* content(olds)) ||
               live.mode !== (olds.mode ?? 0o644))
           ) {
             return yield* new HostError({
@@ -167,7 +190,16 @@ export const RemoteFileProvider = () =>
         }),
         reconcile: Effect.fn("RemoteFile.provider.reconcile")(
           function* operation({ news, output }) {
-            return yield* reconcileFile(shell, news, output, yield* adoption);
+            const installed = yield* reconcileFile(
+              shell,
+              news,
+              output,
+              yield* adoption
+            ).pipe(Effect.provide(secrets));
+
+            return news.contentFrom === undefined
+              ? installed
+              : { ...installed, contentFrom: news.contentFrom };
           }
         ),
       });

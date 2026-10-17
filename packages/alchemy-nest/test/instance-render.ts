@@ -4,6 +4,7 @@ import { Context, Effect, Layer, Redacted } from "effect";
 
 import { BucketResource } from "../src/bucket-api.ts";
 import { fileText, textDigest } from "../src/files.ts";
+import { HostError } from "../src/host-shell.ts";
 import { NodeResource } from "../src/node-provider.ts";
 import {
   HostDirectory,
@@ -29,7 +30,14 @@ const fileProvider = Provider.effect(
       list: () => Effect.succeed([]),
       read: ({ output }) => Effect.succeed(output),
       reconcile: ({ news }) =>
-        Effect.sync(() => {
+        Effect.gen(function* renderInline() {
+          if (news.content === undefined) {
+            return yield* new HostError({
+              operation: "test render",
+              reason: "Inline renderer requires content.",
+            });
+          }
+
           const content = fileText(news.content);
           rendered.files.set(news.path, content);
 

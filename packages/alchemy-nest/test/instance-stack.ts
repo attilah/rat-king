@@ -21,6 +21,7 @@ export const mischief = (host: Node) =>
       dataRoot: "/srv/example/mischief",
       host,
       instance,
+      legacyRandomCredentials: true,
       memoryMax: "1.5G",
       name: "mischief-cells",
       oomPolicy: "continue",

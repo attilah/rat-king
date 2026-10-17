@@ -51,6 +51,7 @@ export const instanceProbeProgram = (
       dataRoot,
       host: { ...host, tailnetIPv4: "127.0.0.1" },
       instance: probeInstance,
+      legacyRandomCredentials: true,
       name: "mischiefrb-cells",
       portBase: probePortBase,
       purgeOnDelete,

@@ -1,7 +1,7 @@
 import * as Namespace from "alchemy/Namespace";
 import * as Output from "alchemy/Output";
-import { Random, RandomProvider } from "alchemy/Random";
-import { Effect, Layer, Redacted, Schema } from "effect";
+import { RandomProvider } from "alchemy/Random";
+import { Effect, Layer, Schema } from "effect";
 
 import { BucketProvider, BucketResource } from "./bucket-api.ts";
 import { refuse, textDigest } from "./files.ts";
@@ -25,6 +25,8 @@ import {
   storageRetentionTimer,
   storageRetentionUnit,
 } from "./storage-maintenance.ts";
+import { identityContent, storeCredentials } from "./store-credentials.ts";
+import type { CredentialNames } from "./store-credentials.ts";
 import { renderUnit } from "./systemd.ts";
 
 export interface SliceProps {
@@ -59,7 +61,9 @@ export const Slice = (
   });
 
 export interface StoreProps extends InstanceProps, ServiceLimits {
+  readonly credentials?: CredentialNames;
   readonly dataRoot?: string;
+  readonly legacyRandomCredentials?: boolean;
   readonly host: Node;
   readonly name: string;
   readonly prepared?: readonly Output.Output<string>[];
@@ -130,8 +134,7 @@ export const Bucket = (id: string, props: StoreProps) =>
             path: Output.interpolate`${bin.path}/restart-gate.mjs`,
           });
 
-    const access = yield* Random("access-key", { bytes: 16 });
-    const secret = yield* Random("secret-key", { bytes: 32 });
+    const credentials = yield* storeCredentials(props);
 
     const declaration = instanceStoreUnit(host, layout, {
       cpuQuota: props.cpuQuota,
@@ -142,26 +145,7 @@ export const Bucket = (id: string, props: StoreProps) =>
     });
 
     const identity = yield* RemoteFile("identity", {
-      content: Output.all(access.text, secret.text).pipe(
-        Output.map(([accessKey, secretKey]) =>
-          Redacted.make(
-            JSON.stringify({
-              identities: [
-                {
-                  actions: ["Admin", "Read", "Write", "List", "Tagging"],
-                  credentials: [
-                    {
-                      accessKey: Redacted.value(accessKey),
-                      secretKey: Redacted.value(secretKey),
-                    },
-                  ],
-                  name: layout.instance,
-                },
-              ],
-            })
-          )
-        )
-      ),
+      ...identityContent(credentials, layout.instance),
       mode: 0o600,
       path: Output.interpolate`${configuration.path}/s3.json`,
       rotationOwner: {
@@ -233,18 +217,17 @@ export const Bucket = (id: string, props: StoreProps) =>
     });
 
     return {
-      accessKey: access.text,
       bin: bin.path,
       binaryRoot: root.path,
       bucketName: resource.name,
       configuration: configuration.path,
+      credentials,
       dataRoot: dataRoot.path,
       endpoint: resource.endpoint,
       layout,
       region: resource.region,
       resource,
       restartGate: gate,
-      secretKey: secret.text,
       storageMaintenance: maintenance,
     };
   }).pipe(Namespace.push(id));

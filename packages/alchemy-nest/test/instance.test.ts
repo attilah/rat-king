@@ -60,6 +60,7 @@ const mailbox = Effect.gen(function* mailbox() {
 
   const bucket = yield* ObjectStore.Bucket("store", {
     host,
+    legacyRandomCredentials: true,
     name: "example-cells",
     slice: slice.sha256,
   });

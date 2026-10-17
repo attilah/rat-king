@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { Effect, Redacted, Schema } from "effect";
 
 import { absent } from "./absent.ts";
+import type { ContentFrom } from "./file-content.ts";
 import { HostError, must } from "./host-shell.ts";
 import type { Interface } from "./host-shell.ts";
 import { purgeScript, validatePurgePath } from "./purge.ts";
@@ -40,6 +41,7 @@ export const fileText = (content: FileProps["content"]): string =>
   Redacted.isRedacted(content) ? Redacted.value(content) : content;
 
 export interface FileAttributes {
+  readonly contentFrom?: ContentFrom;
   readonly path: string;
   readonly sha256: string;
   readonly mode: number;

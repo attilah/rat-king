@@ -2,6 +2,7 @@ import * as Plan from "alchemy/Plan";
 import { Config, Effect } from "effect";
 
 import { refuse } from "../../packages/alchemy-nest/src/files.ts";
+import { fleetLegacyRandomCredentials } from "./credentials.ts";
 
 export const isDeferredAdoption = (plan: Plan.Plan, fqn: string): boolean => {
   const node = plan.resources[fqn];
@@ -10,7 +11,10 @@ export const isDeferredAdoption = (plan: Plan.Plan, fqn: string): boolean => {
 };
 
 export const qualifyRecoveryPlan = Effect.fn("Nest.qualifyRecoveryPlan")(
-  function* qualifyRecoveryPlan(plan: Plan.Plan) {
+  function* qualifyRecoveryPlan(
+    plan: Plan.Plan,
+    legacyRandomCredentials: boolean = fleetLegacyRandomCredentials
+  ) {
     if (
       !(yield* Config.Boolean("RAT_KING_RECOVER_STATE").pipe(
         Config.withDefault(false)
@@ -27,6 +31,7 @@ export const qualifyRecoveryPlan = Effect.fn("Nest.qualifyRecoveryPlan")(
 
     const allowed = plainCreates.every(
       (row) =>
+        legacyRandomCredentials &&
         row.resourceType === "Alchemy.Random" &&
         ["store/access-key", "store/secret-key"].includes(row.fqn)
     );

@@ -36,6 +36,16 @@ export const Instance = Schema.Struct({
     Schema.String.check(Schema.makeFilter((ip) => isIP(ip) !== 0))
   ),
   nodes: Schema.optionalKey(Nodes),
+  s3Credentials: Schema.optionalKey(
+    Schema.Struct({
+      accessKey: value.check(
+        Schema.isPattern(/^[A-Za-z0-9_][A-Za-z0-9_.:-]{0,127}$/u)
+      ),
+      secretKey: value.check(
+        Schema.isPattern(/^[A-Za-z0-9_][A-Za-z0-9_.:-]{0,127}$/u)
+      ),
+    })
+  ),
   secretNames: nonemptyValues,
   sites: nonemptyValues,
 });
