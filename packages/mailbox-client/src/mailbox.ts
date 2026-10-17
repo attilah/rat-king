@@ -87,6 +87,8 @@ interface RawSigningPayload {
 }
 
 interface SealedSendInput {
+  woke: boolean;
+  wakeReason: Send.InputValue["wakeReason"];
   envelope: Defs.EncryptedEnvelopeValue;
   generation?: number;
   leaseId?: string;
@@ -126,6 +128,8 @@ export interface OpenedMessage {
 }
 
 export interface SendOptions {
+  readonly woke?: boolean;
+  readonly wakeReason?: Send.InputValue["wakeReason"];
   readonly recordType?: string;
   readonly replyTo?: Defs.MessageRefValue;
   readonly expiresAt?: string;
@@ -133,6 +137,11 @@ export interface SendOptions {
   readonly urgent?: true;
   readonly encrypt?: boolean;
 }
+
+const sendIntent = (opts: SendOptions | undefined) => ({
+  wakeReason: opts?.wakeReason ?? "to",
+  woke: opts?.woke ?? true,
+});
 
 export interface FencedMessage {
   readonly message: Defs.MessageRefValue;
@@ -461,7 +470,10 @@ export const layer = (
             signingKeyId: `${identity.did}#atproto`,
           });
 
-          const input: SealedSendInput = { envelope };
+          const input: SealedSendInput = {
+            envelope,
+            ...sendIntent(opts),
+          };
 
           if (opts?.fence !== undefined) {
             input.generation = opts.fence.generation;

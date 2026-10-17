@@ -13,6 +13,7 @@ import * as Peer from "@rat-king/lexicon/mailbox.getPeerDocument";
 import * as Presence from "@rat-king/lexicon/mailbox.getPresence";
 import * as List from "@rat-king/lexicon/mailbox.list";
 import * as Traffic from "@rat-king/lexicon/mailbox.listTraffic";
+import * as NameHealth from "@rat-king/lexicon/mailbox.nameHealth";
 import * as Send from "@rat-king/lexicon/mailbox.send";
 import * as Subscribe from "@rat-king/lexicon/mailbox.subscribe";
 import * as SubscribeTraffic from "@rat-king/lexicon/mailbox.subscribeTraffic";
@@ -22,7 +23,7 @@ import * as Release from "@rat-king/lexicon/runtime.releaseLease";
 import * as Renew from "@rat-king/lexicon/runtime.renewLease";
 import * as Resolve from "@rat-king/lexicon/runtime.resolveLease";
 import type { Request as XrpcRequest } from "@rat-king/lexicon/transport";
-import type { XrpcFailure } from "@rat-king/lexicon/xrpc-failure";
+import { XrpcFailure } from "@rat-king/lexicon/xrpc-failure";
 import { DurableObject } from "cloudflare:workers";
 import { Clock, Effect, Layer, Schema } from "effect";
 
@@ -45,6 +46,8 @@ import {
   LeaseAuthority,
   leaseLayer,
 } from "./mailbox.ts";
+import { nameHealthRequest } from "./name-health-http.ts";
+import { nameHealth } from "./name-health.ts";
 import { replayLayer } from "./replay.ts";
 import { isoTime, markRetired, presenceOf } from "./retirement.ts";
 import { SenderFence } from "./sender-fence.ts";
@@ -218,6 +221,48 @@ export class Mailbox extends DurableObject<Bindings> {
             status: error.status,
           })
         )
+      )
+    );
+  }
+
+  readNameHealth(json: string, issuer: string) {
+    const { ctx, sql, env } = this;
+
+    return Effect.runPromise(
+      Effect.gen(function* readHealth() {
+        const params = yield* Schema.decodeEffect(
+          Schema.fromJsonString(NameHealth.Params)
+        )(json);
+
+        if (params.recipientDid !== ctx.id.name) {
+          return yield* failure("Forbidden", 403);
+        }
+
+        const result = yield* nameHealth(
+          sql,
+          params,
+          issuer,
+          didAllowlist(env.OPERATOR_DIDS)
+        );
+
+        return {
+          body: JSON.stringify(
+            yield* Schema.encodeEffect(NameHealth.Output)(result)
+          ),
+          status: 200,
+        };
+      }).pipe(
+        Effect.match({
+          onFailure: (error) => ({
+            body: JSON.stringify({
+              error: Schema.is(XrpcFailure)(error)
+                ? error.error
+                : "MailboxUnavailable",
+            }),
+            status: Schema.is(XrpcFailure)(error) ? error.status : 503,
+          }),
+          onSuccess: (result) => result,
+        })
       )
     );
   }
@@ -905,6 +950,7 @@ const methods = new Set<string>(
     PutDocument.Method,
     List.Method,
     Traffic.Method,
+    NameHealth.Method,
     Resolve.Method,
     Peer.Method,
     Presence.Method,
@@ -1146,6 +1192,10 @@ const serviceRequest = (
   issuer: string,
   scope: FailureScope
 ) => {
+  if (nsid === NameHealth.Method.nsid) {
+    return nameHealthRequest(request, env, issuer);
+  }
+
   if (attentionMethods.some((method) => method.nsid === nsid)) {
     return attentionRequest(request, env, nsid, issuer, scope);
   }
@@ -1230,6 +1280,7 @@ const handleRequest = (
       ![
         ...procedures,
         List.Method,
+        NameHealth.Method,
         Traffic.Method,
         Resolve.Method,
         Peer.Method,

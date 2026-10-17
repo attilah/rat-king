@@ -17,6 +17,7 @@ import { collectInstanceHealth } from "./alarm-instances.ts";
 import { collectRecallCanary } from "./alarm-recall.ts";
 import type { DeployMarker } from "./alarm-sources.ts";
 import { AlarmFacts, CacheBreach, sightReaders } from "./alarm-sources.ts";
+import type { WakeSighting, WakeTarget } from "./alarm-wakes.ts";
 import { collectComms } from "./comms.ts";
 import { configDoctor } from "./config-doctor.ts";
 import { FleetDigest } from "./digest.ts";
@@ -118,6 +119,10 @@ export const collectReaderHeartbeats = Effect.fn(
           : [{ owner: beat.owner, record }];
       }),
       seen: sightReaders(source.host, beats, now.now),
+      targets: beats.map(({ beat }) => ({
+        name: beat.name,
+        owner: beat.owner ?? null,
+      })),
     };
   },
   Effect.scoped,
@@ -146,7 +151,7 @@ const observeReaders = (
   sources: NonNullable<StageConfigValue["alarm"]>["readerHeartbeats"]
 ) =>
   sources === undefined
-    ? Effect.succeed({ facts: null, failed: [] })
+    ? Effect.succeed({ facts: null, failed: [], targets: undefined })
     : Effect.forEach(
         sources,
         (source) => collectReaderHeartbeats(source).pipe(Effect.option),
@@ -169,6 +174,12 @@ const observeReaders = (
               Option.isNone(hosts[index] ?? Option.none())
                 ? [`readers@${source.host}`]
                 : []
+            ),
+            targets: hosts.flatMap((host) =>
+              Option.match(host, {
+                onNone: () => [],
+                onSome: (value) => value.targets,
+              })
             ),
           };
         })
@@ -205,10 +216,17 @@ const backupWindowOf = (digest: HealthDigest | null) => {
 };
 
 export const collectAlarmFacts = Effect.fn("Alarm.collect")(
-  function* collectAlarmFacts<E, R, E2, R2>(
+  function* collectAlarmFacts<E, R, E2, R2, R3 = never>(
     config: StageConfigValue,
     health: Effect.Effect<HealthDigest, E, R>,
-    deploy: Effect.Effect<typeof DeployMarker.Type | null, E2, R2>
+    deploy: Effect.Effect<typeof DeployMarker.Type | null, E2, R2>,
+    wakeHealth: (
+      readers: readonly (typeof WakeTarget.Type)[] | undefined
+    ) => Effect.Effect<
+      readonly (typeof WakeSighting.Type)[] | null,
+      never,
+      R3
+    > = () => Effect.succeed(null)
   ) {
     if (config.alarm === undefined || config.ship === undefined) {
       return yield* new FleetError({
@@ -315,6 +333,8 @@ export const collectAlarmFacts = Effect.fn("Alarm.collect")(
       { concurrency: "unbounded" }
     );
 
+    const wakes = yield* wakeHealth(observations.readers.targets);
+
     const healthy = Option.getOrNull(observations.health);
 
     const failed = [
@@ -356,6 +376,7 @@ export const collectAlarmFacts = Effect.fn("Alarm.collect")(
       receiptsKnown: Option.isSome(observations.receipts),
       sessionsBackup: observations.sessionsBackup,
       slots: healthy?.storage.slots ?? null,
+      wakes,
     }).pipe(
       Effect.mapError(
         () => new FleetError({ reason: "Alarm measurements unavailable" })

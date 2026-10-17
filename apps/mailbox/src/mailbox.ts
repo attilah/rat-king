@@ -439,6 +439,14 @@ export const mailboxHandlers = (policy: MailboxPolicy) =>
               state: "accepted",
             });
 
+            if (input.woke !== undefined) {
+              Object.assign(receipt, { woke: input.woke });
+            }
+
+            if (input.wakeReason !== undefined) {
+              Object.assign(receipt, { wakeReason: input.wakeReason });
+            }
+
             tx.append({
               $type: "sh.mschf.ratking.defs#messageEvent",
               envelope,

@@ -14,6 +14,35 @@ export const Kind = Schema.Literals(["message", "ask", "reply", "data"]);
 
 export type KindValue = typeof Kind.Type;
 
+export const wakeIntent = (
+  kind: KindValue | undefined,
+  primary: boolean,
+  quiet = false,
+  record = false,
+  copy = false
+) => {
+  if (kind === "ask") {
+    return { wakeReason: "ask" as const, woke: true };
+  }
+
+  if (kind === "data" || record) {
+    return { wakeReason: "data" as const, woke: false };
+  }
+
+  if (quiet) {
+    return { wakeReason: "quiet" as const, woke: false };
+  }
+
+  if (!primary || copy) {
+    return { wakeReason: "cc" as const, woke: false };
+  }
+
+  return {
+    wakeReason: kind === "reply" ? ("reply" as const) : ("to" as const),
+    woke: true,
+  };
+};
+
 export const ReplyRef = Schema.Struct({
   parent: Schema.String,
   root: Schema.String,

@@ -5,6 +5,22 @@ export declare const SUMMARY_HARD_MAX = 400;
 export declare const SUMMARY_WIRE_MAX = 280;
 export declare const Kind: Schema.Literals<readonly ["message", "ask", "reply", "data"]>;
 export type KindValue = typeof Kind.Type;
+export declare const wakeIntent: (kind: KindValue | undefined, primary: boolean, quiet?: boolean, record?: boolean, copy?: boolean) => {
+    wakeReason: "ask";
+    woke: boolean;
+} | {
+    wakeReason: "data";
+    woke: boolean;
+} | {
+    wakeReason: "quiet";
+    woke: boolean;
+} | {
+    wakeReason: "cc";
+    woke: boolean;
+} | {
+    wakeReason: "reply" | "to";
+    woke: boolean;
+};
 export declare const ReplyRef: Schema.Struct<{
     readonly parent: Schema.String;
     readonly root: Schema.String;

@@ -26,6 +26,7 @@ import { base64url, Document, DidResolver, documentResolver } from "./auth.ts";
 import { consume } from "./consume.ts";
 import type { ConsumeOptions, MessageMeta } from "./consume.ts";
 import { clientError, MailboxClientError } from "./error.ts";
+import { readMailboxHealth } from "./health.ts";
 import { importSigning, Identity } from "./identity.ts";
 import type { IdentityValue } from "./identity.ts";
 import { layer, RatKingMailbox } from "./mailbox.ts";
@@ -35,6 +36,7 @@ import type { PayloadValue } from "./payload.ts";
 import { lookupPresence } from "./record-visibility.ts";
 import { randomTid } from "./tid.ts";
 import { transportLayer } from "./transport.ts";
+import { readTurnHealth } from "./turn-health.ts";
 
 const ownBrand: unique symbol = Symbol("OwnIdentity");
 
@@ -132,6 +134,8 @@ export interface PrepareOptions {
 }
 
 const failure = (reason: string) => new MailboxClientError({ reason });
+
+const directIntent = { wakeReason: "to", woke: true } as const;
 
 const sameDocument = (a: PeerDocument, b: PeerDocument) =>
   base64url(canonical(a)) === base64url(canonical(b));
@@ -276,7 +280,11 @@ export const prepare = Effect.fn("Mailbox.prepare")(function* prepare(
 
   const submit = Effect.fn("Mailbox.sendSealed")(function* submit(
     envelope: Defs.EncryptedEnvelopeValue,
-    fence?: LeaseFence
+    fence?: LeaseFence,
+    intent: {
+      readonly woke: boolean;
+      readonly wakeReason: Send.InputValue["wakeReason"];
+    } = directIntent
   ) {
     if (
       envelope.aad.senderDid !== identity.did ||
@@ -287,7 +295,7 @@ export const prepare = Effect.fn("Mailbox.prepare")(function* prepare(
       });
     }
 
-    const raw = { envelope };
+    const raw = { envelope, ...intent };
 
     if (fence !== undefined) {
       Object.assign(raw, {
@@ -323,13 +331,21 @@ export const prepare = Effect.fn("Mailbox.prepare")(function* prepare(
 
   const send = Effect.fn("Mailbox.send")(function* send(
     envelope: Defs.EncryptedEnvelopeValue,
-    opts?: { readonly cc?: string; readonly fence?: LeaseFence }
+    opts?: {
+      readonly cc?: string;
+      readonly fence?: LeaseFence;
+      readonly woke?: boolean;
+      readonly wakeReason?: Send.InputValue["wakeReason"];
+    }
   ): Effect.fn.Return<SendResult> {
     if (!peers.has(envelope.aad.recipientDid)) {
       return SendOutcomes.NotAttempted({ reason: "Unknown primary peer" });
     }
 
-    const primary = yield* submit(envelope, opts?.fence);
+    const primary = yield* submit(envelope, opts?.fence, {
+      wakeReason: opts?.wakeReason ?? "to",
+      woke: opts?.woke ?? true,
+    });
 
     if (opts?.cc === undefined) {
       return primary;
@@ -390,7 +406,10 @@ export const prepare = Effect.fn("Mailbox.prepare")(function* prepare(
         copies.set(envelope, cached);
       }
 
-      return yield* submit(copy, opts?.fence);
+      return yield* submit(copy, opts?.fence, {
+        wakeReason: "cc",
+        woke: false,
+      });
     }).pipe(
       Effect.mapError(clientError),
       Effect.catch((error) =>
@@ -519,6 +538,8 @@ export const prepare = Effect.fn("Mailbox.prepare")(function* prepare(
     head: mailbox
       .list({ afterSeq: 0, limit: 1 })
       .pipe(Effect.map(({ throughSeq }) => throughSeq)),
+    health: (did: string, name: string) =>
+      readMailboxHealth(transport, did, name),
     mailbox,
     open: mailbox.open,
     presence,
@@ -528,5 +549,7 @@ export const prepare = Effect.fn("Mailbox.prepare")(function* prepare(
     sealPayload,
     send,
     sendSealed: submit,
+    turnHealth: (did: string, name: string, session: string) =>
+      readTurnHealth(transport, did, name, session),
   };
 });

@@ -35,6 +35,7 @@ export interface InboundRecord {
 
 export {
   encodePayload,
+  wakeIntent,
   Kind,
   Payload,
   PayloadJson,

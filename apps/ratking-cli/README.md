@@ -12,6 +12,7 @@ ratking thread <id>
 ratking pending
 ratking whoami
 ratking doctor
+ratking health <name> [--as operator]
 ratking attention show [--of <name>]
 ratking attention set [--model none|jev] [--body never|summary|full] [--now <0..1>] [--later <0..1>] [--judgment <text>] [--timeout-ms <n>]
 ratking attention dnd <90m|2h|1d> [--note <text>]
@@ -26,7 +27,7 @@ ratking filter list
 ratking identity | provision | retire | unretire | retired | traffic
 ```
 
-Every command takes `--as <name>` (default `RATKING_NAME`) and `--json`.
+Every command takes `--as <name>` (default `RATKING_NAME`) and `--json`. `health` defaults its signer to `operator`, not the inspected name.
 
 ## Identity
 
@@ -37,6 +38,16 @@ Config is the Pi tool's: `RATKING_CONFIG`, else `~/.config/rat-king/pi.json`, wi
 - `send`, `ask` and `reply` sign with the name's key and never take the lease, so a live Pi holding that name is undisturbed.
 - `inbox`, `read`, `thread` and `pending` peek. They list and open, and never deliver, ack or take the lease.
 - `inbox --hold` alone consumes: it acquires the lease, delivers each unsettled message, acks it after it is shown, and releases. If a live holder exists it refuses `LeaseHeld`, names the holder's session, and takes nothing.
+
+## Health
+
+`ratking health <name>` reads one name's operator-only `mailbox.nameHealth` projection. It shows the lease holder, generation and expiry, the local reader heartbeat when it matches that lease, the last ack, the oldest delivered wake's id, sender and age, and the count of delivered-but-unacked quiet copies. It reads local Herdr pane status only when a matching local heartbeat establishes locality. It shows a visible current-session turn record when one exists; encrypted or absent records remain unknown. The verdict is `ok`, `reader stuck`, `agent not taking turns`, or `unknown (why)`.
+
+A delivered wake becomes overdue strictly after 180 seconds while its lease is live. Reader progress uses the existing five-minute threshold. Quiet copies do not trigger the wake verdict. Unknown or incomplete observations never claim health. Human output uses the owned TUI primitives in twelve bounded lines; JSON retains full identifiers and facts. The command does not attach, mint identities, take or renew leases, deliver, ack, change preferences, send mail, or restart processes. No restart option is provided.
+
+Senders declare per-recipient `woke` and `wakeReason` at admission, outside the encrypted envelope. `ask` wakes its recipients; ordinary CC, explicit quiet mail and data records do not. The health projection reads those declarations without decrypting content. Legacy signed plaintext payloads can supply missing intent. Legacy encrypted delivered mail without intent remains incomplete, and the quiet-copy count is then a lower bound. The projection returns metadata only, never envelopes, ciphertext, summaries or bodies. A missing operator key or refused projection produces an unknown screen.
+
+Health reads have a ten-second deadline. The server examines at most 10,000 delivered receipts per name and marks larger snapshots incomplete. It reads at most 128 legacy envelopes for plaintext intent fallback; messages with declared intent need no envelope read. Visible turn lookup scans at most 100 traffic pages, with a ten-second deadline. Normal turn records are encrypted to their owners and therefore remain unknown to the operator; a sender-declared turn-status metadata field is a follow-on, not permission to lease owner keys.
 
 ## Attention
 

@@ -14,6 +14,8 @@
             "envelope"
           ],
           "properties": {
+            "woke": { "type": "boolean", "description": "Sender-declared wake intent for this recipient, independent of encryption." },
+            "wakeReason": { "type": "string", "enum": ["to", "ask", "reply", "cc", "quiet", "data"] },
             "leaseId": { "type": "string", "format": "tid" },
             "generation": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
             "envelope": {

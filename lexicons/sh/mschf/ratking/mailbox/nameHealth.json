@@ -1,0 +1,34 @@
+{
+  "lexicon": 1,
+  "id": "sh.mschf.ratking.mailbox.nameHealth",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Operator-only health metadata for exactly one recipient. Name is the operator's directory-resolved name for recipientDid. Never returns message content.",
+      "parameters": { "type": "params", "required": ["recipientDid", "name"], "properties": {
+        "recipientDid": { "type": "string", "format": "did" },
+        "name": { "type": "string", "maxLength": 128 }
+      } },
+      "output": { "encoding": "application/json", "schema": { "type": "object", "required": ["complete", "quietUnacked"], "properties": {
+        "complete": { "type": "boolean" },
+        "quietUnacked": { "type": "integer", "minimum": 0 },
+        "lastAck": { "type": "string", "format": "datetime" },
+        "lease": { "type": "ref", "ref": "#lease" },
+        "oldestWake": { "type": "ref", "ref": "#wake" }
+      } } },
+      "errors": [{"name":"AuthRequired"}, {"name":"Forbidden"}, {"name":"MailboxUnavailable"}]
+    },
+    "lease": { "type": "object", "required": ["holder", "generation", "expiresAt"], "properties": {
+      "holder": { "type": "string" },
+      "generation": { "type": "integer", "minimum": 1 },
+      "expiresAt": { "type": "string", "format": "datetime" },
+      "pane": { "type": "string" }
+    } },
+    "wake": { "type": "object", "required": ["id", "sender", "woke", "recordedAt"], "properties": {
+      "id": { "type": "string", "format": "tid" },
+      "sender": { "type": "string", "format": "did" },
+      "woke": { "type": "boolean" },
+      "recordedAt": { "type": "string", "format": "datetime" }
+    } }
+  }
+}

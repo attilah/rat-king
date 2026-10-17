@@ -6,6 +6,12 @@ import { SessionsBackupFact, sessionsBackupReading } from "./alarm-backups.ts";
 import { AlarmKey, AlarmReading } from "./alarm-config.ts";
 import type { AlarmReadingValue } from "./alarm-config.ts";
 import { RecallCanaryFact, recallCanaryReading } from "./alarm-recall.ts";
+import {
+  WakeSighting,
+  WakeTarget,
+  wakeReading,
+  rememberWakeTargets,
+} from "./alarm-wakes.ts";
 import { Sha, ShipReceipt } from "./ship-config.ts";
 import { sanitizeCandidateStderr } from "./ship-diagnostics.ts";
 
@@ -117,6 +123,7 @@ export const AlarmFacts = Schema.Struct({
     Schema.Union([Schema.Literal("off"), Schema.NullOr(SessionsBackupFact)])
   ),
   slots: Schema.NullOr(Schema.Struct({ free: Count, max: Count })),
+  wakes: Schema.optionalKey(Schema.NullOr(Schema.Array(WakeSighting))),
 });
 
 export const SourceState = Schema.Struct({
@@ -126,12 +133,14 @@ export const SourceState = Schema.Struct({
   instanceDownChecks: Schema.optionalKey(Schema.Record(Schema.String, Count)),
   measurementMisses: Schema.optionalKey(Count),
   unexplained: Schema.Array(Schema.Finite),
+  wakeTargets: Schema.optionalKey(Schema.Array(WakeTarget)),
 });
 
 export const emptySources: typeof SourceState.Type = {
   downChecks: 0,
   entered: null,
   unexplained: [],
+  wakeTargets: [],
 };
 
 export const Readings = Schema.Record(AlarmKey, AlarmReading);
@@ -477,7 +486,21 @@ export const observeAlarms = (
   facts: typeof AlarmFacts.Type,
   now: number
 ) => {
-  const sources = trackSources(prior, facts, now);
+  const wake = wakeReading(
+    facts.wakes,
+    now,
+    (prior.wakeTargets ?? []).map((item) => item.name)
+  );
+
+  const sources = {
+    ...trackSources(prior, facts, now),
+    wakeTargets: rememberWakeTargets(
+      prior.wakeTargets ?? [],
+      facts.wakes,
+      wake,
+      now
+    ),
+  };
 
   const readings: typeof Readings.Type = {
     "backup.sessions-index": sessionsBackupReading(facts.sessionsBackup, now),
@@ -492,6 +515,7 @@ export const observeAlarms = (
     "readers.stuck": readerReading(facts),
     "recall.flowing-canary": recallCanaryReading(facts.recallCanary),
     "ship.failed": shipReading(facts),
+    "wake.unacked": wake,
   };
 
   return { readings, sources };

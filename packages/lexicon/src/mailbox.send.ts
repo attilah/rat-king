@@ -21,6 +21,17 @@ export const Input = Schema.StructWithRest(
         Schema.brand("Lexicon:tid")
       )
     ),
+    wakeReason: Schema.optionalKey(
+      Runtime.lexString({
+        enum: ["to", "ask", "reply", "cc", "quiet", "data"],
+        type: "string",
+      }).pipe(
+        Schema.decodeTo(
+          Schema.Literals(["to", "ask", "reply", "cc", "quiet", "data"])
+        )
+      )
+    ),
+    woke: Schema.optionalKey(Schema.Boolean),
   }),
   [Schema.Record(Schema.String, Runtime.Data)]
 );
