@@ -100,17 +100,17 @@ export const deployOutcome = (
   "result" | "celldRestarted" | "restartSeconds" | "retryAt"
 > => {
   const lastGate = events.at(-1);
+  const deferral = events.findLast((event) => event.phase === "deferred");
   let result: (typeof ShipReceipt.Type)["result"] = "failed";
 
   if (code === 0) {
     result = "success";
-  } else if (lastGate?.phase === "deferred") {
+  } else if (deferral !== undefined) {
     result = "deferred";
   }
 
   const verdict = { ...restartOutcome(events), result };
+  const retryAt = result === "deferred" ? deferral?.retryAt : lastGate?.retryAt;
 
-  return lastGate?.retryAt === undefined
-    ? verdict
-    : { ...verdict, retryAt: lastGate.retryAt };
+  return retryAt === undefined ? verdict : { ...verdict, retryAt };
 };

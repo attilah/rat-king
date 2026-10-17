@@ -15,7 +15,7 @@ const node = {
 };
 
 it.effect.prop(
-  "fleet refuses runtime/sidecar/cap overrides and projects its fixed mailbox host contract",
+  "fleet refuses runtime/sidecar overrides, honours an explicit cap and projects its fixed mailbox host contract",
   {
     memory: Arbitrary.schema(Schema.Literals(["8G", "1536M", "5632M"])),
     mode: Arbitrary.schema(Schema.Literals(["faux", "gateway"])),
@@ -37,7 +37,7 @@ it.effect.prop(
         Effect.exit
       );
 
-      const permitted = mode === "faux" && !sidecar && memory === "8G";
+      const permitted = mode === "faux" && !sidecar;
       expect(Exit.isSuccess(result)).toBe(permitted);
 
       if (!Exit.isSuccess(result)) {
@@ -55,7 +55,7 @@ it.effect.prop(
         sliceUnit(node.home, config.memoryMax, config.cpuQuota)
       );
 
-      expect(slice).toContain("MemoryMax=8G");
+      expect(slice).toContain(`MemoryMax=${memory}`);
       expect(slice).toContain("CPUQuota=200%");
 
       const restartGate = {

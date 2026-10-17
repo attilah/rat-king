@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect";
+import { Effect, Option, Schedule, Schema } from "effect";
 
 import { absent } from "./absent.ts";
 import { ownedPath } from "./adoption.ts";
@@ -379,6 +379,37 @@ const cleanupCreatedUnit = Effect.fn("SystemdUnit.cleanupCreated")(
   }
 );
 
+const activeState = (shell: Interface, name: string) =>
+  shell
+    .exec([
+      "systemctl",
+      "--user",
+      "show",
+      name,
+      "--property=ActiveState",
+      "--value",
+    ])
+    .pipe(Effect.map((result) => result.stdout.trim()));
+
+const settled = Effect.fn("SystemdUnit.settled")(function* settled(
+  shell: Interface,
+  name: string
+) {
+  const state = yield* activeState(shell, name).pipe(
+    Effect.repeat({
+      schedule: Schedule.spaced("1 second"),
+      until: (current) => current !== "activating",
+    }),
+    Effect.timeoutOption("150 seconds")
+  );
+
+  if (Option.isNone(state)) {
+    return yield* refuse("Unit stayed activating; restart refused.");
+  }
+
+  return yield* Effect.void;
+});
+
 const cascadeChanged = (
   output: UnitAttributes | undefined,
   live: Pick<UnitAttributes, "active" | "invocationId" | "needDaemonReload">,
@@ -465,7 +496,8 @@ export const reconcileUnit = Effect.fn("SystemdUnit.reconcile")(
       if (valid.started !== false) {
         if (!live.active) {
           yield* ctl(shell, "start", valid.name);
-        } else if (changed) {
+        } else if (changed && !valid.name.endsWith(".slice")) {
+          yield* settled(shell, valid.name);
           yield* ctl(shell, "restart", valid.name);
         }
       } else if (live.active) {

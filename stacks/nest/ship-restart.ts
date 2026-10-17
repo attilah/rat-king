@@ -266,7 +266,7 @@ export const guardedShell = Effect.fn("Ship.guardedShell")(
         function* remoteCommand(argv, diagnostics) {
           if (
             argv[0] !== "systemctl" ||
-            !argv.some((arg) => ["restart", "start"].includes(arg))
+            !argv.some((arg) => ["restart", "start", "stop"].includes(arg))
           ) {
             return yield* shell.exec(argv, diagnostics);
           }

@@ -54,10 +54,6 @@ export const configuration = Effect.fn("Nest.configuration")(
       Config.withDefault({ fleet: "8G", pilot: "1536M", proof: "4G" }[stage])
     );
 
-    if (stage === "fleet" && memoryMax !== "8G") {
-      return yield* Effect.die("Fleet slice requires the approved 8G cap");
-    }
-
     const fs = yield* FileSystem.FileSystem;
 
     return {

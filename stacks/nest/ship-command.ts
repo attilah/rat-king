@@ -64,6 +64,7 @@ export const execute = Effect.fn("Ship.execute")(
     );
 
     let output = "";
+    let outputTail = "";
     let stderr = "";
 
     const [code] = yield* Effect.all(
@@ -74,6 +75,8 @@ export const execute = Effect.fn("Ship.execute")(
             if (output.length < 1_048_576) {
               output += text.slice(0, 1_048_576 - output.length);
             }
+
+            outputTail = (outputTail + text).slice(-65_536);
           })
         ),
         Stream.runForEach(handle.stderr.pipe(Stream.decodeText()), (text) =>
@@ -88,7 +91,10 @@ export const execute = Effect.fn("Ship.execute")(
     return {
       code: Number(code),
       output,
-      stderrTail: code === 0 ? undefined : sanitizeCandidateStderr(stderr),
+      stderrTail:
+        code === 0
+          ? undefined
+          : sanitizeCandidateStderr(`${outputTail}\n${stderr}`),
     };
   },
   Effect.scoped,
