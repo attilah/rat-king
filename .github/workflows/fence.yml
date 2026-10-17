@@ -2,6 +2,8 @@ name: Publication fence
 on: [push, pull_request]
 permissions:
   contents: read
+env:
+  ALCHEMY_TELEMETRY_DISABLED: "1"
 jobs:
   fence:
     runs-on: ubuntu-latest
