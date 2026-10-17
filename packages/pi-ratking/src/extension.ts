@@ -863,10 +863,6 @@ export const ratkingExtension = (options: ExtensionOptions) =>
 
     let busy = false;
 
-    pi.onAgentStart?.(async () => {
-      busy = true;
-      await reportTurn(turns?.working());
-    });
     pi.onApproval?.(async () => {
       await reportTurn(turns?.approval());
     });
@@ -1011,7 +1007,24 @@ export const ratkingExtension = (options: ExtensionOptions) =>
 
     sweeps.push(sweep);
 
-    pi.onTurnEnd?.(sweep);
+    pi.onTurnEnd?.(() => {
+      sweep();
+      mail.flushNext({ deliverAs: "followUp", triggerTurn: false });
+    });
+
+    pi.onAgentStart?.(async () => {
+      sweep();
+      busy = true;
+      flushing = true;
+
+      try {
+        mail.flushNext({ deliverAs: "steer", triggerTurn: true });
+      } finally {
+        flushing = false;
+      }
+
+      await reportTurn(turns?.working());
+    });
 
     pi.onAgentEnd?.(async (messages) => {
       sweep();
@@ -1026,7 +1039,11 @@ export const ratkingExtension = (options: ExtensionOptions) =>
       mail.flushNext();
     });
 
-    pi.onMessageShown?.(markShown);
+    pi.onMessageShown?.((id) => {
+      if (pi.shownInSession === undefined || inSession().has(id)) {
+        markShown(id);
+      }
+    });
 
     const digestTicks = Clock.currentTimeMillis.pipe(
       Effect.flatMap((now) =>
