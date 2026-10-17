@@ -48,17 +48,17 @@ import {
   SystemdUnit,
 } from "../../packages/alchemy-nest/src/providers.ts";
 import { sourceLayer } from "../../packages/alchemy-nest/src/release.ts";
-import {
-  shellQuote,
-  layer as sshLayer,
-} from "../../packages/alchemy-nest/src/ssh.ts";
+import { SecretSource } from "../../packages/alchemy-nest/src/secret-source.ts";
+import { layer as sshLayer } from "../../packages/alchemy-nest/src/ssh.ts";
 import { startupLayer } from "../../packages/alchemy-nest/src/startup-contract.ts";
 import { backupTimer, backupUnit } from "./backup-units.ts";
+import { mailboxCliEnvironment } from "./cli-environment.ts";
 import {
   configuration,
   stageName,
   workerIPv4 as stageWorkerIPv4,
 } from "./config.ts";
+import { fleetStoreCredentials } from "./credentials.ts";
 import { restoreOwnedData } from "./restore.ts";
 import type { RestoreRequest } from "./restore.ts";
 import { guardedShell } from "./ship-restart.ts";
@@ -166,6 +166,7 @@ export const nestStack = (restore?: RestoreRequest) =>
             )
           )
         ),
+        Layer.provide(SecretSource.layer),
         Layer.provide(startup(restore)),
         Layer.provide(connection),
         Layer.provide(sourceLayer.pipe(Layer.orDie)),
@@ -300,6 +301,7 @@ export const nestStack = (restore?: RestoreRequest) =>
       const slice = yield* ObjectStore.Slice(node.home, memoryMax, cpuQuota);
 
       const bucket = yield* ObjectStore.Bucket("store", {
+        ...(yield* fleetStoreCredentials()),
         host: node,
         name: yield* Config.String("RAT_KING_BUCKET").pipe(
           Config.withDefault("rat-king-cells")
@@ -364,7 +366,11 @@ export const nestStack = (restore?: RestoreRequest) =>
       });
 
       yield* RemoteFile("mailbox-cli-environment", {
-        content: `export RAT_KING_DOCUMENTS=${shellQuote(`${node.home}/.config/rat-king/proof.documents.json`)}\nexport RAT_KING_ENDPOINT=${shellQuote(workerUrl)}\nexport RAT_KING_SERVICE_DID=${shellQuote(serviceDid)}\n`,
+        content: mailboxCliEnvironment({
+          home: node.home,
+          serviceDid,
+          workerUrl,
+        }),
         mode: 0o600,
         path: Output.interpolate`${bucket.configuration}/proof.env`,
       });

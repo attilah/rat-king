@@ -186,6 +186,7 @@ export const throwawayProgram = (
       dataRoot: target.dataRoot,
       host: { ...host, tailnetIPv4: "127.0.0.1" },
       instance: target.name,
+      legacyRandomCredentials: true,
       name: `${target.name}-cells`,
       portBase: target.portBase,
       purgeOnDelete: true,

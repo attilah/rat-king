@@ -11,6 +11,7 @@ import {
 import { InventoryError } from "./inventory-error.ts";
 import { Instance } from "./inventory-schema.ts";
 import type { Node } from "./inventory-schema.ts";
+import type { CredentialNames } from "./store-credentials.ts";
 
 export { InventoryError } from "./inventory-error.ts";
 
@@ -18,6 +19,10 @@ export class Host extends Context.Service<
   Host,
   {
     readonly node: (alias: string) => Effect.Effect<Node, InventoryError>;
+    readonly s3Credentials?: () => Effect.Effect<
+      CredentialNames,
+      InventoryError
+    >;
   }
 >()("@rat-king/RatsNest.Host") {}
 
@@ -71,6 +76,18 @@ export const layer = Layer.effect(
 
         return node;
       }),
+      s3Credentials: Effect.fn("RatsNest.Host.s3Credentials")(
+        function* s3Credentials() {
+          if (inventory.s3Credentials === undefined) {
+            return yield* new InventoryError({
+              reason:
+                "Reference mode requires s3Credentials in private inventory.",
+            });
+          }
+
+          return inventory.s3Credentials;
+        }
+      ),
     });
   })
 );

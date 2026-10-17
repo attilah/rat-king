@@ -2,7 +2,7 @@ import { Context, Effect, Option } from "effect";
 
 import { fileText, readDirectory, readFile, refuse } from "./files.ts";
 import type { Interface } from "./host-shell.ts";
-import type { FileProps } from "./instance-files.ts";
+import type { FileProps } from "./remote-file.ts";
 
 export class StateRecovery extends Context.Service<StateRecovery, boolean>()(
   "@rat-king/StateRecovery"
@@ -76,8 +76,22 @@ except Exception:
     sys.exit(1)
 `;
 
+const rotationText = Effect.fn("Nest.adopt.rotationText")(
+  function* rotationText(props: FileProps, content?: string) {
+    if (content !== undefined) {
+      return content;
+    }
+
+    if (props.content === undefined) {
+      return yield* refuse("Reference rotation requires resolved content.");
+    }
+
+    return fileText(props.content);
+  }
+);
+
 export const rotatingFile = Effect.fn("Nest.adopt.rotatingFile")(
-  function* rotatingFile(shell: Interface, props: FileProps) {
+  function* rotatingFile(shell: Interface, props: FileProps, content?: string) {
     const { path, rotationOwner: owner } = props;
 
     if (!(yield* recovering)) {
@@ -129,7 +143,7 @@ export const rotatingFile = Effect.fn("Nest.adopt.rotatingFile")(
     }
 
     const endpoint = /S3_ENDPOINT="http:\/\/127\.0\.0\.1:(?<port>\d+)"/u.exec(
-      fileText(props.content)
+      yield* rotationText(props, content)
     )?.groups?.port;
 
     const script =

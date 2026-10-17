@@ -1,6 +1,6 @@
 import * as Namespace from "alchemy/Namespace";
 import * as Output from "alchemy/Output";
-import { Effect, Redacted, Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import { Deployment, DeploymentProvider } from "./deployment.ts";
 import { textDigest, refuse } from "./files.ts";
@@ -13,10 +13,8 @@ import type { BucketOutput } from "./object-store.ts";
 import { celldBinary } from "./pins.ts";
 import { HostDirectory, ReleaseBinary, RemoteFile } from "./providers.ts";
 import type { ServiceLimits } from "./service-units.ts";
+import { environmentContent } from "./store-credentials.ts";
 import { renderUnit } from "./systemd.ts";
-
-const envQuote = (value: string): string =>
-  `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("\n", "\\n")}"`;
 
 export interface CelldProps extends InstanceProps, ServiceLimits {
   readonly bucket: BucketOutput;
@@ -71,25 +69,10 @@ export const Node = (id: string, props: CelldProps) =>
     });
 
     const environment = yield* RemoteFile("environment", {
-      content: Output.all(
-        bucket.accessKey,
-        bucket.secretKey,
+      ...environmentContent(
+        bucket.credentials,
         bucket.resource.name,
         bucket.resource.endpoint
-      ).pipe(
-        Output.map(([access, secret, name, endpoint]) =>
-          Redacted.make(
-            [
-              `AWS_ACCESS_KEY_ID=${envQuote(Redacted.value(access))}`,
-              `AWS_SECRET_ACCESS_KEY=${envQuote(Redacted.value(secret))}`,
-              "AWS_REGION=us-east-1",
-              `S3_ENDPOINT=${envQuote(endpoint)}`,
-              `CELLD_BUCKET=${envQuote(`s3://${name}`)}`,
-              "CELLD_OTEL=0",
-              "",
-            ].join("\n")
-          )
-        )
       ),
       mode: 0o600,
       path: Output.interpolate`${bucket.configuration}/celld.env`,

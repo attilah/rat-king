@@ -53,6 +53,7 @@ export const liveStack = Stack(
 
     const bucket = yield* ObjectStore.Bucket("store", {
       host: node,
+      legacyRandomCredentials: true,
       name: yield* Config.String("RAT_KING_BUCKET").pipe(
         Config.withDefault("rat-king-cells")
       ),
