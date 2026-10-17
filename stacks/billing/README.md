@@ -14,7 +14,7 @@ No Cloudflare credentials, provider calls, deploys, routes or secrets were creat
 
 A known path with the wrong method returns 405 and `Allow`. Other paths return 404. Storage or binding failure returns 503. The hard queue capacity also returns 503 rather than accepting an alert it cannot retain. Pull responses set `Cache-Control: no-store`.
 
-Auth runs before obtaining a DO stub. Accepted ingress requests then use Alchemy beta.81's `Cloudflare.Workers.RateLimit` binding: 10 requests per 60 seconds on one fixed key. Rate limiting is per-colo and best effort, not a global spend guarantee. The SQL queue separately caps retained ids at 1,000. A Worker invocation still costs work even when refused.
+Auth runs before obtaining a DO stub. Accepted ingress requests then use Alchemy beta.83's `Cloudflare.Workers.RateLimit` binding: 10 requests per 60 seconds on one fixed key. Rate limiting is per-colo and best effort, not a global spend guarantee. The SQL queue separately caps retained ids at 1,000. A Worker invocation still costs work even when refused.
 
 The secret comparison hashes both inputs with SHA-256 and compares fixed-size buffers with native `node:crypto` `timingSafeEqual`, supplied by `nodejs_compat`. This checks possession of Cloudflare's shared secret in `cf-webhook-auth`. It does **not** verify an HMAC, a payload signature, a timestamp or Cloudflare's identity independently.
 

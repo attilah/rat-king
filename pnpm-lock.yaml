@@ -228,8 +228,8 @@ importers:
         specifier: 0.1.0-alpha.2
         version: 0.1.0-alpha.2(effect@4.0.1)(xstate@6.0.0-alpha.65)
       alchemy:
-        specifier: 2.0.0-beta.81
-        version: 2.0.0-beta.81(@effect/platform-node@4.0.0(effect@4.0.1)(redis@6.3.0))(@effect/vitest@4.0.1(effect@4.0.1)(vitest@5.0.1(@types/node@24.13.6)(vite@8.3.2(@types/node@24.13.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))))(@types/node@24.13.6)(effect@4.0.1)(hono@4.11.4)(typescript@7.0.2)(vite@8.3.2(@types/node@24.13.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))(ws@8.22.0)
+        specifier: 2.0.0-beta.83
+        version: 2.0.0-beta.83(@effect/platform-node@4.0.0(effect@4.0.1)(redis@6.3.0))(@effect/vitest@4.0.1(effect@4.0.1)(vitest@5.0.1(@types/node@24.13.6)(vite@8.3.2(@types/node@24.13.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))))(@types/node@24.13.6)(effect@4.0.1)(hono@4.11.4)(typescript@7.0.2)(vite@8.3.2(@types/node@24.13.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))(ws@8.22.0)
       effect:
         specifier: 4.0.1
         version: 4.0.1
@@ -441,8 +441,8 @@ importers:
   packages/alchemy-nest:
     dependencies:
       alchemy:
-        specifier: 2.0.0-beta.81
-        version: 2.0.0-beta.81(@effect/platform-node@4.0.0(effect@4.0.1)(redis@6.3.0))(@effect/vitest@4.0.1(effect@4.0.1)(vitest@5.0.1(@types/node@24.13.6)(vite@8.3.2(@types/node@24.13.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))))(@types/node@24.13.6)(effect@4.0.1)(hono@4.11.4)(typescript@7.0.2)(vite@8.3.2(@types/node@24.13.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))(ws@8.22.0)
+        specifier: 2.0.0-beta.83
+        version: 2.0.0-beta.83(@effect/platform-node@4.0.0(effect@4.0.1)(redis@6.3.0))(@effect/vitest@4.0.1(effect@4.0.1)(vitest@5.0.1(@types/node@24.13.6)(vite@8.3.2(@types/node@24.13.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))))(@types/node@24.13.6)(effect@4.0.1)(hono@4.11.4)(typescript@7.0.2)(vite@8.3.2(@types/node@24.13.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))(ws@8.22.0)
       effect:
         specifier: 4.0.1
         version: 4.0.1
@@ -606,13 +606,40 @@ packages:
       vite:
         optional: true
 
+  '@alchemy.run/cloudflare-runtime@2.0.0-beta.83':
+    resolution: {integrity: sha512-tchwc16KccR3Q8fmEZSqJcXRPJ0mV0Y3LEu7VbdE6R3e0VqKFNnz5xYiCfQWUAahB+QtJDtTu3/nkjOajE3ggQ==}
+    peerDependencies:
+      '@distilled.cloud/cloudflare': 1.0.0-rc.15
+      '@effect/platform-bun': ^4.0.0
+      '@effect/platform-node': ^4.0.0
+      effect: ^4.0.0
+      rolldown: 1.2.5
+      vite: ^7.0.0 || ^8.0.0
+    peerDependenciesMeta:
+      '@effect/platform-bun':
+        optional: true
+      '@effect/platform-node':
+        optional: true
+      rolldown:
+        optional: true
+      vite:
+        optional: true
+
   '@alchemy.run/floci@2.0.0-beta.81':
     resolution: {integrity: sha512-0mYZqFrQLlRwDUsoJlI/ArnEaAaFid2ZPsJWvUyC5llAScWxlST7pdjQd1r/t1YIFFkhOV9JQO1wa7FI1nY6EQ==}
     peerDependencies:
       effect: ^4.0.0
 
+  '@alchemy.run/floci@2.0.0-beta.83':
+    resolution: {integrity: sha512-QVWGFvko0QYEMsR298PW8OQ/TkyRoEnLlz5iGNXar/wdBC1FNrBHHMmfG7pY9Vc5BbCR1WtggD/ZYUwtyyUgQw==}
+    peerDependencies:
+      effect: ^4.0.0
+
   '@alchemy.run/node-utils@2.0.0-beta.81':
     resolution: {integrity: sha512-AcxxGMFbbdiKww7OUbBd/fsSDyRJjoICAIqGwgkJxrIQkkaNt6+9SObrznmnOx70OonA2GH87RGnEaTtORHffw==}
+
+  '@alchemy.run/node-utils@2.0.0-beta.83':
+    resolution: {integrity: sha512-UiRTmZN95URcMgQQtuatgaV2YcYZ5TDoZtRgnd7Kz7R7pCeFCUhJXM2ZYwM32j3wqnObThpiFKFDJmqDsrosIA==}
 
   '@alchemy.run/sigil@0.1.0-alpha.1':
     resolution: {integrity: sha512-RtHELG2w+GluVewRsuKm66idtPzC+4STptMr/61X1Vy5uBkDzcCzjzV8G6jUa4iBv6Il0hHV7UL6wvv//9nD/Q==}
@@ -843,8 +870,20 @@ packages:
     cpu: [x64]
     os: [darwin]
 
+  '@cloudflare/workerd-darwin-64@1.20261002.1':
+    resolution: {integrity: sha512-PW3AYxxO6W2cCYCPrx0ZOqivb/2/R2zGtPgNiUgzZBGDl2MtVxWKvzDDXvTGVCmuL4aiTCziNcZktDpCcR7NnQ==}
+    engines: {node: '>=16'}
+    cpu: [x64]
+    os: [darwin]
+
   '@cloudflare/workerd-darwin-arm64@1.20260918.1':
     resolution: {integrity: sha512-CR9JRZEQo93fNgBVF4Df2H2/VYO4n7rxSseSwCVv3bJQEb0huADUSCj2FK4ipxar8ToOEB4wawyw0vJo5U/rQQ==}
+    engines: {node: '>=16'}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@cloudflare/workerd-darwin-arm64@1.20261002.1':
+    resolution: {integrity: sha512-vv6t7a11NBEX9eS9mfMRvUymJszXVnnWCH8VEq1f65sxsFli3O4sI4pzFcIvG+P1BKVZZDBv4gwvxWLQXuM37g==}
     engines: {node: '>=16'}
     cpu: [arm64]
     os: [darwin]
@@ -855,14 +894,32 @@ packages:
     cpu: [x64]
     os: [linux]
 
+  '@cloudflare/workerd-linux-64@1.20261002.1':
+    resolution: {integrity: sha512-uOU1eCBoDnR4CQLkm4tqBlM1lHMgzW14VNEWWVOohi/qvmbLAwapwyLDCytxpb4U55+mXgcMFc91y+Ibh1EssA==}
+    engines: {node: '>=16'}
+    cpu: [x64]
+    os: [linux]
+
   '@cloudflare/workerd-linux-arm64@1.20260918.1':
     resolution: {integrity: sha512-4rib51MaLNWweUIUxM/Xj558M5QmyZoBSf0ffv+lYah5VTrvwnez3XGxX72pElnBKHROvAPOi5msQ5Ts8JSI0A==}
     engines: {node: '>=16'}
     cpu: [arm64]
     os: [linux]
 
+  '@cloudflare/workerd-linux-arm64@1.20261002.1':
+    resolution: {integrity: sha512-p3Zcrj4EAYc1+yDUjRZ3ygjPUj/8Dg03ux+QyfL0UT5d1OG0BJnBSto2OVJuGQ3J3cCRsjhjYs7gzB727eKBTw==}
+    engines: {node: '>=16'}
+    cpu: [arm64]
+    os: [linux]
+
   '@cloudflare/workerd-windows-64@1.20260918.1':
     resolution: {integrity: sha512-sATrMx5ShYYgmgUGrcTmvsFSJBFuN95NEkX3xwb1qk8w1A6h5N11sea7yN2IeibwPyPmXKjWNjXOno0hZAM71Q==}
+    engines: {node: '>=16'}
+    cpu: [x64]
+    os: [win32]
+
+  '@cloudflare/workerd-windows-64@1.20261002.1':
+    resolution: {integrity: sha512-S9lnFnKRUNZ6umIBjCCbdfo5cTk1fR7SKi2BcQuCUKTmOzAjLsIFV49yiwPLSH33c0TDUJn8eavX4S7bORwfBA==}
     engines: {node: '>=16'}
     cpu: [x64]
     os: [win32]
@@ -875,8 +932,18 @@ packages:
     peerDependencies:
       effect: ^4.0.0
 
+  '@distilled.cloud/acme@1.0.0-rc.15':
+    resolution: {integrity: sha512-SzQZoPTonWolW6yHartHKIc1sEOlrnq3XdCfCT6RUXb1iAK0YyboRE0BgROzhg4FfxqSypb1BBB0D0vwhm+qjQ==}
+    peerDependencies:
+      effect: ^4.0.0
+
   '@distilled.cloud/aws@1.0.0-rc.13':
     resolution: {integrity: sha512-6ZGcp0LkniB0I2l8Gr7vKRQgTZTch0/07iuvuMZv9Nu+rWwNuZG9VHTUdlIoarWgCHFUNN8yvSYBGOjaeN99tQ==}
+    peerDependencies:
+      effect: ^4.0.0
+
+  '@distilled.cloud/aws@1.0.0-rc.15':
+    resolution: {integrity: sha512-5VBbmBxTLrTe0/MhcDqul0+rsptUc5rpPR2ymI6v+I//FOLE/x/2YlX3utm6ziGacTEeZaVpwdxhkt6SdJ28Pw==}
     peerDependencies:
       effect: ^4.0.0
 
@@ -885,8 +952,18 @@ packages:
     peerDependencies:
       effect: ^4.0.0
 
+  '@distilled.cloud/axiom@1.0.0-rc.15':
+    resolution: {integrity: sha512-R4jcq23GdjcNVwJXwSqKmT13ME6k0Zz14i7VOiqj8dYa2jIMyNIDXqHY3bHiq3+x2vimCJ3B2VlgstoXd8G8sw==}
+    peerDependencies:
+      effect: ^4.0.0
+
   '@distilled.cloud/cloudflare@1.0.0-rc.13':
     resolution: {integrity: sha512-Py5FoA6azyYExDb91VaeC+9x+ravOBSRhXeUmpcQjCtgqmOdiXgc2YZGMMPI68DF+kMuHRVIrR+2uRZNDOhYjw==}
+    peerDependencies:
+      effect: ^4.0.0
+
+  '@distilled.cloud/cloudflare@1.0.0-rc.15':
+    resolution: {integrity: sha512-UBnEpZGkf+lnMF33IJXcu7DD99vC+3314N01pnWNuKxLtsVNNLF/DxFbPxBU1Cb+aLE3Cs35aSiHZrYO7EiR0g==}
     peerDependencies:
       effect: ^4.0.0
 
@@ -895,8 +972,18 @@ packages:
     peerDependencies:
       effect: ^4.0.0
 
+  '@distilled.cloud/core@1.0.0-rc.15':
+    resolution: {integrity: sha512-TPXxuwcxQ85Pvm0g7ZQSLTQkPc1Wmcb6p6KOk+Be2fP14Xpj5a+7HOSUyPNwbqOP+vPK5Sj0ZLN7M6spKnO2LA==}
+    peerDependencies:
+      effect: ^4.0.0
+
   '@distilled.cloud/doppler@1.0.0-rc.13':
     resolution: {integrity: sha512-GgOEUCc4Bx0C+lYNfZ4OqaA3ULvqDUQTJC8gobSh1L0jfrWclv/kRcSr43v4IXyStld+saUvDfDZgeGzlE74OA==}
+    peerDependencies:
+      effect: ^4.0.0
+
+  '@distilled.cloud/doppler@1.0.0-rc.15':
+    resolution: {integrity: sha512-w72a8B07IQhGEG09Cg9OZuJbCEV/Qjf7DNRI6r5+ATN88575gv8xOFyAi7DuwfbR245BLN8VGEgZ7I0exMMEmw==}
     peerDependencies:
       effect: ^4.0.0
 
@@ -905,8 +992,18 @@ packages:
     peerDependencies:
       effect: ^4.0.0
 
+  '@distilled.cloud/fly-io@1.0.0-rc.15':
+    resolution: {integrity: sha512-lQ1DuktDE+69snRw/ZIZ1Tlc6fVx9gNlCIHX2CA8p8DVtpIg389vligmfFDAtmyQVnix/0ZJydo5OFnk1Ip53A==}
+    peerDependencies:
+      effect: ^4.0.0
+
   '@distilled.cloud/gcp@1.0.0-rc.13':
     resolution: {integrity: sha512-un8jqil9ejt96oN+OfEDUsbrEOpC6Ut4B/73DqKDttvt0Btal1OeBNTTQsftVCpeEzXAvkYKGRIT2AeEu1J5jA==}
+    peerDependencies:
+      effect: ^4.0.0
+
+  '@distilled.cloud/gcp@1.0.0-rc.15':
+    resolution: {integrity: sha512-NTxSKZWmFa+psZZh/aTOIKVlayU2SIlgOKEqA2R80Ys3fcI0JVXjfkCPLfMURfV19YDjJ6jbWQ4cV+xqSC/x1w==}
     peerDependencies:
       effect: ^4.0.0
 
@@ -915,8 +1012,23 @@ packages:
     peerDependencies:
       effect: ^4.0.0
 
+  '@distilled.cloud/hetzner@1.0.0-rc.15':
+    resolution: {integrity: sha512-lUPogzlQeMGp29thsiF7bDBsRfnN5PzTqiujdDc/ZjWDBpq3teudkzbdMMsL12RB5qvB9xb3INwi9JWqv1lQcQ==}
+    peerDependencies:
+      effect: ^4.0.0
+
+  '@distilled.cloud/iceberg@1.0.0-rc.15':
+    resolution: {integrity: sha512-qNLBVGyuIP/OdgvRht41u/QPOEvJ2kUntC7++bL6YGPbB6TPbDDPd72xeP/gXogIgLsQj8RP1gETjJCQREtl2Q==}
+    peerDependencies:
+      effect: ^4.0.0
+
   '@distilled.cloud/infisical@1.0.0-rc.13':
     resolution: {integrity: sha512-Zz8ksA/Y8UUUnWag2UBxB5WYA6wLqOS78ugWJ3cOr9Ot+4bC0NJYWanq35uFInozLXWhun84USU2wOI+mdwQUQ==}
+    peerDependencies:
+      effect: ^4.0.0
+
+  '@distilled.cloud/infisical@1.0.0-rc.15':
+    resolution: {integrity: sha512-nDN7k8cxXkKkgFL42u3YSNySpjzGWhy2QgRzLbweSVxmhNNjIpxAsW/ct8HUf4Y9CM9Pg8KtQItsMyf8C+NgGg==}
     peerDependencies:
       effect: ^4.0.0
 
@@ -925,8 +1037,18 @@ packages:
     peerDependencies:
       effect: ^4.0.0
 
+  '@distilled.cloud/neon@1.0.0-rc.15':
+    resolution: {integrity: sha512-lRZMqLuYNALiMEjJRISKyeiF/7SVW8F4JeTfqk/QAl0MY5SxJvKpkgrCoKNj2kVI06IH1D8iTt3sxf5syXRLEQ==}
+    peerDependencies:
+      effect: ^4.0.0
+
   '@distilled.cloud/planetscale@1.0.0-rc.13':
     resolution: {integrity: sha512-AM97YGRnDfZdqsxFgQMQ83p7ZlRqxS6/foTTJA5P590UMbbOyrQyFyd33BD0agul8a3ngZde3Oej6v7BN55aWw==}
+    peerDependencies:
+      effect: ^4.0.0
+
+  '@distilled.cloud/planetscale@1.0.0-rc.15':
+    resolution: {integrity: sha512-7ZghpGNi63Wfp6tU17Oex7aRjZ5O+ARFfl071S3JaeC7ube13Ji6LS/H10MG+DMpCq/vFVDtVB2ZNtevUcAI3w==}
     peerDependencies:
       effect: ^4.0.0
 
@@ -935,8 +1057,18 @@ packages:
     peerDependencies:
       effect: ^4.0.0
 
+  '@distilled.cloud/prisma@1.0.0-rc.15':
+    resolution: {integrity: sha512-we2sbP5XHuq2XXi1NOp7ierK8apy3wZOrzIw2bi8CidQYn8OWCUIi9IgUBX6V3kCT1iRq0Y1FwiW6c9jJwtGsw==}
+    peerDependencies:
+      effect: ^4.0.0
+
   '@distilled.cloud/railway@1.0.0-rc.13':
     resolution: {integrity: sha512-yXalRS3GFLo3hWM0HXptqudi23NVCM4FRD20db2/Ob9FFcNrMJik1fopv+74HOiV+BuxfkCP609KsEK6LVdB/g==}
+    peerDependencies:
+      effect: ^4.0.0
+
+  '@distilled.cloud/railway@1.0.0-rc.15':
+    resolution: {integrity: sha512-Z/ebbgxozAuj9vog8Ar05BoFrQwKuKKGsocsLpMlQr26VT+x9GL71P3uAhpF+Fhg7FFS3NjYB9R6MAIxPP62tA==}
     peerDependencies:
       effect: ^4.0.0
 
@@ -945,8 +1077,23 @@ packages:
     peerDependencies:
       effect: ^4.0.0
 
+  '@distilled.cloud/stripe@1.0.0-rc.15':
+    resolution: {integrity: sha512-sYIPEg1MKZrj6aSy4o08anO5dVpyFJHzgEk0WfiMm5BT0oEFtldUuPe/FjEOoY+mFvZ+o+26lJ5voEnWLJSCUA==}
+    peerDependencies:
+      effect: ^4.0.0
+
+  '@distilled.cloud/turso@1.0.0-rc.15':
+    resolution: {integrity: sha512-hvudbvmdatgi198Exlid3zgF/WGBD3UDa0A2F4QPD3IYR08Y+O5ZFcovPcV841JDIREJN0hKmgsrmpoFczxbDA==}
+    peerDependencies:
+      effect: ^4.0.0
+
   '@distilled.cloud/zerossl@1.0.0-rc.13':
     resolution: {integrity: sha512-dnxhg39lZjpTdZbHCVYPoUC9E2r8eSHbqiYDhSq2EurVPJcc9YRXlxZR1bP1nniSp078XV8GA+aUECt/Z56aQg==}
+    peerDependencies:
+      effect: ^4.0.0
+
+  '@distilled.cloud/zerossl@1.0.0-rc.15':
+    resolution: {integrity: sha512-lu69h33Ib18kATq0W1c1zw6CH3YkUvKWGj1QUi8lbuINXPXHb2/88ATzehDQr5GM/qxtO+azgglhs/NVOf4UVw==}
     peerDependencies:
       effect: ^4.0.0
 
@@ -2472,6 +2619,67 @@ packages:
       ws:
         optional: true
 
+  alchemy@2.0.0-beta.83:
+    resolution: {integrity: sha512-t0N4FwLU1JxLnKZGdsBNdqiycWDM5HEYmmIguMImplE07Vh+FPpMR8ypk3K3TY5Tg0sFFppXFVwtwiDp6xlX9w==}
+    hasBin: true
+    peerDependencies:
+      '@alchemy.run/frontend-frameworks': 2.0.0-beta.83
+      '@aws/durable-execution-sdk-js': ^2.1.0
+      '@effect/platform-bun': ^4.0.0
+      '@effect/platform-node': ^4.0.0
+      '@effect/sql-libsql': ^4.0.0
+      '@effect/sql-mysql2': ^4.0.0
+      '@effect/sql-pg': ^4.0.0
+      '@effect/vitest': 4.0.1
+      '@prisma/orm-postgres': ^8.0.0-rc.11
+      '@vercel/nft': ^1.10.2
+      drizzle-kit: 1.0.0-rc.5-ab785fc
+      drizzle-orm: 1.0.0-rc.5-ab785fc
+      effect: ^4.0.0
+      mongodb: ^6.10.0
+      mysql2: ^3.24.2
+      pg: ^8.22.0
+      prisma: ^8.0.0-rc.15
+      vite: ^8.0.7
+      ws: ^8.21.0
+    peerDependenciesMeta:
+      '@alchemy.run/frontend-frameworks':
+        optional: true
+      '@aws/durable-execution-sdk-js':
+        optional: true
+      '@effect/platform-bun':
+        optional: true
+      '@effect/platform-node':
+        optional: true
+      '@effect/sql-libsql':
+        optional: true
+      '@effect/sql-mysql2':
+        optional: true
+      '@effect/sql-pg':
+        optional: true
+      '@effect/vitest':
+        optional: true
+      '@prisma/orm-postgres':
+        optional: true
+      '@vercel/nft':
+        optional: true
+      drizzle-kit:
+        optional: true
+      drizzle-orm:
+        optional: true
+      mongodb:
+        optional: true
+      mysql2:
+        optional: true
+      pg:
+        optional: true
+      prisma:
+        optional: true
+      vite:
+        optional: true
+      ws:
+        optional: true
+
   ansi-escapes@7.3.0:
     resolution: {integrity: sha512-BvU8nYgGQBxcmMuEeUEmNTvrMVjJNSH7RgW24vXexN4Ven6qCvy4TntnvlnwnMLTVlcRQQdbRY8NKnaIoeWDNg==}
     engines: {node: '>=18'}
@@ -3879,6 +4087,11 @@ packages:
     engines: {node: '>=16'}
     hasBin: true
 
+  workerd@1.20261002.1:
+    resolution: {integrity: sha512-HFTb9FGAEWB5AVnHP/czY/vy9tqtyV7rreb9MKntsAJi8aElBkyq7P0MLPQLgTtKOk6A+EivoS39gDH/lwzu3Q==}
+    engines: {node: '>=16'}
+    hasBin: true
+
   wrap-ansi@10.0.2:
     resolution: {integrity: sha512-6OLRNZqRntVGBm26ghZ5eZhCuWWyOkRCSn8XsOIuq5stpCE/tjLbdozd93naILZig0lmD8ANfRwnhn0DLeXGlg==}
     engines: {node: '>=20'}
@@ -3975,11 +4188,43 @@ snapshots:
       - proxy-agent
       - typescript
 
+  '@alchemy.run/cloudflare-runtime@2.0.0-beta.83(@distilled.cloud/cloudflare@1.0.0-rc.15(effect@4.0.1))(@effect/platform-node@4.0.0(effect@4.0.1)(redis@6.3.0))(@types/node@24.13.6)(effect@4.0.1)(rolldown@1.2.5)(typescript@7.0.2)(vite@8.3.2(@types/node@24.13.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))':
+    dependencies:
+      '@alchemy.run/node-utils': 2.0.0-beta.83
+      '@cloudflare/unenv-preset': 2.16.2(unenv@2.0.0-rc.24)(workerd@1.20261002.1)
+      '@distilled.cloud/cloudflare': 1.0.0-rc.15(effect@4.0.1)
+      '@puppeteer/browsers': 3.2.3(yauzl@3.4.0)
+      capnp-es: 0.0.16(typescript@7.0.2)
+      effect: 4.0.1
+      magic-string: 0.30.21
+      mime: 4.1.0
+      sharp: 0.35.5(@types/node@24.13.6)
+      unenv: 2.0.0-rc.24
+      workerd: 1.20261002.1
+      yauzl: 3.4.0
+    optionalDependencies:
+      '@effect/platform-node': 4.0.0(effect@4.0.1)(redis@6.3.0)
+      rolldown: 1.2.5
+      vite: 8.3.2(@types/node@24.13.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)
+    transitivePeerDependencies:
+      - '@types/node'
+      - proxy-agent
+      - typescript
+
   '@alchemy.run/floci@2.0.0-beta.81(effect@4.0.1)':
     dependencies:
       effect: 4.0.1
 
+  '@alchemy.run/floci@2.0.0-beta.83(effect@4.0.1)':
+    dependencies:
+      effect: 4.0.1
+
   '@alchemy.run/node-utils@2.0.0-beta.81':
+    dependencies:
+      chokidar: 5.0.0
+      rolldown: 1.2.5
+
+  '@alchemy.run/node-utils@2.0.0-beta.83':
     dependencies:
       chokidar: 5.0.0
       rolldown: 1.2.5
@@ -4292,19 +4537,40 @@ snapshots:
     optionalDependencies:
       workerd: 1.20260918.1
 
+  '@cloudflare/unenv-preset@2.16.2(unenv@2.0.0-rc.24)(workerd@1.20261002.1)':
+    dependencies:
+      unenv: 2.0.0-rc.24
+    optionalDependencies:
+      workerd: 1.20261002.1
+
   '@cloudflare/workerd-darwin-64@1.20260918.1':
+    optional: true
+
+  '@cloudflare/workerd-darwin-64@1.20261002.1':
     optional: true
 
   '@cloudflare/workerd-darwin-arm64@1.20260918.1':
     optional: true
 
+  '@cloudflare/workerd-darwin-arm64@1.20261002.1':
+    optional: true
+
   '@cloudflare/workerd-linux-64@1.20260918.1':
+    optional: true
+
+  '@cloudflare/workerd-linux-64@1.20261002.1':
     optional: true
 
   '@cloudflare/workerd-linux-arm64@1.20260918.1':
     optional: true
 
+  '@cloudflare/workerd-linux-arm64@1.20261002.1':
+    optional: true
+
   '@cloudflare/workerd-windows-64@1.20260918.1':
+    optional: true
+
+  '@cloudflare/workerd-windows-64@1.20261002.1':
     optional: true
 
   '@cloudflare/workers-types@5.20261004.1': {}
@@ -4314,10 +4580,20 @@ snapshots:
       '@distilled.cloud/core': 1.0.0-rc.13(effect@4.0.1)
       effect: 4.0.1
 
+  '@distilled.cloud/acme@1.0.0-rc.15(effect@4.0.1)':
+    dependencies:
+      '@distilled.cloud/core': 1.0.0-rc.15(effect@4.0.1)
+      effect: 4.0.1
+
   '@distilled.cloud/aws@1.0.0-rc.13(effect@4.0.1)':
     dependencies:
       '@distilled.cloud/core': 1.0.0-rc.13(effect@4.0.1)
       '@smithy/types': 4.19.0
+      effect: 4.0.1
+
+  '@distilled.cloud/aws@1.0.0-rc.15(effect@4.0.1)':
+    dependencies:
+      '@distilled.cloud/core': 1.0.0-rc.15(effect@4.0.1)
       effect: 4.0.1
 
   '@distilled.cloud/axiom@1.0.0-rc.13(effect@4.0.1)':
@@ -4325,9 +4601,19 @@ snapshots:
       '@distilled.cloud/core': 1.0.0-rc.13(effect@4.0.1)
       effect: 4.0.1
 
+  '@distilled.cloud/axiom@1.0.0-rc.15(effect@4.0.1)':
+    dependencies:
+      '@distilled.cloud/core': 1.0.0-rc.15(effect@4.0.1)
+      effect: 4.0.1
+
   '@distilled.cloud/cloudflare@1.0.0-rc.13(effect@4.0.1)':
     dependencies:
       '@distilled.cloud/core': 1.0.0-rc.13(effect@4.0.1)
+      effect: 4.0.1
+
+  '@distilled.cloud/cloudflare@1.0.0-rc.15(effect@4.0.1)':
+    dependencies:
+      '@distilled.cloud/core': 1.0.0-rc.15(effect@4.0.1)
       effect: 4.0.1
 
   '@distilled.cloud/core@1.0.0-rc.13(effect@4.0.1)':
@@ -4335,9 +4621,18 @@ snapshots:
       effect: 4.0.1
       graphql: 16.11.0
 
+  '@distilled.cloud/core@1.0.0-rc.15(effect@4.0.1)':
+    dependencies:
+      effect: 4.0.1
+
   '@distilled.cloud/doppler@1.0.0-rc.13(effect@4.0.1)':
     dependencies:
       '@distilled.cloud/core': 1.0.0-rc.13(effect@4.0.1)
+      effect: 4.0.1
+
+  '@distilled.cloud/doppler@1.0.0-rc.15(effect@4.0.1)':
+    dependencies:
+      '@distilled.cloud/core': 1.0.0-rc.15(effect@4.0.1)
       effect: 4.0.1
 
   '@distilled.cloud/fly-io@1.0.0-rc.13(effect@4.0.1)':
@@ -4345,9 +4640,19 @@ snapshots:
       '@distilled.cloud/core': 1.0.0-rc.13(effect@4.0.1)
       effect: 4.0.1
 
+  '@distilled.cloud/fly-io@1.0.0-rc.15(effect@4.0.1)':
+    dependencies:
+      '@distilled.cloud/core': 1.0.0-rc.15(effect@4.0.1)
+      effect: 4.0.1
+
   '@distilled.cloud/gcp@1.0.0-rc.13(effect@4.0.1)':
     dependencies:
       '@distilled.cloud/core': 1.0.0-rc.13(effect@4.0.1)
+      effect: 4.0.1
+
+  '@distilled.cloud/gcp@1.0.0-rc.15(effect@4.0.1)':
+    dependencies:
+      '@distilled.cloud/core': 1.0.0-rc.15(effect@4.0.1)
       effect: 4.0.1
 
   '@distilled.cloud/hetzner@1.0.0-rc.13(effect@4.0.1)':
@@ -4355,9 +4660,24 @@ snapshots:
       '@distilled.cloud/core': 1.0.0-rc.13(effect@4.0.1)
       effect: 4.0.1
 
+  '@distilled.cloud/hetzner@1.0.0-rc.15(effect@4.0.1)':
+    dependencies:
+      '@distilled.cloud/core': 1.0.0-rc.15(effect@4.0.1)
+      effect: 4.0.1
+
+  '@distilled.cloud/iceberg@1.0.0-rc.15(effect@4.0.1)':
+    dependencies:
+      '@distilled.cloud/core': 1.0.0-rc.15(effect@4.0.1)
+      effect: 4.0.1
+
   '@distilled.cloud/infisical@1.0.0-rc.13(effect@4.0.1)':
     dependencies:
       '@distilled.cloud/core': 1.0.0-rc.13(effect@4.0.1)
+      effect: 4.0.1
+
+  '@distilled.cloud/infisical@1.0.0-rc.15(effect@4.0.1)':
+    dependencies:
+      '@distilled.cloud/core': 1.0.0-rc.15(effect@4.0.1)
       effect: 4.0.1
 
   '@distilled.cloud/neon@1.0.0-rc.13(effect@4.0.1)':
@@ -4365,9 +4685,19 @@ snapshots:
       '@distilled.cloud/core': 1.0.0-rc.13(effect@4.0.1)
       effect: 4.0.1
 
+  '@distilled.cloud/neon@1.0.0-rc.15(effect@4.0.1)':
+    dependencies:
+      '@distilled.cloud/core': 1.0.0-rc.15(effect@4.0.1)
+      effect: 4.0.1
+
   '@distilled.cloud/planetscale@1.0.0-rc.13(effect@4.0.1)':
     dependencies:
       '@distilled.cloud/core': 1.0.0-rc.13(effect@4.0.1)
+      effect: 4.0.1
+
+  '@distilled.cloud/planetscale@1.0.0-rc.15(effect@4.0.1)':
+    dependencies:
+      '@distilled.cloud/core': 1.0.0-rc.15(effect@4.0.1)
       effect: 4.0.1
 
   '@distilled.cloud/prisma@1.0.0-rc.13(effect@4.0.1)':
@@ -4375,9 +4705,19 @@ snapshots:
       '@distilled.cloud/core': 1.0.0-rc.13(effect@4.0.1)
       effect: 4.0.1
 
+  '@distilled.cloud/prisma@1.0.0-rc.15(effect@4.0.1)':
+    dependencies:
+      '@distilled.cloud/core': 1.0.0-rc.15(effect@4.0.1)
+      effect: 4.0.1
+
   '@distilled.cloud/railway@1.0.0-rc.13(effect@4.0.1)':
     dependencies:
       '@distilled.cloud/core': 1.0.0-rc.13(effect@4.0.1)
+      effect: 4.0.1
+
+  '@distilled.cloud/railway@1.0.0-rc.15(effect@4.0.1)':
+    dependencies:
+      '@distilled.cloud/core': 1.0.0-rc.15(effect@4.0.1)
       effect: 4.0.1
 
   '@distilled.cloud/stripe@1.0.0-rc.13(effect@4.0.1)':
@@ -4385,9 +4725,24 @@ snapshots:
       '@distilled.cloud/core': 1.0.0-rc.13(effect@4.0.1)
       effect: 4.0.1
 
+  '@distilled.cloud/stripe@1.0.0-rc.15(effect@4.0.1)':
+    dependencies:
+      '@distilled.cloud/core': 1.0.0-rc.15(effect@4.0.1)
+      effect: 4.0.1
+
+  '@distilled.cloud/turso@1.0.0-rc.15(effect@4.0.1)':
+    dependencies:
+      '@distilled.cloud/core': 1.0.0-rc.15(effect@4.0.1)
+      effect: 4.0.1
+
   '@distilled.cloud/zerossl@1.0.0-rc.13(effect@4.0.1)':
     dependencies:
       '@distilled.cloud/core': 1.0.0-rc.13(effect@4.0.1)
+      effect: 4.0.1
+
+  '@distilled.cloud/zerossl@1.0.0-rc.15(effect@4.0.1)':
+    dependencies:
+      '@distilled.cloud/core': 1.0.0-rc.15(effect@4.0.1)
       effect: 4.0.1
 
   '@earendil-works/chord@1.0.2':
@@ -5523,6 +5878,62 @@ snapshots:
       '@distilled.cloud/railway': 1.0.0-rc.13(effect@4.0.1)
       '@distilled.cloud/stripe': 1.0.0-rc.13(effect@4.0.1)
       '@distilled.cloud/zerossl': 1.0.0-rc.13(effect@4.0.1)
+      '@effect/sql-d1': 4.0.1(effect@4.0.1)
+      '@effect/sql-sqlite-do': 4.0.1(effect@4.0.1)
+      '@libsql/client': 0.17.4
+      '@neon/functions': 0.11.0(hono@4.11.4)
+      '@octokit/rest': 22.0.1
+      '@octokit/webhooks': 14.2.0
+      '@prisma/dev': 0.20.0(typescript@7.0.2)
+      '@types/aws-lambda': 8.10.164
+      capnweb: 0.12.0
+      effect: 4.0.1
+      fflate: 0.8.3
+      libsodium-wrappers: 0.8.4
+      pathe: 2.0.3
+      picomatch: 4.0.7
+      rolldown: 1.2.5
+      tinyglobby: 0.2.17
+      yaml: 2.9.1
+    optionalDependencies:
+      '@effect/platform-node': 4.0.0(effect@4.0.1)(redis@6.3.0)
+      '@effect/vitest': 4.0.1(effect@4.0.1)(vitest@5.0.1(@types/node@24.13.6)(vite@8.3.2(@types/node@24.13.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)))
+      vite: 8.3.2(@types/node@24.13.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)
+      ws: 8.22.0
+    transitivePeerDependencies:
+      - '@types/node'
+      - '@types/react'
+      - bufferutil
+      - hono
+      - proxy-agent
+      - react-devtools-core
+      - typescript
+      - utf-8-validate
+
+  alchemy@2.0.0-beta.83(@effect/platform-node@4.0.0(effect@4.0.1)(redis@6.3.0))(@effect/vitest@4.0.1(effect@4.0.1)(vitest@5.0.1(@types/node@24.13.6)(vite@8.3.2(@types/node@24.13.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))))(@types/node@24.13.6)(effect@4.0.1)(hono@4.11.4)(typescript@7.0.2)(vite@8.3.2(@types/node@24.13.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))(ws@8.22.0):
+    dependencies:
+      '@alchemy.run/cloudflare-runtime': 2.0.0-beta.83(@distilled.cloud/cloudflare@1.0.0-rc.15(effect@4.0.1))(@effect/platform-node@4.0.0(effect@4.0.1)(redis@6.3.0))(@types/node@24.13.6)(effect@4.0.1)(rolldown@1.2.5)(typescript@7.0.2)(vite@8.3.2(@types/node@24.13.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+      '@alchemy.run/floci': 2.0.0-beta.83(effect@4.0.1)
+      '@alchemy.run/node-utils': 2.0.0-beta.83
+      '@alchemy.run/sigil': 0.1.0-alpha.1
+      '@distilled.cloud/acme': 1.0.0-rc.15(effect@4.0.1)
+      '@distilled.cloud/aws': 1.0.0-rc.15(effect@4.0.1)
+      '@distilled.cloud/axiom': 1.0.0-rc.15(effect@4.0.1)
+      '@distilled.cloud/cloudflare': 1.0.0-rc.15(effect@4.0.1)
+      '@distilled.cloud/core': 1.0.0-rc.15(effect@4.0.1)
+      '@distilled.cloud/doppler': 1.0.0-rc.15(effect@4.0.1)
+      '@distilled.cloud/fly-io': 1.0.0-rc.15(effect@4.0.1)
+      '@distilled.cloud/gcp': 1.0.0-rc.15(effect@4.0.1)
+      '@distilled.cloud/hetzner': 1.0.0-rc.15(effect@4.0.1)
+      '@distilled.cloud/iceberg': 1.0.0-rc.15(effect@4.0.1)
+      '@distilled.cloud/infisical': 1.0.0-rc.15(effect@4.0.1)
+      '@distilled.cloud/neon': 1.0.0-rc.15(effect@4.0.1)
+      '@distilled.cloud/planetscale': 1.0.0-rc.15(effect@4.0.1)
+      '@distilled.cloud/prisma': 1.0.0-rc.15(effect@4.0.1)
+      '@distilled.cloud/railway': 1.0.0-rc.15(effect@4.0.1)
+      '@distilled.cloud/stripe': 1.0.0-rc.15(effect@4.0.1)
+      '@distilled.cloud/turso': 1.0.0-rc.15(effect@4.0.1)
+      '@distilled.cloud/zerossl': 1.0.0-rc.15(effect@4.0.1)
       '@effect/sql-d1': 4.0.1(effect@4.0.1)
       '@effect/sql-sqlite-do': 4.0.1(effect@4.0.1)
       '@libsql/client': 0.17.4
@@ -6945,6 +7356,14 @@ snapshots:
       '@cloudflare/workerd-linux-64': 1.20260918.1
       '@cloudflare/workerd-linux-arm64': 1.20260918.1
       '@cloudflare/workerd-windows-64': 1.20260918.1
+
+  workerd@1.20261002.1:
+    optionalDependencies:
+      '@cloudflare/workerd-darwin-64': 1.20261002.1
+      '@cloudflare/workerd-darwin-arm64': 1.20261002.1
+      '@cloudflare/workerd-linux-64': 1.20261002.1
+      '@cloudflare/workerd-linux-arm64': 1.20261002.1
+      '@cloudflare/workerd-windows-64': 1.20261002.1
 
   wrap-ansi@10.0.2:
     dependencies:
