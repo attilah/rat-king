@@ -1,0 +1,19 @@
+# Rat King public edge: slice 1
+
+**Recommend a desk peon Durable Object plus one contact-session Durable Object per external session.** Deploy target: **the zone's Cloudflare account**. The Alchemy stack requires stage `public-edge` and matches the resolved account against externally supplied `RATKING_ZONE_CLOUDFLARE_ACCOUNT_ID`. No account ID, credentials, DNS resource, custom-domain binding or deployment authorization lives here. Nothing has been deployed.
+
+## Bridge and sessions
+
+Each desk peon owns a desk's public face. Eventually it can answer, queue and relay a contact's mail to the real desk over Rat King. Each contact session keeps its own durable initialization, public desk alias and derived prompt/tool scope. The lifecycle is **unopened → active → closed**: successful MCP initialization opens it; termination closes it. Reconnects replay sanitized initialization into a fresh MCP runtime, not a cached credential. Sessions expire after 24 hours.
+
+The `DeskPeon` and `ContactSession` skeletons expose no model calls or live mailbox writes. All tiers have only `about`, `tiers`, `verifyInvite` and `whoami`. The current credential, authority freshness and invite are checked again on each contact request. Stored scope is descriptive, never authority. Trust remains data for the existing attention judge, not a second judge. The future execution boundary can reuse the agent Durable Object direction in `packages/agent-runtime`; this slice imports no model runtime.
+
+For the peon's **edge → mailbox relay hop**, recommend an outbound-pulled queue relay: the peon retains encrypted envelopes and the mailbox relay pulls authorized jobs and acknowledges delivery idempotently. This avoids public mailbox ingress and lets each desk pause its bridge. Risks: duplicate delivery, delayed revocation, ordering, queue retention, compromised relay credentials and operational backlog. Require envelope IDs, recipient-side deduplication, bounded retention and fresh invite checks at dequeue. A Cloudflare Tunnel would be simpler but couples ingress to host availability. A Cloudflare mailbox instance removes that hop but adds mailbox/storage migration and another authority boundary. Neither alternative is implemented.
+
+## Admission and limits
+
+Lexicon records are atproto-compatible data. ES256 signs domain-separated DAG-CBOR records; these detached signatures are not atproto repository-commit proofs. Messages never go on atproto. Tier 1 proves a key fingerprint, not a claimed DID. Tier 2 requires a separately verified DID/handle binding; tier 3 requires an authorized fleet issuer, exact namespace/recipient scope, subject-key binding, expiry and an authoritative revocation snapshot. Tier 4 requires a host-issuer attestation. No public key supplied by a caller becomes a trusted issuer. The optional deployment-supplied trust directory must be current; missing/stale authority cannot issue a vouch. Its operator must verify DID keys and handle resolution before adding attestations. Network DID resolution is not implemented.
+
+MCP hosts need OAuth next: authorization-server discovery, audience-bound short-lived access tokens, PKCE, consent and per-organization grants. Keep organization grants separate from trust and invite scope; intersect all three. Do not treat a legacy session ID as a grant. This slice accepts five-minute signed bearer identity proofs for read-only inspection, not mail authorization.
+
+Ingress limits MCP to **30 requests/IP/minute** and **64 KiB/request**. Cloudflare counts the IP limit per location, not globally. Future peons must enforce invite rate and per-subject, organization and recipient quotas before queueing and again before relay; use durable counters for global enforcement. Until a verified invite explicitly permits otherwise, **outbound fleet mail to `ext/*` needs Joel's approval**. Slice 1 enables no outbound mail at any tier.

@@ -6,11 +6,14 @@
   "exports": {
     ".": "./src/mailbox-client.ts",
     "./turns": "./turns.ts",
+    "./trust": "./trust.ts",
+    "./webcrypto": "./adapters/webcrypto.ts",
     "./*": "./src/*.ts"
   },
   "dependencies": {
     "@atproto/lex-data": "0.1.8",
     "@atproto/lexicon": "0.7.16",
+    "@ipld/dag-cbor": "10.0.2",
     "effect": "4.0.1"
   }
 }

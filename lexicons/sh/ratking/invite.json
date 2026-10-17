@@ -1,0 +1,25 @@
+{
+  "lexicon": 1,
+  "id": "sh.ratking.invite",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["issuer", "subject", "subjectKey", "namespace", "recipients", "ratePerMinute", "createdAt", "expiresAt", "allowFleetOutbound"],
+        "properties": {
+          "issuer": { "type": "string", "format": "did" },
+          "subject": { "type": "string", "format": "did" },
+          "subjectKey": { "type": "string", "minLength": 64, "maxLength": 64, "x-pattern": "^[a-f0-9]{64}$" },
+          "namespace": { "type": "string", "minLength": 5, "maxLength": 128, "x-pattern": "^ext/[a-z0-9][a-z0-9_-]*/$" },
+          "recipients": { "type": "array", "minLength": 1, "maxLength": 64, "items": { "type": "string", "minLength": 1, "maxLength": 256 } },
+          "ratePerMinute": { "type": "integer", "minimum": 1, "maximum": 120 },
+          "createdAt": { "type": "string", "format": "datetime" },
+          "expiresAt": { "type": "string", "format": "datetime" },
+          "allowFleetOutbound": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}
