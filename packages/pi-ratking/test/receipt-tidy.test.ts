@@ -98,15 +98,14 @@ it.effect.prop(
         expect(collapsed).toContain(` · ${suffix}`);
       }
 
-      expect(collapsed).toContain(`${sample.id} · seq 9 · peer`);
+      expect(collapsed).not.toContain(sample.id);
+      expect(collapsed).not.toContain("seq 9");
       expect(collapsed.includes("summary trimmed 279")).toBe(sample.trimmed);
 
       if (recipients.length === 1) {
-        expect(collapsed).not.toContain(
-          party(plainTheme, "peer", lookup("peer")) === "peer"
-            ? "Merlin"
-            : party(plainTheme, "peer", lookup("peer"))
-        );
+        expect(
+          collapsed.split(party(plainTheme, "peer", lookup("peer"))).length - 1
+        ).toBe(1);
       }
 
       if (sample.action === "ask") {
@@ -125,6 +124,8 @@ it.effect.prop(
           1000
         )
       );
+
+      expect(expanded).toContain(`${sample.id} · seq 9`);
 
       const expected = model.replaceAll("**", "");
 

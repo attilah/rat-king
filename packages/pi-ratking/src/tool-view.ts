@@ -1,6 +1,10 @@
 import type { ThemeColor } from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
-import { truncateToWidth } from "@earendil-works/pi-tui";
+import {
+  truncateToWidth,
+  visibleWidth,
+  wrapTextWithAnsi,
+} from "@earendil-works/pi-tui";
 import { Recipients } from "@rat-king/ratking-client/delivery";
 import { Schema } from "effect";
 
@@ -73,7 +77,8 @@ export const callLines = (
   theme: Paint,
   width: number,
   labels: Labels = noLabels,
-  queued = false
+  queued = false,
+  expanded = false
 ): readonly string[] => {
   const action = oneLine(call.action ?? "");
   const dot = theme.fg("dim", " · ");
@@ -108,12 +113,13 @@ export const callLines = (
     body:
       preview === undefined
         ? []
-        : [
+        : wrapTextWithAnsi(
             theme.fg(
               call.summary === undefined ? "dim" : "text",
               oneLine(preview)
             ),
-          ],
+            Math.max(1, width - 4)
+          ).slice(0, expanded ? undefined : 2),
     glyph: queued ? theme.fg("dim", "⋯") : theme.fg("accent", BRAND),
     headline: flags.length === 0 ? head : `${head}${dot}${flags.join(dot)}`,
     theme,
@@ -133,6 +139,7 @@ interface CallInput {
 class CallShell implements Component {
   input: CallInput;
   recipient?: string | undefined;
+  receipted = false;
   readonly view: Component;
 
   constructor(input: CallInput) {
@@ -144,12 +151,14 @@ class CallShell implements Component {
         tool,
         {
           ...call,
+          replyAll: this.receipted ? undefined : call.replyAll,
           to: call.to ?? (call.action === "reply" ? this.recipient : undefined),
         },
         theme,
         width,
         labels,
-        queued
+        queued,
+        expanded
       );
 
       if (queued) {
@@ -319,35 +328,59 @@ const receiptFooter = (details: ReceiptDetailsValue, text: string) =>
   [
     details.id,
     ...(details.seq === undefined ? [] : [`seq ${details.seq}`]),
-    ...(details.to === undefined
-      ? (details.recipients ?? []).map(({ name }) => name)
-      : [details.to]),
-    ...(details.to === undefined && details.recipients === undefined
-      ? [...text.matchAll(/confirmed to (?<name>[^\n]+?) \(id/gu)].map(
-          (match) => match.groups?.name ?? ""
-        )
-      : []),
     ...(details.replyId === undefined ? [] : [`reply ${details.replyId}`]),
     ...trimNote(text),
-    ...timing({ details }),
   ].join(" · ");
+
+const receiptRows = (facts: readonly string[], theme: Paint, width: number) => {
+  const rows: string[] = [];
+
+  for (const fact of facts) {
+    const last = rows.at(-1);
+
+    const candidate =
+      last === undefined ? fact : `${last}${theme.fg("dim", " · ")}${fact}`;
+
+    if (
+      last === undefined ||
+      visibleWidth(candidate) > Math.max(1, width - 4)
+    ) {
+      rows.push(fact);
+    } else {
+      rows[rows.length - 1] = candidate;
+    }
+  }
+
+  return rows;
+};
 
 const receiptLines = (
   input: ResultInput,
   details: ReceiptDetailsValue,
   theme: Paint,
   width: number,
-  labels: Labels
+  labels: Labels,
+  call?: CallArgs
 ) => {
-  const recipients = details.recipients ?? [];
+  const recipients =
+    details.recipients ??
+    (details.to === undefined ? [] : [{ level: "wake", name: details.to }]);
 
-  const parties =
-    recipients.length < 2
-      ? []
-      : recipients.map(
-          ({ level, name }) =>
-            `${party(theme, name, labels(name))}${theme.fg("dim", ` · ${level === "wake" ? "woken" : "quiet"}`)}`
-        );
+  const primary = call?.to ?? recipients[0]?.name;
+
+  const parties = recipients.map(({ level, name }) => {
+    const delivery = level === "wake" ? "woken" : "quiet";
+
+    const outcome =
+      call?.replyAll === false && name === primary ? "sender only" : delivery;
+
+    const target =
+      call !== undefined && name === primary
+        ? ""
+        : `${party(theme, name, labels(name))} · `;
+
+    return `${target}${theme.fg("dim", outcome)}`;
+  });
 
   const reply =
     input.action === "ask" ? replyParts(clean(input.text)) : undefined;
@@ -358,22 +391,32 @@ const receiptLines = (
   const waiting = input.action === "ask" && reply === undefined;
   const mark = reply === undefined ? "✓" : "↩";
 
-  const content = [
-    ...(waiting ? ["waiting for the reply"] : []),
-    ...parties,
-    ...body,
-  ];
-
-  const [headline = "", ...rest] = content;
+  const [headline = "", ...facts] = receiptRows(
+    [
+      ...parties,
+      ...(waiting ? ["waiting for the reply"] : []),
+      ...trimNote(input.text),
+      ...timing(input),
+    ],
+    theme,
+    width
+  );
 
   return Block({
     body: [
-      ...rest.map((line) => theme.fg("text", line)),
-      ...(input.expanded ? clean(input.text).split("\n") : []),
+      ...facts,
+      ...(input.expanded
+        ? [
+            ...body,
+            ...clean(input.text)
+              .split("\n")
+              .map((line) => theme.fg("dim", line)),
+          ]
+        : body.slice(0, 2)),
     ],
-    footer: receiptFooter(details, input.text),
-    glyph: theme.fg(waiting ? "warning" : "success", waiting ? "⋯" : mark),
-    headline,
+    footer: input.expanded ? receiptFooter(details, input.text) : undefined,
+    glyph: theme.fg("success", mark),
+    headline: headline === "" ? theme.fg("dim", "confirmed") : headline,
     theme,
     width,
   });
@@ -473,7 +516,8 @@ export const resultLines = (
   input: ResultInput,
   theme: Paint,
   width: number,
-  labels: Labels = noLabels
+  labels: Labels = noLabels,
+  call?: CallArgs
 ): readonly string[] => {
   if (input.isPartial) {
     return progressLines(input, theme, width, labels);
@@ -484,7 +528,7 @@ export const resultLines = (
   }
 
   if (!failed(input) && Schema.is(ReceiptDetails)(input.details)) {
-    return receiptLines(input, input.details, theme, width, labels);
+    return receiptLines(input, input.details, theme, width, labels, call);
   }
 
   const error = failed(input);
@@ -559,8 +603,14 @@ export const resultView = (
       shell.recipient = input.details.to ?? input.details.recipients?.[0]?.name;
     }
 
+    shell.receipted =
+      !input.isPartial &&
+      !failed(input) &&
+      Schema.is(ReceiptDetails)(input.details);
     shell.invalidate();
   }
 
-  return lines((width) => resultLines(input, theme, width, labels));
+  return lines((width) =>
+    resultLines(input, theme, width, labels, shell?.input.call)
+  );
 };

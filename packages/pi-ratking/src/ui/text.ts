@@ -15,7 +15,7 @@ export const clean = (text: string) =>
   stripTerminalSequences(text).replaceAll("\t", "  ").replaceAll(CONTROLS, "");
 
 export const terminalStyles = (text: string) =>
-  `${text.replaceAll("\u001B[1;38;", "\u001B[1m\u001B[38;")}${text.includes("\u001B[") ? "\u001B[0m" : ""}`;
+  `${text.replaceAll("\u001B[1;38;", "\u001B[1m\u001B[38;").replaceAll("\u001B[0m", "\u001B[22m\u001B[39m")}${text.includes("\u001B[") ? "\u001B[22m\u001B[39m" : ""}`;
 
 export const oneLine = (text: string) =>
   clean(text).replaceAll(/\s+/gu, " ").trim();

@@ -1,0 +1,232 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`receipt fixture snapshots at 80 columns > ask, expanded false 1`] = `
+[
+  "                                                                                ",
+  " 🐀  ask → peer/desk                                                            ",
+  "     Is the gate clear?                                                         ",
+  " ✓   woken · waiting for the reply · 96 ms                                      ",
+  "                                                                                ",
+]
+`;
+
+exports[`receipt fixture snapshots at 80 columns > ask, expanded true 1`] = `
+[
+  "                                                                                ",
+  " 🐀  ask → peer/desk                                                            ",
+  "     Is the gate clear?                                                         ",
+  " ✓   woken · waiting for the reply · 96 ms                                      ",
+  "     Delivered to peer/desk over Rat King (id 3fixturemsg01, seq 3300).         ",
+  "     3fixturemsg01 · seq 3300                                                   ",
+  "                                                                                ",
+]
+`;
+
+exports[`receipt fixture snapshots at 80 columns > not delivered, expanded false 1`] = `
+[
+  "                                                                                ",
+  " 🐀  send → peer/desk                                                           ",
+  "     Gate ready                                                                 ",
+  " ✗   NOT DELIVERED: no identity.                                                ",
+  "     Tag: NotConfigured                                                         ",
+  "     Fix: configure identity                                                    ",
+  "                                                                                ",
+]
+`;
+
+exports[`receipt fixture snapshots at 80 columns > not delivered, expanded true 1`] = `
+[
+  "                                                                                ",
+  " 🐀  send → peer/desk                                                           ",
+  "     Gate ready                                                                 ",
+  " ✗   NOT DELIVERED: no identity.                                                ",
+  "     Tag: NotConfigured                                                         ",
+  "     Fix: configure identity                                                    ",
+  "                                                                                ",
+]
+`;
+
+exports[`receipt fixture snapshots at 80 columns > reply all with cc, expanded false 1`] = `
+[
+  "                                                                                ",
+  " 🐀  reply → peer/desk · +1 cc · ↩ 3fixture                                     ",
+  "     Run the approved archive batch. Hold the other rows. Start with the canary ",
+  "     and report its result before continuing.                                   ",
+  " ✓   woken · 💬 Observer · Desk · quiet · 96 ms                                 ",
+  "                                                                                ",
+]
+`;
+
+exports[`receipt fixture snapshots at 80 columns > reply all with cc, expanded true 1`] = `
+[
+  "                                                                                ",
+  " 🐀  reply → peer/desk · +1 cc · ↩ 3fixture                                     ",
+  "     Run the approved archive batch. Hold the other rows. Start with the canary ",
+  "     and report its result before continuing.                                   ",
+  " ✓   woken · 💬 Observer · Desk · quiet · 96 ms                                 ",
+  "     Delivered to peer/desk over Rat King (id 3fixturemsg01, seq 3300).         ",
+  "     3fixturemsg01 · seq 3300                                                   ",
+  "                                                                                ",
+]
+`;
+
+exports[`receipt fixture snapshots at 80 columns > send, expanded false 1`] = `
+[
+  "                                                                                ",
+  " 🐀  send → peer/desk                                                           ",
+  "     Gate ready                                                                 ",
+  " ✓   woken · 96 ms                                                              ",
+  "                                                                                ",
+]
+`;
+
+exports[`receipt fixture snapshots at 80 columns > send, expanded true 1`] = `
+[
+  "                                                                                ",
+  " 🐀  send → peer/desk                                                           ",
+  "     Gate ready                                                                 ",
+  " ✓   woken · 96 ms                                                              ",
+  "     Delivered to peer/desk over Rat King (id 3fixturemsg01, seq 3300).         ",
+  "     3fixturemsg01 · seq 3300                                                   ",
+  "                                                                                ",
+]
+`;
+
+exports[`receipt fixture snapshots at 80 columns > sender only, expanded false 1`] = `
+[
+  "                                                                                ",
+  " 🐀  reply → 📁 Archive · Desk · ↩ 3fixture                                     ",
+  "     Handled: the approved batch is queued. Canary first, result before the     ",
+  "     full run.                                                                  ",
+  " ✓   sender only · 63 ms                                                        ",
+  "                                                                                ",
+]
+`;
+
+exports[`receipt fixture snapshots at 80 columns > sender only, expanded true 1`] = `
+[
+  "                                                                                ",
+  " 🐀  reply → 📁 Archive · Desk · ↩ 3fixture                                     ",
+  "     Handled: the approved batch is queued. Canary first, result before the     ",
+  "     full run.                                                                  ",
+  " ✓   sender only · 63 ms                                                        ",
+  "     Reply delivered to archive/desk over Rat King (id 3fixturemsg02, seq       ",
+  "     11334).                                                                    ",
+  "     3fixturemsg02 · seq 11334                                                  ",
+  "                                                                                ",
+]
+`;
+
+exports[`receipt fixture snapshots at 100 columns > ask, expanded false 1`] = `
+[
+  "                                                                                                    ",
+  " 🐀  ask → peer/desk                                                                                ",
+  "     Is the gate clear?                                                                             ",
+  " ✓   woken · waiting for the reply · 96 ms                                                          ",
+  "                                                                                                    ",
+]
+`;
+
+exports[`receipt fixture snapshots at 100 columns > ask, expanded true 1`] = `
+[
+  "                                                                                                    ",
+  " 🐀  ask → peer/desk                                                                                ",
+  "     Is the gate clear?                                                                             ",
+  " ✓   woken · waiting for the reply · 96 ms                                                          ",
+  "     Delivered to peer/desk over Rat King (id 3fixturemsg01, seq 3300).                             ",
+  "     3fixturemsg01 · seq 3300                                                                       ",
+  "                                                                                                    ",
+]
+`;
+
+exports[`receipt fixture snapshots at 100 columns > not delivered, expanded false 1`] = `
+[
+  "                                                                                                    ",
+  " 🐀  send → peer/desk                                                                               ",
+  "     Gate ready                                                                                     ",
+  " ✗   NOT DELIVERED: no identity.                                                                    ",
+  "     Tag: NotConfigured                                                                             ",
+  "     Fix: configure identity                                                                        ",
+  "                                                                                                    ",
+]
+`;
+
+exports[`receipt fixture snapshots at 100 columns > not delivered, expanded true 1`] = `
+[
+  "                                                                                                    ",
+  " 🐀  send → peer/desk                                                                               ",
+  "     Gate ready                                                                                     ",
+  " ✗   NOT DELIVERED: no identity.                                                                    ",
+  "     Tag: NotConfigured                                                                             ",
+  "     Fix: configure identity                                                                        ",
+  "                                                                                                    ",
+]
+`;
+
+exports[`receipt fixture snapshots at 100 columns > reply all with cc, expanded false 1`] = `
+[
+  "                                                                                                    ",
+  " 🐀  reply → peer/desk · +1 cc · ↩ 3fixture                                                         ",
+  "     Run the approved archive batch. Hold the other rows. Start with the canary and report its      ",
+  "     result before continuing.                                                                      ",
+  " ✓   woken · 💬 Observer · Desk · quiet · 96 ms                                                     ",
+  "                                                                                                    ",
+]
+`;
+
+exports[`receipt fixture snapshots at 100 columns > reply all with cc, expanded true 1`] = `
+[
+  "                                                                                                    ",
+  " 🐀  reply → peer/desk · +1 cc · ↩ 3fixture                                                         ",
+  "     Run the approved archive batch. Hold the other rows. Start with the canary and report its      ",
+  "     result before continuing.                                                                      ",
+  " ✓   woken · 💬 Observer · Desk · quiet · 96 ms                                                     ",
+  "     Delivered to peer/desk over Rat King (id 3fixturemsg01, seq 3300).                             ",
+  "     3fixturemsg01 · seq 3300                                                                       ",
+  "                                                                                                    ",
+]
+`;
+
+exports[`receipt fixture snapshots at 100 columns > send, expanded false 1`] = `
+[
+  "                                                                                                    ",
+  " 🐀  send → peer/desk                                                                               ",
+  "     Gate ready                                                                                     ",
+  " ✓   woken · 96 ms                                                                                  ",
+  "                                                                                                    ",
+]
+`;
+
+exports[`receipt fixture snapshots at 100 columns > send, expanded true 1`] = `
+[
+  "                                                                                                    ",
+  " 🐀  send → peer/desk                                                                               ",
+  "     Gate ready                                                                                     ",
+  " ✓   woken · 96 ms                                                                                  ",
+  "     Delivered to peer/desk over Rat King (id 3fixturemsg01, seq 3300).                             ",
+  "     3fixturemsg01 · seq 3300                                                                       ",
+  "                                                                                                    ",
+]
+`;
+
+exports[`receipt fixture snapshots at 100 columns > sender only, expanded false 1`] = `
+[
+  "                                                                                                    ",
+  " 🐀  reply → 📁 Archive · Desk · ↩ 3fixture                                                         ",
+  "     Handled: the approved batch is queued. Canary first, result before the full run.               ",
+  " ✓   sender only · 63 ms                                                                            ",
+  "                                                                                                    ",
+]
+`;
+
+exports[`receipt fixture snapshots at 100 columns > sender only, expanded true 1`] = `
+[
+  "                                                                                                    ",
+  " 🐀  reply → 📁 Archive · Desk · ↩ 3fixture                                                         ",
+  "     Handled: the approved batch is queued. Canary first, result before the full run.               ",
+  " ✓   sender only · 63 ms                                                                            ",
+  "     Reply delivered to archive/desk over Rat King (id 3fixturemsg02, seq 11334).                   ",
+  "     3fixturemsg02 · seq 11334                                                                      ",
+  "                                                                                                    ",
+]
+`;
