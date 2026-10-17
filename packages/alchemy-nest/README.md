@@ -145,7 +145,7 @@ The package ships TypeScript source. Node does not strip types under `node_modul
 | `@rat-king/alchemy-nest` | `providers`, the four resources and their provider layers, `HostShell`, `HostError`, `RatsNest`, `Ssh`, `ReleaseSource`, `sourceLayer`, `ObjectStore`, `Celld` and the prop and attribute types |
 | `@rat-king/alchemy-nest/RatsNest` | `RatsNest` (`Host`, `layer`), `Host`, `layer` and `InventoryError` |
 
-The consumer's pins must match this package exactly: `alchemy` `2.0.0-beta.81` and `effect` `4.0.1`. Pin both in the consumer's own `package.json` with no range. A different alchemy or effect resolves a second copy, and the provider and service types stop lining up.
+The consumer's pins must match this package exactly: `alchemy` `2.0.0-beta.83` and `effect` `4.0.1`. Pin both in the consumer's own `package.json` with no range. A different alchemy or effect resolves a second copy, and the provider and service types stop lining up.
 
 The package declares no `workspace:` or `catalog:` specifiers, so it resolves outside this workspace. Keep it that way.
 
