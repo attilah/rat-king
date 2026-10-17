@@ -51,11 +51,11 @@ export const configuration = Effect.fn("Nest.configuration")(
     }
 
     const memoryMax = yield* Config.String("RAT_KING_SLICE_MEMORY_MAX").pipe(
-      Config.withDefault(pilot ? "1536M" : "4G")
+      Config.withDefault({ fleet: "8G", pilot: "1536M", proof: "4G" }[stage])
     );
 
-    if (stage === "fleet" && memoryMax !== "4G") {
-      return yield* Effect.die("Fleet slice requires the approved 4G cap");
+    if (stage === "fleet" && memoryMax !== "8G") {
+      return yield* Effect.die("Fleet slice requires the approved 8G cap");
     }
 
     const fs = yield* FileSystem.FileSystem;
