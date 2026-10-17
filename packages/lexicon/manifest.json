@@ -1,7 +1,7 @@
 {
   "effect": "4.0.1",
   "generatorVersion": "0.1.0",
-  "sourceDigest": "d926c7644e3fd2847434b3a4013210946b5e3a6c3cef43ab8299cc435afd4acf",
+  "sourceDigest": "6dfcafcdcba29f1c11b2fc4fb9564a63b07b516fbb8fb26597734e1ba9732738",
   "sources": [
     "lexicons/sh/mschf/agentgraph/checkin.json",
     "lexicons/sh/mschf/agentgraph/friction.json",
@@ -44,6 +44,7 @@
     "lexicons/sh/mschf/ratking/mailbox/getPresence.json",
     "lexicons/sh/mschf/ratking/mailbox/list.json",
     "lexicons/sh/mschf/ratking/mailbox/listTraffic.json",
+    "lexicons/sh/mschf/ratking/mailbox/nameHealth.json",
     "lexicons/sh/mschf/ratking/mailbox/send.json",
     "lexicons/sh/mschf/ratking/mailbox/subscribe.json",
     "lexicons/sh/mschf/ratking/mailbox/subscribeTraffic.json",

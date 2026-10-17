@@ -30,6 +30,8 @@ export declare const Input: Schema.StructWithRest<Schema.Struct<{
     }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
     readonly generation: Schema.optionalKey<Schema.Int>;
     readonly leaseId: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:tid">>;
+    readonly wakeReason: Schema.optionalKey<Schema.compose<Schema.Literals<readonly ["to", "ask", "reply", "cc", "quiet", "data"]>, Schema.String>>;
+    readonly woke: Schema.optionalKey<Schema.Boolean>;
 }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
 export type InputValue = typeof Input.Type;
 export declare const Output: Schema.StructWithRest<Schema.Struct<{
@@ -92,6 +94,8 @@ export declare const Method: {
         }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
         readonly generation: Schema.optionalKey<Schema.Int>;
         readonly leaseId: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:tid">>;
+        readonly wakeReason: Schema.optionalKey<Schema.compose<Schema.Literals<readonly ["to", "ask", "reply", "cc", "quiet", "data"]>, Schema.String>>;
+        readonly woke: Schema.optionalKey<Schema.Boolean>;
     }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
     readonly inputEncoding: "application/json";
     readonly method: "POST";

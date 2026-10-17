@@ -87,6 +87,7 @@ import {
   RecordJson,
   replyRef,
   SUMMARY_MAX,
+  wakeIntent,
 } from "./payload.ts";
 import type {
   Inbound,
@@ -1438,6 +1439,14 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
           return yield* refused("NotAttempted")("Missing sealed recipient");
         }
 
+        const intent = wakeIntent(
+          options.kind,
+          target.name === primary.name,
+          options.quiet,
+          Option.isNone(textBody),
+          options.copyTo !== undefined
+        );
+
         const holderFence = (outcome: SendOutcome) =>
           Effect.gen(function* adoptHolder() {
             if (
@@ -1457,6 +1466,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
             return Option.isNone(resolved)
               ? outcome
               : yield* client.send(envelope, {
+                  ...intent,
                   fence: {
                     did: own.did,
                     generation: resolved.value.generation,
@@ -1470,8 +1480,11 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
             Effect.flatMap((held) =>
               Option.match(held, {
                 onNone: () =>
-                  client.send(envelope).pipe(Effect.flatMap(holderFence)),
-                onSome: (current) => client.send(envelope, { fence: current }),
+                  client
+                    .send(envelope, intent)
+                    .pipe(Effect.flatMap(holderFence)),
+                onSome: (current) =>
+                  client.send(envelope, { ...intent, fence: current }),
               })
             ),
             Effect.flatMap((outcome) =>

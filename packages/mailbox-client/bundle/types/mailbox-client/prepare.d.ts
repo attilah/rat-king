@@ -140,6 +140,22 @@ export interface PrepareOptions {
 export declare const prepare: (options: PrepareOptions) => Effect.Effect<{
     consume: <E, R>(handler: (message: OpenedMessage, meta: MessageMeta) => Effect.Effect<void, E, R>, opts: ConsumeOptions) => Effect.Effect<void, E | MailboxClientError, R>;
     head: Effect.Effect<number, MailboxClientError, never>;
+    health: (did: string, name: string) => Effect.Effect<{
+        readonly complete: boolean;
+        readonly lastAck: number | null;
+        readonly lease: {
+            readonly expiresAt: number;
+            readonly generation: number;
+            readonly holder: string;
+            readonly pane: string | null;
+        } | null;
+        readonly oldestWake: {
+            readonly at: number;
+            readonly id: string;
+            readonly sender: string;
+        } | null;
+        readonly quietUnacked: number;
+    }, MailboxClientError, never>;
     mailbox: {
         readonly getPreferences: import("./attention.js").AttentionClient["getPreferences"];
         readonly getStatus: import("./attention.js").AttentionClient["getStatus"];
@@ -257,6 +273,8 @@ export declare const prepare: (options: PrepareOptions) => Effect.Effect<{
     }, opts?: {
         readonly cc?: string;
         readonly fence?: LeaseFence;
+        readonly woke?: boolean;
+        readonly wakeReason?: Send.InputValue["wakeReason"];
     } | undefined) => Effect.Effect<SendResult, never, never>;
     sendSealed: (envelope: {
         readonly [x: string]: import("../lexicon/runtime.js").LexValue;
@@ -277,7 +295,10 @@ export declare const prepare: (options: PrepareOptions) => Effect.Effect<{
             readonly kemId: number;
         };
         readonly version: number;
-    }, fence?: LeaseFence | undefined) => Effect.Effect<{
+    }, fence?: LeaseFence | undefined, intent?: {
+        readonly woke: boolean;
+        readonly wakeReason: Send.InputValue["wakeReason"];
+    } | undefined) => Effect.Effect<{
         readonly _tag: "NotAttempted";
         readonly reason: string;
     } | {
@@ -290,5 +311,10 @@ export declare const prepare: (options: PrepareOptions) => Effect.Effect<{
         readonly _tag: "Uncertain";
         readonly error: MailboxClientError;
     }, never, never>;
+    turnHealth: (did: string, name: string, session: string) => Effect.Effect<{
+        readonly at: string;
+        readonly state: string;
+        readonly turnId: string;
+    } | null, MailboxClientError, never>;
 }, MailboxClientError, import("effect/http/HttpClient").HttpClient | import("effect/Scope").Scope>;
 export {};

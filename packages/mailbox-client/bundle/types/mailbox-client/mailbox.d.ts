@@ -50,6 +50,8 @@ export interface OpenedMessage {
     };
 }
 export interface SendOptions {
+    readonly woke?: boolean;
+    readonly wakeReason?: Send.InputValue["wakeReason"];
     readonly recordType?: string;
     readonly replyTo?: Defs.MessageRefValue;
     readonly expiresAt?: string;

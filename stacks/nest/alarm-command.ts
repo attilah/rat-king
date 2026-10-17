@@ -10,6 +10,7 @@ import { collectAlarmFacts } from "./alarm-collector.ts";
 import { prepareAlarmDeliveries, sendAlarmDelivery } from "./alarm-mail.ts";
 import type { DeployMarker } from "./alarm-sources.ts";
 import { observeAlarms } from "./alarm-sources.ts";
+import { collectWakeHealth } from "./alarm-wake-collector.ts";
 import { AlarmJournal, alarmCycle, emptyJournal } from "./alarm.ts";
 import type { AlarmPorts, AlarmJournalValue } from "./alarm.ts";
 import type { HealthDigest } from "./health.ts";
@@ -140,7 +141,14 @@ export const alarmWorker = Effect.fn("Alarm.worker")(
       const started = yield* Clock.currentTimeMillis;
       yield* Effect.gen(function* cycle() {
         const prior = yield* readAlarmJournal(directory);
-        const facts = yield* collectAlarmFacts(config, health, deploy);
+
+        const facts = yield* collectAlarmFacts(
+          config,
+          health,
+          deploy,
+          (readers) =>
+            collectWakeHealth(config, readers, prior.sources.wakeTargets)
+        );
 
         const ports: AlarmPorts<
           | FileSystem.FileSystem
@@ -274,11 +282,14 @@ export const alarmCheck = Effect.fn("Alarm.check")(
     health: Effect.Effect<HealthDigest, E, R>,
     deploy: Effect.Effect<typeof DeployMarker.Type | null, E2, R2>
   ) {
-    const facts = yield* collectAlarmFacts(config, health, deploy);
     const fs = yield* FileSystem.FileSystem;
 
     const prior = yield* readAlarmJournal(
       yield* fs.realPath(config.runtime.RAT_KING_STATE_DIR)
+    );
+
+    const facts = yield* collectAlarmFacts(config, health, deploy, (readers) =>
+      collectWakeHealth(config, readers, prior.sources.wakeTargets)
     );
 
     return observeAlarms(prior.sources, facts, yield* Clock.currentTimeMillis)

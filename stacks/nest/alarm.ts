@@ -10,6 +10,7 @@ import type {
 import { advanceAlarm, emptyAlarm } from "./alarm-machine.ts";
 import { SourceState, emptySources, observeAlarms } from "./alarm-sources.ts";
 import type { AlarmFacts } from "./alarm-sources.ts";
+import { stalledWakes, newWakeTargets } from "./alarm-wakes.ts";
 import type { FleetError } from "./stage-config.ts";
 
 export const Delivery = Schema.Struct({
@@ -34,6 +35,7 @@ export const AlarmJournal = Schema.Struct({
   pending: Schema.Array(Delivery),
   sources: SourceState,
   version: Schema.Literal(1),
+  wakeRecipients: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 
 export type AlarmJournalValue = typeof AlarmJournal.Type;
@@ -76,6 +78,7 @@ const summaries: Record<AlarmKeyValue, string> = {
   "readers.stuck": "Desk readers are stuck",
   "recall.flowing-canary": "Flowing recall canary failed",
   "ship.failed": "Candidate deployment failed",
+  "wake.unacked": "Agents are not acknowledging delivered wake mail",
 };
 
 export const alarmRecipients = (
@@ -100,7 +103,11 @@ export const alarmRecipients = (
 
   const recipients = [settings.broadcast];
 
-  if (key.startsWith("readers.") || key.startsWith("issuer.")) {
+  if (
+    key.startsWith("readers.") ||
+    key.startsWith("issuer.") ||
+    key.startsWith("wake.")
+  ) {
     recipients.push(settings.musterDesk);
   }
 
@@ -174,6 +181,58 @@ const rememberInstanceRecipients = (
   };
 };
 
+const needsPage = (
+  key: AlarmKeyValue,
+  severity: string,
+  facts: typeof AlarmFacts.Type,
+  now: number
+) =>
+  severity === "critical" ||
+  (key === "wake.unacked" &&
+    stalledWakes(facts.wakes ?? [], now).some(
+      (item) => item.name === "switchboard"
+    ));
+
+const wakeRecoveryRecipients = (
+  journal: AlarmJournalValue,
+  key: AlarmKeyValue,
+  kind: string
+) =>
+  key === "wake.unacked" && kind === "clear"
+    ? (journal.wakeRecipients ?? [])
+    : [];
+
+const rememberWakeRecipients = (
+  journal: AlarmJournalValue,
+  notice: typeof Notice.Type
+): AlarmJournalValue =>
+  notice.key === "wake.unacked"
+    ? {
+        ...journal,
+        wakeRecipients:
+          notice.kind === "clear"
+            ? []
+            : [
+                ...new Set([
+                  ...(journal.wakeRecipients ?? []),
+                  ...notice.recipients,
+                ]),
+              ],
+      }
+    : journal;
+
+const renotifyAfter = (
+  key: AlarmKeyValue,
+  prior: AlarmJournalValue,
+  facts: typeof AlarmFacts.Type,
+  now: number,
+  settings: AlarmSettingsValue
+) =>
+  key === "wake.unacked" &&
+  newWakeTargets(prior.sources.wakeTargets ?? [], facts.wakes ?? [], now)
+    ? 0
+    : (settings.renotifyMinutes ?? 120) * 60_000;
+
 export const alarmCycle = Effect.fn("Alarm.cycle")(function* alarmCycle<R>(
   prior: AlarmJournalValue,
   facts: typeof AlarmFacts.Type,
@@ -204,7 +263,7 @@ export const alarmCycle = Effect.fn("Alarm.cycle")(function* alarmCycle<R>(
       before,
       reading,
       now,
-      (settings.renotifyMinutes ?? 120) * 60_000
+      renotifyAfter(key, prior, facts, now, settings)
     );
 
     if (next.notice === "none") {
@@ -222,7 +281,7 @@ export const alarmCycle = Effect.fn("Alarm.cycle")(function* alarmCycle<R>(
 
     if (
       next.notice === "fire" &&
-      next.state.context.severity === "critical" &&
+      needsPage(key, next.state.context.severity, facts, now) &&
       mayPage(current.pages, key, now)
     ) {
       current = { ...current, pages: [...current.pages, { at: now, key }] };
@@ -245,10 +304,13 @@ export const alarmCycle = Effect.fn("Alarm.cycle")(function* alarmCycle<R>(
           ),
           ...(reading.status === "firing" ? (reading.recipients ?? []) : []),
           ...instanceRecoveryRecipients(current, key, next.notice),
+          ...wakeRecoveryRecipients(current, key, next.notice),
         ]),
       ],
       text,
     };
+
+    current = rememberWakeRecipients(current, notice);
 
     const notices = current.notices.filter(
       (item) =>
