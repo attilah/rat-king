@@ -304,7 +304,11 @@ export const collectFacts = (
 
     const label = yield* Config.option(Config.String("RATKING_FORK_LABEL"));
 
+    const succeeds = yield* Config.option(Config.String("RATKING_SUCCEEDS"));
+
     const fork = parentSession !== undefined && parentSession !== session;
+
+    const successor = fork && Option.contains(succeeds, parentSession);
 
     const configured = fork
       ? yield* loadSettings().pipe(Effect.option)
@@ -329,6 +333,7 @@ export const collectFacts = (
       parent,
       parentSession,
       session,
+      succeeds: Option.getOrUndefined(succeeds),
     });
 
     const env = choice.name;
@@ -364,6 +369,7 @@ export const collectFacts = (
       reads: interactive || Option.isSome(env),
       session,
       source: choice.source,
+      successor: successor && choice.source === "env",
     } satisfies NamedFacts;
   }).pipe(Effect.provide(NodeServices.layer));
 

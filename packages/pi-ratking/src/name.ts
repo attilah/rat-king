@@ -46,6 +46,7 @@ export interface ChooseInput {
   readonly label?: string;
   readonly fork?: boolean;
   readonly parent?: Option.Option<string>;
+  readonly succeeds?: string | undefined;
 }
 
 export const parseNameEntries = (
@@ -80,9 +81,14 @@ export const chooseName = (input: ChooseInput): NameChoice => {
   const parent = parentEntry(input.entries, input.parentSession);
   const canonicalParent = input.parent ?? Option.fromNullishOr(parent?.name);
 
+  const successor =
+    input.succeeds !== undefined && input.succeeds === input.parentSession;
+
   const explicit =
     Option.isSome(input.env) &&
-    (!isFork || !Option.contains(canonicalParent, input.env.value));
+    (!isFork ||
+      successor ||
+      !Option.contains(canonicalParent, input.env.value));
 
   if (explicit) {
     return { name: input.env, source: "env" };

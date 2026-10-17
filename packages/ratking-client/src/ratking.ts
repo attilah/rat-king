@@ -156,6 +156,8 @@ export class AskFailed extends Schema.TaggedError<AskFailed>()("AskFailed", {
   reason: Schema.String,
 }) {}
 
+const SUCCESSION_WINDOW_MS = 900_000;
+
 export class LeaseHeld extends Schema.TaggedError<LeaseHeld>()("LeaseHeld", {
   expiresAt: Schema.String,
   harness: Schema.String,
@@ -1835,6 +1837,24 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       yield* Ref.set(claimGate, Option.none());
     });
 
+  const awaitSuccession = (name: string, startedAt: number) =>
+    Effect.gen(function* awaitParentRelease() {
+      const now = yield* Clock.currentTimeMillis;
+
+      if (now - startedAt > SUCCESSION_WINDOW_MS) {
+        return yield* waitForClaim(name);
+      }
+
+      yield* setState(
+        ReaderState.SendOnly({
+          name,
+          reason: `${name}: waiting for the session this one succeeds to release the lease`,
+        })
+      );
+
+      return yield* Effect.sleep("5 seconds");
+    });
+
   const loop = Effect.fn("RatKing.run")(function* loop(
     facts: SessionFacts,
     deliver: Deliver,
@@ -2016,7 +2036,10 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
         Effect.catchIf(
           (error) =>
             Schema.is(MailboxClientError)(error) && error.error === "LeaseHeld",
-          () => waitForClaim(own.name)
+          () =>
+            facts.successor === true
+              ? awaitSuccession(own.name, startedAt)
+              : waitForClaim(own.name)
         )
       )
     ).pipe(Effect.forever);
