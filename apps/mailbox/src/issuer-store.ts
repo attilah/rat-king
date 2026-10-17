@@ -1,3 +1,4 @@
+import { Parent } from "@rat-king/lexicon/identity.listNames";
 import type { XrpcFailure } from "@rat-king/lexicon/xrpc-failure";
 import { Context, Layer, Schema } from "effect";
 import type { Effect } from "effect";
@@ -12,6 +13,7 @@ export interface IssuedName {
   readonly name: string;
   readonly did: string;
   readonly document: PublicDocument;
+  readonly parent?: typeof Parent.Type;
 }
 
 export interface RetiredName extends RetirementValue {
@@ -25,7 +27,8 @@ export interface IssuerTransaction {
   readonly bind: (
     name: string,
     binding: Binding,
-    document: PublicDocument
+    document: PublicDocument,
+    parent?: typeof Parent.Type
   ) => void;
   readonly names: (after: string, limit: number) => readonly IssuedName[];
   readonly retire: (retired: RetiredName) => void;
@@ -52,6 +55,7 @@ const NameRow = Schema.Struct({
   did: Schema.String,
   document: Schema.fromJsonString(Document),
   name: Schema.String,
+  parent: Schema.NullOr(Schema.fromJsonString(Parent)),
 });
 
 const RetiredRow = Schema.Struct({
@@ -68,11 +72,14 @@ export const issuerStore = (sql: Sql) => {
     "CREATE TABLE IF NOT EXISTS names (name TEXT PRIMARY KEY, did TEXT NOT NULL UNIQUE, host TEXT NOT NULL, fingerprint TEXT NOT NULL, document TEXT NOT NULL)"
   );
   sql.exec(
+    "CREATE TABLE IF NOT EXISTS name_parents (name TEXT PRIMARY KEY, parent TEXT NOT NULL)"
+  );
+  sql.exec(
     "CREATE TABLE IF NOT EXISTS retired (name TEXT PRIMARY KEY, did TEXT NOT NULL, retired_at INTEGER NOT NULL, successor TEXT NOT NULL, by TEXT NOT NULL)"
   );
 
   const transaction: IssuerTransaction = {
-    bind: (name, binding, document) => {
+    bind: (name, binding, document, parent) => {
       sql.exec(
         "INSERT INTO names (name,did,host,fingerprint,document) VALUES (?,?,?,?,?)",
         name,
@@ -81,6 +88,14 @@ export const issuerStore = (sql: Sql) => {
         binding.fingerprint,
         JSON.stringify(document)
       );
+
+      if (parent !== undefined) {
+        sql.exec(
+          "INSERT INTO name_parents (name,parent) VALUES (?,?)",
+          name,
+          JSON.stringify(parent)
+        );
+      }
     },
     binding: (name) => {
       const [row] = [
@@ -102,11 +117,15 @@ export const issuerStore = (sql: Sql) => {
     names: (after, limit) =>
       Array.from(
         sql.exec(
-          "SELECT name,did,document FROM names WHERE name > ? ORDER BY name ASC LIMIT ?",
+          "SELECT names.name,did,document,parent FROM names LEFT JOIN name_parents ON names.name=name_parents.name WHERE names.name > ? ORDER BY names.name ASC LIMIT ?",
           after,
           limit
         ),
-        (row) => Schema.decodeUnknownSync(NameRow)(row)
+        (row) => {
+          const { parent, ...entry } = Schema.decodeUnknownSync(NameRow)(row);
+
+          return parent === null ? entry : { ...entry, parent };
+        }
       ),
     retire: (retired) => {
       sql.exec(

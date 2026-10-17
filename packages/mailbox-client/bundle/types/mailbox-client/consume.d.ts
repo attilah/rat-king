@@ -23,6 +23,9 @@ export declare const consumerMachine: import("xstate").StateMachine<{}, {
                 readonly HELD: {
                     readonly target: "waiting";
                 };
+                readonly REFUSED: {
+                    readonly target: "closed";
+                };
             };
         };
         readonly closed: {
@@ -69,6 +72,9 @@ export declare const consumerMachine: import("xstate").StateMachine<{}, {
                     };
                     readonly HELD: {
                         readonly target: "waiting";
+                    };
+                    readonly REFUSED: {
+                        readonly target: "closed";
                     };
                 };
             };
@@ -124,6 +130,8 @@ export interface ConsumeOptions {
     readonly resume?: LeaseFence;
     readonly afterSeq?: number;
     readonly onLease?: (lease: Lease.MainValue) => Effect.Effect<void>;
+    readonly leaseName?: string;
+    readonly failOnHeld?: boolean;
     readonly unopenable?: (event: Defs.MessageEventValue, error: MailboxClientError) => Effect.Effect<Option.Option<OpenedMessage>>;
     readonly onSkip?: (skipped: Skipped) => Effect.Effect<void>;
 }

@@ -23,6 +23,7 @@ import { CommandIssuer, Settings } from "./config.ts";
 import type { IssuerSettingValue } from "./config.ts";
 import { Directory } from "./directory.ts";
 import type { Resolved } from "./directory.ts";
+import type { ForkParent } from "./fork.ts";
 import { runCommand } from "./process.ts";
 import { SecretStore } from "./secrets.ts";
 
@@ -36,7 +37,8 @@ export class Issuer extends Context.Service<
   {
     readonly ensure: (
       name: string,
-      document: PeerDocument
+      document: PeerDocument,
+      parent?: typeof ForkParent.Type
     ) => Effect.Effect<string, IssuerError>;
     readonly names: Effect.Effect<readonly Resolved[], IssuerError>;
   }
@@ -148,13 +150,18 @@ export const issuerLayer = Layer.effect(
     const viaService = Effect.fn("Issuer.service")(function* viaService(
       service: { readonly endpoint: string; readonly host: string },
       name: string,
-      document: PeerDocument
+      document: PeerDocument,
+      parent?: typeof ForkParent.Type
     ) {
+      const data = { document, name };
+
+      if (parent !== undefined) {
+        Object.assign(data, { parent });
+      }
+
       const input = yield* Schema.decodeUnknownEffect(
         Schema.toEncoded(Runtime.Data)
-      )({ document, name }).pipe(
-        Effect.mapError(fail("Registration is not encodable"))
-      );
+      )(data).pipe(Effect.mapError(fail("Registration is not encodable")));
 
       const output = yield* Schema.decodeUnknownEffect(Register.Output)(
         yield* call(service, {
@@ -202,13 +209,7 @@ export const issuerLayer = Layer.effect(
         for (let index = 0; index < maxPages; index += 1) {
           const listed = yield* page(service, cursor);
 
-          found.push(
-            ...listed.names.map((entry) => ({
-              did: entry.did,
-              document: entry.document,
-              name: entry.name,
-            }))
-          );
+          found.push(...listed.names);
           cursor = Option.fromNullishOr(listed.cursor);
 
           if (Option.isNone(cursor)) {
@@ -231,23 +232,25 @@ export const issuerLayer = Layer.effect(
     });
 
     return Issuer.of({
-      ensure: Effect.fn("Issuer.ensure")(function* ensure(name, document) {
-        const setting = yield* configured;
+      ensure: Effect.fn("Issuer.ensure")(
+        function* ensure(name, document, parent) {
+          const setting = yield* configured;
 
-        const did = Schema.is(CommandIssuer)(setting)
-          ? yield* viaCommand(setting.command, document)
-          : yield* viaService(setting, name, document);
+          const did = Schema.is(CommandIssuer)(setting)
+            ? yield* viaCommand(setting.command, document)
+            : yield* viaService(setting, name, document, parent);
 
-        yield* directory
-          .record(name, document)
-          .pipe(
-            Effect.mapError(
-              (error) => new IssuerError({ reason: error.reason })
-            )
-          );
+          yield* directory
+            .record(name, document, parent)
+            .pipe(
+              Effect.mapError(
+                (error) => new IssuerError({ reason: error.reason })
+              )
+            );
 
-        return did;
-      }),
+          return did;
+        }
+      ),
       names: Option.match(settings.issuer, {
         onNone: () => Effect.succeed([]),
         onSome: (setting) =>

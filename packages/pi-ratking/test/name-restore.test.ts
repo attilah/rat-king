@@ -278,7 +278,9 @@ it.live(
       const first = yield* session(script);
 
       expect(first.claimed).toEqual(Option.some("switchboard"));
-      expect(script.store).toEqual([{ name: "switchboard", source: "env" }]);
+      expect(script.store).toEqual([
+        { name: "switchboard", session: "revived", source: "env" },
+      ]);
 
       const reclaimed = yield* session({ ...script, env: {} });
 
@@ -305,7 +307,11 @@ it.live(
       });
 
       expect(override.claimed).toEqual(Option.some("ea"));
-      expect(script.store.at(-1)).toEqual({ name: "ea", source: "env" });
+      expect(script.store.at(-1)).toEqual({
+        name: "ea",
+        session: "revived",
+        source: "env",
+      });
     }).pipe(Effect.provide(NodeServices.layer))
 );
 
@@ -316,7 +322,9 @@ it.live("a session that only ever had a default name is never restored", () =>
     const first = yield* session(script);
 
     expect(first.claimed).toEqual(Option.some("pi-default"));
-    expect(script.store).toEqual([{ name: "pi-default", source: "default" }]);
+    expect(script.store).toEqual([
+      { name: "pi-default", session: "revived", source: "default" },
+    ]);
 
     const again = yield* session({
       ...script,

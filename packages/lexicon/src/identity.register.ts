@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 
 import * as Defs from "./defs.ts";
+import * as IdentityListNames from "./identity.listNames.ts";
 import * as Runtime from "./runtime.ts";
 
 export const Params = Schema.Undefined;
@@ -11,6 +12,7 @@ export const Input = Schema.StructWithRest(
   Schema.Struct({
     document: Defs.DidDocument,
     name: Runtime.lexString({ maxLength: 128, type: "string" }),
+    parent: Schema.optionalKey(IdentityListNames.Parent),
   }),
   [Schema.Record(Schema.String, Runtime.Data)]
 );

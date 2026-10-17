@@ -1,5 +1,10 @@
 import { Effect, Schema } from "effect";
 import * as Runtime from "./runtime.js";
+export declare const Parent: Schema.StructWithRest<Schema.Struct<{
+    readonly name: Schema.String;
+    readonly session: Schema.String;
+}>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
+export type ParentValue = typeof Parent.Type;
 export declare const Entry: Schema.StructWithRest<Schema.Struct<{
     readonly did: Schema.brand<Schema.String, "Lexicon:did">;
     readonly document: Schema.StructWithRest<Schema.Struct<{
@@ -18,6 +23,10 @@ export declare const Entry: Schema.StructWithRest<Schema.Struct<{
         }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>>;
     }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
     readonly name: Schema.String;
+    readonly parent: Schema.optionalKey<Schema.StructWithRest<Schema.Struct<{
+        readonly name: Schema.String;
+        readonly session: Schema.String;
+    }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>>;
 }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
 export type EntryValue = typeof Entry.Type;
 export declare const Params: Schema.StructWithRest<Schema.Struct<{
@@ -47,6 +56,10 @@ export declare const Output: Schema.StructWithRest<Schema.Struct<{
             }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>>;
         }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
         readonly name: Schema.String;
+        readonly parent: Schema.optionalKey<Schema.StructWithRest<Schema.Struct<{
+            readonly name: Schema.String;
+            readonly session: Schema.String;
+        }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>>;
     }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>>;
 }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
 export type OutputValue = typeof Output.Type;
@@ -107,6 +120,10 @@ export declare const Method: {
                 }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>>;
             }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
             readonly name: Schema.String;
+            readonly parent: Schema.optionalKey<Schema.StructWithRest<Schema.Struct<{
+                readonly name: Schema.String;
+                readonly session: Schema.String;
+            }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>>;
         }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>>;
     }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
     readonly outputEncoding: "application/json";

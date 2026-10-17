@@ -33,11 +33,20 @@
         { "name": "MailboxUnavailable" }
       ]
     },
+    "parent": {
+      "type": "object",
+      "required": ["name", "session"],
+      "properties": {
+        "name": { "type": "string", "maxLength": 128, "x-pattern": "^(?:[a-z0-9]+(?:-[a-z0-9]+)*/)?[a-z][a-z0-9_-]{0,31}$" },
+        "session": { "type": "string", "minLength": 1 }
+      }
+    },
     "entry": {
       "type": "object",
       "required": ["name", "did", "document"],
       "properties": {
         "name": { "type": "string", "maxLength": 128 },
+        "parent": { "type": "ref", "ref": "#parent" },
         "did": { "type": "string", "format": "did" },
         "document": { "type": "ref", "ref": "sh.mschf.ratking.defs#didDocument" }
       }
