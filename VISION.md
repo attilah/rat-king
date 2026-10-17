@@ -6,7 +6,35 @@ This is pure rat-stack. We aim for the best Effect + Alchemy application we can 
 
 ## Scope
 
-The network includes identity, encrypted messaging, clients, generic host and deployment providers, and the stacks needed to run it. Instance inventory, credentials and Alchemy state live outside this public repository. Unrelated homelab services, media processing and general memory pipelines are out of scope.
+The network includes identity, encrypted messaging, clients, generic host and deployment providers, and the stacks needed to run it. Instance inventory, credentials and Alchemy state live outside this public repository. Unrelated homelab services and media processing are out of scope. Memory is in scope only as the Remembers layer below. Ingest pipelines that feed it are not.
+
+## Kernel: Speaks, Remembers, Awakes
+
+The Rat King kernel has three layers, and a fourth acts on top of them. Each has one verb and one job.
+
+- **Speaks** is communication. It covers:
+  - names and identity;
+  - signed or encrypted mail;
+  - leases, forks and receipts;
+  - the one route to the operator.
+
+  A message either gets a receipt or fails loudly.
+
+- **Remembers** is memory. It holds observations and recall over what agents said and did.
+- **Awakes** is durable, generation-fenced wakes. A wake is a time-or-condition promise that survives restarts and fires exactly once per generation.
+- **Claws** (code name Mischief) are the hands: durable, dynamic workflows that act in the world through calls, deploys, sends and steps.
+  - **Owns:** step execution, retries, compensation (not built yet), and the fence that keeps a workflow inside its approved envelope.
+  - **Borrows:** it sleeps and resumes through Awakes, talks through Speaks, and keeps state and history through Remembers.
+
+  Claws is a client of the kernel, never a part of it.
+
+The layers compose through each other's public contracts and never through shared internals.
+
+- Awakes delivers a wake as Speaks mail.
+- Remembers reads Speaks feeds the way any other subscriber does.
+- A recall can arm an Awakes wake.
+
+No layer reaches into another's storage.
 
 ## Path to AT Protocol
 
