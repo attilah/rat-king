@@ -379,6 +379,17 @@ const cleanupCreatedUnit = Effect.fn("SystemdUnit.cleanupCreated")(
   }
 );
 
+const activeStates: ReadonlySet<string> = new Set([
+  "activating",
+  "active",
+  "deactivating",
+  "failed",
+  "inactive",
+  "maintenance",
+  "refreshing",
+  "reloading",
+]);
+
 const activeState = (shell: Interface, name: string) =>
   shell
     .exec([
@@ -389,7 +400,15 @@ const activeState = (shell: Interface, name: string) =>
       "--property=ActiveState",
       "--value",
     ])
-    .pipe(Effect.map((result) => result.stdout.trim()));
+    .pipe(
+      Effect.flatMap((result) => {
+        const state = result.stdout.trim().split("\n")[0] ?? "";
+
+        return result.code === 0 && activeStates.has(state)
+          ? Effect.succeed(state)
+          : refuse("Unusable or malformed user unit active state.");
+      })
+    );
 
 const settled = Effect.fn("SystemdUnit.settled")(function* settled(
   shell: Interface,
