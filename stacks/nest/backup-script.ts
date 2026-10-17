@@ -12,7 +12,7 @@ PUBLISH_PREFIX = '.mailbox-publish-'
 SNAPSHOT_ROOTS = ['seaweedfs', 'celld']
 SNAPSHOT_ARCHIVE = 'mailbox.tar.gz'
 # Copy and verify both stopped data directories inside this budget, or fail and restart.
-SNAPSHOT_BUDGET = 20
+SNAPSHOT_BUDGET = 45
 FICLONE = 0x40049409
 LEGACY_STAGING_FILES = {'objects.tar', 'celld.tar', 'objects.tar.gz', 'celld.tar.gz', 'objects.tar.sqlite', 'objects.tar.sqlite-journal', 'objects.tar.data'}
 STAGING_FILES = LEGACY_STAGING_FILES | {'snapshot.json', 'archive.json', SNAPSHOT_ARCHIVE}
@@ -192,6 +192,28 @@ def remove(candidate):
         else:
             child.unlink()
     candidate.rmdir()
+def remove_staging(candidate):
+    # rmtree does not follow child symlinks; never accept a symlink root.
+    no_links(candidate)
+    if candidate.parent != data or not re.fullmatch(r'\.mailbox-backup-[0-9a-f]{32}', candidate.name):
+        fail('Foreign staging path refused')
+    if not candidate.exists():
+        return
+    if not candidate.is_dir():
+        fail('Staging directory required')
+    size = 0
+    for directory, names, entries in os.walk(candidate, followlinks=False):
+        for name in entries:
+            info = (pathlib.Path(directory) / name).lstat()
+            if stat.S_ISREG(info.st_mode):
+                size += info.st_size
+    shutil.rmtree(candidate)
+    return size
+def prune_staging():
+    for candidate in data.iterdir():
+        if re.fullmatch(r'\.mailbox-backup-[0-9a-f]{32}', candidate.name) and not candidate.is_symlink() and candidate.is_dir():
+            size = remove_staging(candidate)
+            print('BACKUP_STALE_STAGING_REMOVED ' + candidate.name + ' ' + str(size))
 def cleanup_partials():
     # Only directories this job creates, with only names it writes. Never a dated backup with a manifest.
     for candidate in data.iterdir():
@@ -219,7 +241,7 @@ def secured_member(member, destination):
     safe = tarfile.data_filter(member, destination)
     return safe.replace(mode=0o700 if safe.isdir() else 0o600)
 no_links(data)
-if operation not in {'snapshot', 'arm', 'disarm', 'pack', 'cgroup', 'snapshot-restore'}:
+if operation not in {'snapshot', 'arm', 'disarm', 'pack', 'cgroup', 'snapshot-restore', 'prune-staging', 'cleanup-staging', 'stage'}:
     mounted_share()
 if operation == 'preflight':
     trees = {name: tree_stats(data / name, key_names=name == 'celld') for name in SNAPSHOT_ROOTS}
@@ -244,6 +266,11 @@ elif operation == 'arm':
 elif operation == 'disarm':
     (data / '.mailbox-backup-restart-required').unlink(missing_ok=True)
     print('BACKUP_RECOVERY_DISARMED')
+elif operation == 'prune-staging':
+    prune_staging()
+elif operation == 'cleanup-staging':
+    remove_staging(staging_path())
+    print('BACKUP_STAGING_CLEANED')
 elif operation == 'stage':
     staging = data / ('.mailbox-backup-' + uuid.uuid4().hex)
     staging.mkdir(mode=0o700)

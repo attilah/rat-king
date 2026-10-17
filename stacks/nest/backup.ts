@@ -33,7 +33,7 @@ const BackupName = Schema.String.check(
 
 export const stepLimit = Duration.seconds(60);
 
-export const snapshotLimit = Duration.seconds(30);
+export const snapshotLimit = Duration.seconds(60);
 
 export const packLimit = Duration.minutes(45);
 
@@ -130,109 +130,143 @@ export const runBackup = Effect.fn("Nest.backup")(function* runBackup(
     );
 
   yield* Effect.log(
+    (yield* bounded("prune-staging", stepLimit, script("prune-staging"))).trim()
+  );
+  yield* Effect.log(
     (yield* bounded("preflight", stepLimit, script("preflight"))).trim()
   );
   yield* ctl("is-active", storeService);
   yield* ctl("is-active", nodeService);
   const began = yield* Clock.currentTimeMillis;
-  const staging = (yield* bounded("stage", stepLimit, script("stage"))).trim();
-  yield* checkpoint("ready");
-  yield* memory("before-stop");
-  yield* script("arm");
-  const stoppedAt = yield* Clock.currentTimeMillis;
+  yield* Effect.acquireUseRelease(
+    bounded("stage", stepLimit, script("stage")).pipe(
+      Effect.map((path) => path.trim())
+    ),
+    (staging) =>
+      Effect.gen(function* stagedBackup() {
+        yield* checkpoint("ready");
+        yield* memory("before-stop");
+        yield* script("arm");
+        const stoppedAt = yield* Clock.currentTimeMillis;
 
-  yield* Effect.gen(function* quiesce() {
-    yield* phase("stop-node", ctl("stop", nodeService));
-    yield* phase("stop-store", ctl("stop", storeService));
-    yield* checkpoint("stopped");
-    yield* Effect.log(
-      (yield* phase(
-        "snapshot",
-        bounded("snapshot", snapshotLimit, script("snapshot", staging))
-      )).trim()
-    );
-    yield* checkpoint("copied");
-    yield* startMailbox(shell);
-    yield* script("disarm");
-    yield* checkpoint("started");
-  }).pipe(
-    Effect.onError(() =>
-      Effect.gen(function* recover() {
-        yield* checkpoint("failed");
-        yield* startMailbox(shell);
-        yield* script("disarm");
-        yield* checkpoint("recovered");
-      }).pipe(
-        Effect.catchTag("HostError", (error) =>
-          Effect.logError("BACKUP_RECOVERY_FAILED", error)
-        ),
-        Effect.uninterruptible
-      )
-    )
-  );
-  yield* Effect.log(
-    "BACKUP_STOP_MS",
-    (yield* Clock.currentTimeMillis) - stoppedAt
-  );
+        yield* Effect.gen(function* quiesce() {
+          yield* phase("stop-node", ctl("stop", nodeService));
+          yield* phase("stop-store", ctl("stop", storeService));
+          yield* checkpoint("stopped");
+          yield* Effect.log(
+            (yield* phase(
+              "snapshot",
+              bounded("snapshot", snapshotLimit, script("snapshot", staging))
+            )).trim()
+          );
+          yield* checkpoint("copied");
+          yield* startMailbox(shell);
+          yield* script("disarm");
+          yield* checkpoint("started");
+        }).pipe(
+          Effect.onError(() =>
+            Effect.gen(function* recover() {
+              yield* checkpoint("failed");
+              yield* startMailbox(shell);
+              yield* script("disarm");
+              yield* checkpoint("recovered");
+            }).pipe(
+              Effect.catchTag("HostError", (error) =>
+                Effect.logError("BACKUP_RECOVERY_FAILED", error)
+              ),
+              Effect.uninterruptible
+            )
+          )
+        );
+        yield* Effect.log(
+          "BACKUP_STOP_MS",
+          (yield* Clock.currentTimeMillis) - stoppedAt
+        );
 
-  yield* Effect.gen(function* publish() {
-    yield* memory("publish-start");
+        yield* Effect.gen(function* publish() {
+          yield* memory("publish-start");
 
-    const bytes = yield* Schema.decodeEffect(ArchiveBytes)(
-      (yield* bounded("pack", packLimit, script("pack", staging))).trim()
-    );
+          const bytes = yield* Schema.decodeEffect(ArchiveBytes)(
+            (yield* bounded("pack", packLimit, script("pack", staging))).trim()
+          );
 
-    const transfer = transferLimit(bytes);
+          const transfer = transferLimit(bytes);
 
-    yield* bounded(
-      "local-gzip-test",
-      transfer,
-      must(shell, ["gzip", "-t", `${staging}/mailbox.tar.gz`])
-    );
+          yield* bounded(
+            "local-gzip-test",
+            transfer,
+            must(shell, ["gzip", "-t", `${staging}/mailbox.tar.gz`])
+          );
 
-    const pending = yield* Schema.decodeEffect(PendingName)(
-      (yield* bounded("share-open", stepLimit, script("share-open"))).trim()
-    );
+          const pending = yield* Schema.decodeEffect(PendingName)(
+            (yield* bounded(
+              "share-open",
+              stepLimit,
+              script("share-open")
+            )).trim()
+          );
 
-    yield* bounded(
-      "share-copy",
-      transfer,
-      script("share-copy", staging, pending)
-    );
-    yield* bounded(
-      "share-manifest",
-      stepLimit,
-      script("share-manifest", staging, pending, input.version, input.commit)
-    );
+          yield* bounded(
+            "share-copy",
+            transfer,
+            script("share-copy", staging, pending)
+          );
+          yield* bounded(
+            "share-manifest",
+            stepLimit,
+            script(
+              "share-manifest",
+              staging,
+              pending,
+              input.version,
+              input.commit
+            )
+          );
 
-    const name = yield* Schema.decodeEffect(BackupName)(
-      (yield* bounded(
-        "share-commit",
+          const name = yield* Schema.decodeEffect(BackupName)(
+            (yield* bounded(
+              "share-commit",
+              stepLimit,
+              script("share-commit", pending)
+            )).trim()
+          );
+
+          yield* checkpoint("published");
+          yield* bounded(
+            "share-verify",
+            transfer,
+            script("share-verify", staging, name)
+          );
+          yield* bounded(
+            "share-gzip-test",
+            transfer,
+            must(shell, [
+              "gzip",
+              "-t",
+              `${input.backupRoot}/${name}/mailbox.tar.gz`,
+            ])
+          );
+          yield* checkpoint("verified");
+          yield* bounded(
+            "cleanup",
+            stepLimit,
+            script("cleanup", staging, name)
+          );
+          yield* Effect.log("BACKUP_PUBLISHED", name);
+        }).pipe(
+          Effect.tapError(() => checkpoint("abandoned")),
+          Effect.ensuring(memory("publish-end"))
+        );
+        yield* Effect.log(
+          "BACKUP_DURATION_MS",
+          (yield* Clock.currentTimeMillis) - began
+        );
+      }),
+    (staging) =>
+      bounded(
+        "cleanup-staging",
         stepLimit,
-        script("share-commit", pending)
-      )).trim()
-    );
-
-    yield* checkpoint("published");
-    yield* bounded(
-      "share-verify",
-      transfer,
-      script("share-verify", staging, name)
-    );
-    yield* bounded(
-      "share-gzip-test",
-      transfer,
-      must(shell, ["gzip", "-t", `${input.backupRoot}/${name}/mailbox.tar.gz`])
-    );
-    yield* checkpoint("verified");
-    yield* bounded("cleanup", stepLimit, script("cleanup", staging, name));
-    yield* Effect.log("BACKUP_PUBLISHED", name);
-  }).pipe(
-    Effect.tapError(() => checkpoint("abandoned")),
-    Effect.ensuring(memory("publish-end"))
-  );
-  yield* Effect.log(
-    "BACKUP_DURATION_MS",
-    (yield* Clock.currentTimeMillis) - began
+        script("cleanup-staging", staging)
+      ).pipe(Effect.orDie)
   );
 });
