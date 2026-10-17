@@ -1,0 +1,42 @@
+{
+  "changedSnapshots": 16,
+  "unchangedNonToolVisibleViews": 112,
+  "snippets": {
+    "reply": {
+      "before": [
+        "ESC[38;2;167;152;215m🐀ESC[39m  ESC[38;2;104;183;141mreplyESC[39m ESC[38;2;157;165;169m→ESC[39m ESC[38;2;167;152;215m🔮 Merlin · DeskESC[39mESC[38;2;126;136;142m · ESC[39mESC[38;2;157;165;169m↩ 3replyabESC[39mESC[38;2;126;136;142m · ESC[39mESC[38;2;157;165;169msender onlyESC[39mESC[0mESC[0m",
+        "    ESC[38;2;222;224;225mGate readyESC[39mESC[0mESC[0m",
+        "ESC[38;2;104;183;141m✓ESC[39m   ESC[38;2;126;136;142m3abcdefghijk · seq 9 · peerESC[39mESC[0mESC[0m"
+      ],
+      "after": [
+        "ESC[38;2;167;152;215m🐀ESC[39m  ESC[38;2;104;183;141mreplyESC[39m ESC[38;2;157;165;169m→ESC[39m ESC[38;2;167;152;215m🔮 Merlin · DeskESC[39mESC[38;2;126;136;142m · ESC[39mESC[38;2;157;165;169m↩ 3replyabESC[39mESC[22mESC[39mESC[22mESC[39m",
+        "    ESC[38;2;222;224;225mGate readyESC[39mESC[22mESC[39mESC[22mESC[39m",
+        "ESC[38;2;104;183;141m✓ESC[39m   ESC[38;2;126;136;142msender onlyESC[39mESC[22mESC[39mESC[22mESC[39m"
+      ]
+    },
+    "inbound mail": {
+      "before": [
+        "🐀✓ from ESC[38;2;205;154;34m🔮 MerlinESC[39m · Gate readyESC[0m",
+        "    ESC[38;2;157;165;169mThe gate is clear. Hold the restart wave until the reader is checked.ESC[39mESC[0m",
+        "    ESC[38;2;126;136;142mid 3abcdefghijk · woken: to · cc observer · ctrl+o expandsESC[39mESC[0m"
+      ],
+      "after": [
+        "🐀✓ from ESC[38;2;205;154;34m🔮 MerlinESC[39m · Gate readyESC[22mESC[39m",
+        "    ESC[38;2;157;165;169mThe gate is clear. Hold the restart wave until the reader is checked.ESC[39mESC[22mESC[39m",
+        "    ESC[38;2;126;136;142mid 3abcdefghijk · woken: to · cc observer · ctrl+o expandsESC[39mESC[22mESC[39m"
+      ]
+    },
+    "record notice": {
+      "before": [
+        "🐀  record example.notice from 🔮 Merlin",
+        "    Not rendered by this reader",
+        "    ESC[38;2;126;136;142mid 3abcdefghijk · ctrl+o expandsESC[39mESC[0mESC[0m"
+      ],
+      "after": [
+        "🐀  record example.notice from 🔮 Merlin",
+        "    Not rendered by this reader",
+        "    ESC[38;2;126;136;142mid 3abcdefghijk · ctrl+o expandsESC[39mESC[22mESC[39mESC[22mESC[39m"
+      ]
+    }
+  }
+}

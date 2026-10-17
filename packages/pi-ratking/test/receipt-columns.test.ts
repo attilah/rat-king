@@ -81,16 +81,22 @@ it.effect.prop(
       const text = plain(rendered).join("\n");
       expect(text).not.toContain(sample.action);
       expect(text).not.toContain("🐀");
-      expect(text).not.toContain("Brains");
+      expect(text.split("Brains").length - 1).toBe(1);
       expect(text).not.toContain("Gate ready");
-      expect(text.replaceAll(/\s/gu, "")).toContain(
-        `3abcdefghijk·seq${sample.seq}`
-      );
+      expect(text).not.toContain("3abcdefghijk");
+      expect(text).not.toContain(`seq ${sample.seq}`);
+      expect(text).toContain("woken");
 
-      for (const line of rendered) {
-        expect(line).toContain(dim);
-        expect(line).not.toContain(ansiTheme.fg("text", "").slice(0, -5));
-      }
+      const expanded = resultView(
+        { ...input, expanded: true },
+        ansiTheme,
+        () => "🤓 Brains · Desk"
+      ).render(1000);
+
+      expect(plain(expanded).join("\n")).toContain(
+        `3abcdefghijk · seq ${sample.seq}`
+      );
+      expect(expanded.at(-1)).toContain(dim);
 
       expect(input.text).toBe(model);
     })

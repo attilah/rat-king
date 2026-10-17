@@ -99,7 +99,7 @@ it.effect.prop(
           const anchor = sample.known ? label : name;
 
           expect(header).toContain(sample.summary.slice(0, 10));
-          expect(combined.split("3abcdefghijk")).toHaveLength(2);
+          expect(combined).not.toContain("3abcdefghijk");
           expect(receipt[0]).toMatch(/^✓ {3}/u);
 
           if (copies) {
@@ -112,7 +112,7 @@ it.effect.prop(
           if (sample.action === "reply" && width >= 80) {
             expect(header).toContain(`reply → ${anchor}`);
             expect(header).toContain("↩ 3rootabc");
-            expect(header.includes("sender only")).toBe(sample.senderOnly);
+            expect(combined.includes("sender only")).toBe(sample.senderOnly);
           }
 
           expect(
@@ -132,6 +132,7 @@ it.effect.prop(
           ).join("\n");
 
           expect(expanded).toContain(name);
+          expect(expanded).toContain("3abcdefghijk");
           expect(input.text).toBe(
             `Delivered to ${name} over Rat King (id 3abcdefghijk, seq 9).`
           );
