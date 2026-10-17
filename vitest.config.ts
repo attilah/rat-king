@@ -4,6 +4,10 @@ export default defineConfig({
   test: {
     projects: [
       {
+        extends: "apps/ratking-sh/vitest.config.ts",
+        test: { env: { ALCHEMY_TELEMETRY_DISABLED: "1" }, name: "ratking-sh" },
+      },
+      {
         extends: false,
         test: {
           env: { ALCHEMY_TELEMETRY_DISABLED: "1" },

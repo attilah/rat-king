@@ -1,0 +1,12 @@
+{
+  "name": "@rat-king/capability",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./read-only": "./src/read-only.ts"
+  },
+  "dependencies": {
+    "effect": "4.0.1"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "lexicon": 1,
+  "id": "sh.ratking.revocation",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["issuer", "invite", "createdAt"],
+        "properties": {
+          "issuer": { "type": "string", "format": "did" },
+          "invite": { "type": "string", "minLength": 64, "maxLength": 64, "x-pattern": "^[a-f0-9]{64}$" },
+          "createdAt": { "type": "string", "format": "datetime" }
+        }
+      }
+    }
+  }
+}

@@ -45,10 +45,17 @@ const sortedString = (field: LexString) =>
 const symbol = (value: string) =>
   value.charAt(0).toUpperCase() + value.slice(1);
 
-const filename = (id: string) =>
-  id.startsWith(namespace)
-    ? id.slice(namespace.length)
-    : id.slice("sh.mschf.".length);
+const filename = (id: string) => {
+  if (id.startsWith(namespace)) {
+    return id.slice(namespace.length);
+  }
+
+  if (id.startsWith("sh.ratking.")) {
+    return `edge.${id.slice("sh.ratking.".length)}`;
+  }
+
+  return id.slice("sh.mschf.".length);
+};
 
 const moduleName = (id: string) => filename(id).split(".").map(symbol).join("");
 
@@ -676,6 +683,7 @@ export const generate = Effect.fn("lexgen.generate")(function* generate({
     if (
       !(
         doc.id.startsWith(namespace) ||
+        doc.id.startsWith("sh.ratking.") ||
         doc.id.startsWith("sh.mschf.agentgraph.")
       ) ||
       path

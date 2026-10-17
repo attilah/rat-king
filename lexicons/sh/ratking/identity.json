@@ -1,0 +1,33 @@
+{
+  "lexicon": 1,
+  "id": "sh.ratking.identity",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["audience", "subject", "handle", "atprotoHandle", "publicKey", "createdAt", "expiresAt"],
+        "properties": {
+          "audience": { "type": "string", "const": "https://ratking.sh/mcp" },
+          "subject": { "type": "string", "format": "did" },
+          "atprotoHandle": { "type": "string", "format": "handle" },
+          "handle": { "type": "string", "maxLength": 256, "x-pattern": "^ext/[a-z0-9][a-z0-9_-]*/[a-z0-9][a-z0-9_-]*$" },
+          "publicKey": { "type": "ref", "ref": "#publicKey" },
+          "createdAt": { "type": "string", "format": "datetime" },
+          "expiresAt": { "type": "string", "format": "datetime" }
+        }
+      }
+    },
+    "publicKey": {
+      "type": "object",
+      "required": ["kty", "crv", "x", "y"],
+      "properties": {
+        "kty": { "type": "string", "const": "EC" },
+        "crv": { "type": "string", "const": "P-256" },
+        "x": { "type": "string", "minLength": 43, "maxLength": 43, "x-pattern": "^[A-Za-z0-9_-]{43}$" },
+        "y": { "type": "string", "minLength": 43, "maxLength": 43, "x-pattern": "^[A-Za-z0-9_-]{43}$" }
+      }
+    }
+  }
+}
