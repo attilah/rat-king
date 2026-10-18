@@ -142,7 +142,7 @@ export const diagnoseProbe = Effect.fn("Celld.diagnoseProbe")(
 
     const result = yield* shell.exec(
       probeCommand(
-        `${input.layout?.instance ?? "rat-king"}-probe-${yield* crypto.randomUUIDv4}`,
+        `${input.layout?.instance ?? "rat-king"}-probe-${yield* crypto.randomUUIDv4()}`,
         [
           "sh",
           "-c",
@@ -191,7 +191,7 @@ export const raceProbe = Effect.fn("ObjectStore.raceProbe")(function* race(
 
   const result = yield* shell.exec(
     probeCommand(
-      `${input.layout?.instance ?? "rat-king"}-probe-${yield* crypto.randomUUIDv4}`,
+      `${input.layout?.instance ?? "rat-king"}-probe-${yield* crypto.randomUUIDv4()}`,
       [
         "python3",
         "-c",
@@ -247,7 +247,7 @@ export const bootstrapProbe = Effect.fn("Celld.bootstrapProbe")(
         .pathname
     );
 
-    const directory = `${input.layout?.configuration ?? `${input.home}/.config/rat-king`}/bootstrap-${yield* crypto.randomUUIDv4}`;
+    const directory = `${input.layout?.configuration ?? `${input.home}/.config/rat-king`}/bootstrap-${yield* crypto.randomUUIDv4()}`;
     const entry = `${directory}/index.js`;
     const config = `${directory}/wrangler.json`;
     yield* shell.mkdir({ mode: 0o700, path: directory });
@@ -275,7 +275,7 @@ export const bootstrapProbe = Effect.fn("Celld.bootstrapProbe")(
 
       const result = yield* shell.exec(
         probeCommand(
-          `${input.layout?.instance ?? "rat-king"}-probe-${yield* crypto.randomUUIDv4}`,
+          `${input.layout?.instance ?? "rat-king"}-probe-${yield* crypto.randomUUIDv4()}`,
           [
             "sh",
             "-c",

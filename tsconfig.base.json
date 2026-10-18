@@ -53,7 +53,8 @@
           "cryptoRandomUUID": "error",
           "cryptoRandomUUIDInEffect": "error",
           "nodeBuiltinImport": "error",
-          "importFromBarrel": "off",
+          "preferNamespaceImport": "off",
+          "unstableApiUsage": "off",
           "strictEffectProvide": "off",
           "lazyEffect": "off",
           "strictBooleanExpressions": "off"
