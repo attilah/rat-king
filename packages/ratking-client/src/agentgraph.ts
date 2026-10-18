@@ -3,6 +3,8 @@ import * as Friction from "@rat-king/lexicon/agentgraph.friction";
 import * as Outcome from "@rat-king/lexicon/agentgraph.outcome";
 import * as Plan from "@rat-king/lexicon/agentgraph.plan";
 import * as Wake from "@rat-king/lexicon/agentgraph.wake";
+import * as RuleGardenEvent from "@rat-king/lexicon/rulegarden.event";
+import * as RuleGardenFinding from "@rat-king/lexicon/rulegarden.finding";
 import { Turn } from "@rat-king/lexicon/turns";
 import { Effect, Option, Result, Schema } from "effect";
 
@@ -15,6 +17,8 @@ export const AgentGraphRecord = Schema.Union([
 const OutboundRecord = Schema.Union([
   AgentGraphRecord,
   Friction.Main,
+  RuleGardenEvent.Main,
+  RuleGardenFinding.Main,
   Turn,
   Wake.Main,
 ]);
@@ -35,6 +39,20 @@ const allowedKeys = new Map([
   ["sh.mschf.agentgraph.turn", Object.keys(Turn.schema.fields)],
   ["sh.mschf.agentgraph.friction", Object.keys(Friction.Main.schema.fields)],
   ["sh.mschf.agentgraph.wake", Object.keys(Wake.Main.schema.fields)],
+  [
+    "sh.mschf.rulegarden.finding",
+    Object.keys(RuleGardenFinding.Main.schema.fields),
+  ],
+  [
+    "sh.mschf.rulegarden.event",
+    [
+      ...new Set(
+        RuleGardenEvent.Main.members.flatMap((member) =>
+          Object.keys(member.schema.fields)
+        )
+      ),
+    ],
+  ],
 ]);
 
 export const invalidRecordText = (error: InvalidRecord) =>
@@ -117,6 +135,17 @@ export const recordSummary = (record: AgentGraphRecordValue) => {
 
     case "sh.mschf.agentgraph.wake": {
       return `wake: ${record.label} · ${record.status}`.slice(0, 280);
+    }
+
+    case "sh.mschf.rulegarden.finding": {
+      return `finding ${record.kind} ${record.severity}: ${record.claim}`.slice(
+        0,
+        280
+      );
+    }
+
+    case "sh.mschf.rulegarden.event": {
+      return `event ${record.kind} ${record.findingId.slice(0, 8)}`;
     }
 
     case "sh.mschf.agentgraph.outcome": {

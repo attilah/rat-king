@@ -1,0 +1,208 @@
+{
+  "defs": {
+    "main": {
+      "key": "tid",
+      "record": {
+        "nullable": [
+          "bytesSaved",
+          "joelQuote"
+        ],
+        "properties": {
+          "action": {
+            "enum": [
+              "adopt-principle",
+              "delete",
+              "replace",
+              "narrow",
+              "merge",
+              "update",
+              "sync-install"
+            ],
+            "type": "string"
+          },
+          "at": {
+            "format": "datetime",
+            "type": "string",
+            "x-maxCodeUnits": 40,
+            "x-minCodeUnits": 1
+          },
+          "bytesSaved": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "claim": {
+            "type": "string",
+            "x-maxCodeUnits": 1200,
+            "x-minCodeUnits": 1
+          },
+          "evidence": {
+            "items": {
+              "type": "string",
+              "x-maxCodeUnits": 600,
+              "x-minCodeUnits": 1
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string",
+            "x-pattern": "^[a-f0-9]{64}$"
+          },
+          "joelQuote": {
+            "ref": "#quote",
+            "type": "ref"
+          },
+          "kind": {
+            "enum": [
+              "principle",
+              "contradiction",
+              "bloat",
+              "stale"
+            ],
+            "type": "string"
+          },
+          "load": {
+            "enum": [
+              "always",
+              "skill-trigger",
+              "on-demand"
+            ],
+            "type": "string"
+          },
+          "owner": {
+            "type": "string",
+            "x-maxCodeUnits": 200,
+            "x-minCodeUnits": 1
+          },
+          "peon": {
+            "type": "string",
+            "x-maxCodeUnits": 200,
+            "x-minCodeUnits": 1
+          },
+          "principles": {
+            "items": {
+              "type": "string",
+              "x-maxCodeUnits": 300,
+              "x-minCodeUnits": 1
+            },
+            "type": "array"
+          },
+          "proposal": {
+            "type": "string",
+            "x-maxCodeUnits": 1600,
+            "x-minCodeUnits": 1
+          },
+          "severity": {
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ],
+            "type": "string"
+          },
+          "spans": {
+            "items": {
+              "ref": "#source",
+              "type": "ref"
+            },
+            "minLength": 1,
+            "type": "array"
+          },
+          "staleRefs": {
+            "items": {
+              "type": "string",
+              "x-maxCodeUnits": 200,
+              "x-minCodeUnits": 1
+            },
+            "type": "array"
+          },
+          "wave": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "action",
+          "at",
+          "bytesSaved",
+          "claim",
+          "evidence",
+          "id",
+          "joelQuote",
+          "kind",
+          "load",
+          "owner",
+          "peon",
+          "principles",
+          "proposal",
+          "severity",
+          "spans",
+          "staleRefs",
+          "wave"
+        ],
+        "type": "object",
+        "x-strict": true
+      },
+      "type": "record"
+    },
+    "quote": {
+      "properties": {
+        "source": {
+          "type": "string",
+          "x-maxCodeUnits": 300,
+          "x-minCodeUnits": 1
+        },
+        "text": {
+          "type": "string",
+          "x-maxCodeUnits": 600,
+          "x-minCodeUnits": 1
+        }
+      },
+      "required": [
+        "source",
+        "text"
+      ],
+      "type": "object"
+    },
+    "source": {
+      "properties": {
+        "host": {
+          "type": "string",
+          "x-maxCodeUnits": 64,
+          "x-minCodeUnits": 1,
+          "x-pattern": "^[a-z0-9-]+$"
+        },
+        "line": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "path": {
+          "type": "string",
+          "x-maxCodeUnits": 512,
+          "x-minCodeUnits": 1
+        },
+        "quote": {
+          "type": "string",
+          "x-maxCodeUnits": 1200,
+          "x-minCodeUnits": 1
+        },
+        "sha256": {
+          "type": "string",
+          "x-pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "host",
+        "line",
+        "path",
+        "quote",
+        "sha256"
+      ],
+      "type": "object"
+    }
+  },
+  "id": "sh.mschf.rulegarden.finding",
+  "lexicon": 1
+}
