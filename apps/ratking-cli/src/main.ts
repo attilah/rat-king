@@ -1,5 +1,5 @@
 import { NodeServices } from "@effect/platform-node";
-import { Effect } from "effect";
+import { Effect, Layer, Logger } from "effect";
 import { Command } from "effect/cli";
 
 import { attentionCommand } from "./attention.ts";
@@ -39,5 +39,11 @@ export const command = Command.make("ratking").pipe(
 export const runRatking = (args: readonly string[]) =>
   Command.runWith(command, { version: "0.1.0" })(args);
 
+export const cliLogger = Logger.layer([
+  Logger.withConsoleError(Logger.formatLogFmt),
+]);
+
 export const main = (args: readonly string[]) =>
-  runRatking(args).pipe(Effect.provide(NodeServices.layer));
+  runRatking(args).pipe(
+    Effect.provide(Layer.mergeAll(cliLogger, NodeServices.layer))
+  );

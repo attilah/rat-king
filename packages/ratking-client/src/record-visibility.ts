@@ -54,6 +54,7 @@ export const RENDERS: readonly string[] = [
   "sh.mschf.agentgraph.*",
   "sh.mschf.ratking.relay#message",
   "sh.mschf.ratking.relay#handled",
+  "sh.mschf.rulegarden.*",
   ...SILENT_RECORD_TYPES,
 ];
 
