@@ -12,11 +12,13 @@ import { NodeProvider, NodeResource } from "./node-provider.ts";
 import type { BucketOutput } from "./object-store.ts";
 import { celldBinary } from "./pins.ts";
 import { HostDirectory, ReleaseBinary, RemoteFile } from "./providers.ts";
+import type { BinaryProps } from "./release.ts";
 import type { ServiceLimits } from "./service-units.ts";
 import { environmentContent } from "./store-credentials.ts";
 import { renderUnit } from "./systemd.ts";
 
 export interface CelldProps extends InstanceProps, ServiceLimits {
+  readonly binary?: Omit<BinaryProps, "path">;
   readonly bucket: BucketOutput;
   readonly host: HostNode;
   readonly prepared?: readonly Output.Output<string>[];
@@ -56,7 +58,7 @@ export const Node = (id: string, props: CelldProps) =>
     });
 
     const binary = yield* ReleaseBinary("celld", {
-      ...celldBinary(`${layout.bin}/celld`),
+      ...(props.binary ?? celldBinary(`${layout.bin}/celld`)),
       path: Output.interpolate`${bucket.bin}/celld`,
     });
 

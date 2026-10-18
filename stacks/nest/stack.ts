@@ -52,6 +52,7 @@ import { SecretSource } from "../../packages/alchemy-nest/src/secret-source.ts";
 import { layer as sshLayer } from "../../packages/alchemy-nest/src/ssh.ts";
 import { startupLayer } from "../../packages/alchemy-nest/src/startup-contract.ts";
 import { backupTimer, backupUnit } from "./backup-units.ts";
+import { fleetCelldBinary } from "./celld-build.ts";
 import { mailboxCliEnvironment } from "./cli-environment.ts";
 import {
   configuration,
@@ -313,6 +314,7 @@ export const nestStack = (restore?: RestoreRequest) =>
       });
 
       const cells = yield* Celld.Node("celld", {
+        binary: fleetCelldBinary(node.home),
         bucket,
         host: node,
         prepared: staged,

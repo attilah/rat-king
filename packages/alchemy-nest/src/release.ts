@@ -22,6 +22,12 @@ const memberName = Schema.String.check(
   Schema.isPattern(/^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[^\r\n\0]+$/u)
 );
 
+const releaseUrl = Schema.String.check(
+  Schema.isPattern(
+    /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/releases\/download\/[^?#\s]+$/u
+  )
+);
+
 export const BinarySchema = Schema.Struct({
   asset: Schema.Union([
     Schema.Struct({ format: Schema.Literal("raw") }),
@@ -36,18 +42,19 @@ export const BinarySchema = Schema.Struct({
       root: Schema.optionalKey(memberName),
     }),
   ]),
+  hostSource: Schema.optionalKey(AbsolutePath),
   mode: Schema.optionalKey(Mode),
   path: AbsolutePath,
   sha256,
   size: Schema.Int.check(
     Schema.isBetween({ maximum: 256 * 1024 * 1024, minimum: 1 })
   ),
-  url: Schema.String.check(
-    Schema.isPattern(
-      /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/releases\/download\/[^?#\s]+$/u
-    )
-  ),
-});
+  url: Schema.optionalKey(releaseUrl),
+}).check(
+  Schema.makeFilter(
+    (props) => (props.url === undefined) !== (props.hostSource === undefined)
+  )
+);
 
 export type BinaryProps = typeof BinarySchema.Type;
 
@@ -115,7 +122,7 @@ export const validateBinary = (props: BinaryProps) =>
   Schema.decodeEffect(BinarySchema)(props).pipe(
     Effect.mapError(() =>
       refuse(
-        "Release assets require a pinned sha256, size and safe GitHub download URL."
+        "Release assets require a pinned sha256, size and exactly one source: a safe GitHub download URL or a host path."
       )
     )
   );
@@ -165,6 +172,19 @@ export const verifiedBytes = Effect.fn("ReleaseBinary.verify")(
   }
 );
 
+const hostBytes = Effect.fn("ReleaseBinary.hostSource")(function* hostBytes(
+  shell: Interface,
+  path: string
+) {
+  const bytes = yield* shell.read(path);
+
+  if (bytes === undefined) {
+    return yield* refuse("Host binary source is missing.");
+  }
+
+  return bytes;
+});
+
 export const reconcileBinary = Effect.fn("ReleaseBinary.reconcile")(
   function* reconcileBinary(
     shell: Interface,
@@ -207,7 +227,9 @@ export const reconcileBinary = Effect.fn("ReleaseBinary.reconcile")(
     }
 
     const bytes = yield* verifiedBytes(
-      yield* source.get({ size: valid.size, url: valid.url }),
+      valid.hostSource === undefined
+        ? yield* source.get({ size: valid.size, url: valid.url ?? "" })
+        : yield* hostBytes(shell, valid.hostSource),
       valid
     );
 
