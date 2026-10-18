@@ -29,6 +29,7 @@ import { removeStoreSockets } from "../../packages/alchemy-nest/src/unit-cleanup
 import { DeployMarker } from "./alarm-sources.ts";
 import { stageName, workerIPv4, workerUrl } from "./config.ts";
 import { assess, collectHealth, DigestJson } from "./health.ts";
+import { qualifyPlanActions } from "./plan-guard.ts";
 import { isDeferredAdoption, qualifyRecoveryPlan } from "./recovery-plan.ts";
 import { preflightRestore, restoreSnapshot } from "./restore.ts";
 import { announceRestart } from "./ship-notice.ts";
@@ -426,9 +427,7 @@ export const run = (action: Action) =>
         (resource) => resource.action
       );
 
-      if (actions.some((entry) => entry === "delete" || entry === "replace")) {
-        return yield* refuse("POC plan refuses delete or replace");
-      }
+      yield* qualifyPlanActions(summary.resources);
 
       yield* Effect.log(
         JSON.stringify({
