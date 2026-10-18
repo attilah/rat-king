@@ -71,6 +71,9 @@ export const RelaySource = Schema.Struct({
 });
 
 export interface Inbound {
+  readonly delegatedFor?: string;
+  readonly delegatedTo?: string;
+  readonly originalId?: string;
   readonly levers?: Levers;
   readonly sender?: string;
   readonly askSummary?: string;
@@ -171,6 +174,9 @@ export const renderInbound = (tool: string, inbound: Inbound) => {
 
   return [
     `**${heading} from ${sender}** · id ${inbound.id}${thread}${inbound.relay === undefined ? "" : ` · via ${inbound.relay.name}`} · ${formatReason(deliveryReason(inbound))}`,
+    ...(inbound.delegatedFor === undefined
+      ? []
+      : [`for ${inbound.delegatedFor}`]),
     ...(inbound.askSummary === undefined
       ? []
       : [

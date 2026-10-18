@@ -164,7 +164,7 @@ export const digestLine = (inbound: Inbound) => {
     onSome: (label) => `${label} (${inbound.from})`,
   });
 
-  return `- ${sender} · id ${inbound.id} · ${gist.replaceAll("\n", " ")}`;
+  return `- ${sender} · id ${inbound.id}${inbound.delegatedTo === undefined ? "" : ` · handled by ${inbound.delegatedTo}`} · ${gist.replaceAll("\n", " ")}`;
 };
 
 const WakeEntry = Schema.Struct({
@@ -374,7 +374,26 @@ export const collectFacts = (
     } satisfies NamedFacts;
   }).pipe(Effect.provide(NodeServices.layer));
 
+const delegationDetails = (inbound: Inbound) => {
+  const details: Pick<Inbound, "delegatedFor" | "delegatedTo" | "originalId"> =
+    {};
+
+  if (inbound.delegatedFor !== undefined) {
+    Object.assign(details, {
+      delegatedFor: inbound.delegatedFor,
+      originalId: inbound.originalId,
+    });
+  }
+
+  if (inbound.delegatedTo !== undefined) {
+    Object.assign(details, { delegatedTo: inbound.delegatedTo });
+  }
+
+  return details;
+};
+
 export const inboundDetails = (inbound: Inbound, settled: boolean) => ({
+  ...delegationDetails(inbound),
   body: inbound.body,
   cc: inbound.cc,
   ccNames: inbound.ccNames,
@@ -1331,7 +1350,8 @@ export const ratkingExtension = (options: ExtensionOptions) =>
                   details: inboundDetails(inbound, settled),
                   digestMinutes:
                     Predicate.isTagged(verdict, "Later") &&
-                    Predicate.isTagged(verdict.reason, "lever")
+                    (Predicate.isTagged(verdict.reason, "lever") ||
+                      Predicate.isTagged(verdict.reason, "delegated"))
                       ? verdict.window / 60_000
                       : inbound.digestMinutes,
                   id: inbound.id,
@@ -1341,7 +1361,8 @@ export const ratkingExtension = (options: ExtensionOptions) =>
 
                 if (
                   Predicate.isTagged(verdict, "Later") &&
-                  Predicate.isTagged(verdict.reason, "lever")
+                  (Predicate.isTagged(verdict.reason, "lever") ||
+                    Predicate.isTagged(verdict.reason, "delegated"))
                 ) {
                   Object.assign(pending, { notBefore: now + verdict.window });
                 }

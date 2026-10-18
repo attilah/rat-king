@@ -23,6 +23,7 @@ export const RuntimeConfig = Schema.Struct({
   RAT_KING_CLAUDE_SIDECAR: Schema.Boolean,
   RAT_KING_CLI_OUTPUT: Text,
   RAT_KING_COMMIT: Text,
+  RAT_KING_DELEGATION: OptionalBoolean,
   RAT_KING_DOCUMENTS: Text,
   RAT_KING_ENDPOINT: Text,
   RAT_KING_ISSUER_DID_TEMPLATE: OptionalText,

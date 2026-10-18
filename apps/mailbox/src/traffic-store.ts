@@ -11,7 +11,12 @@ export const trafficDid = "did:web:rat-king-traffic.internal.invalid";
 
 export const TrafficEntry = Schema.Struct(Traffic.Entry.schema.fields);
 
-export type TrafficEntryValue = typeof TrafficEntry.Type;
+export const TrafficOutboxEntry = Schema.Struct({
+  ...Traffic.Entry.schema.fields,
+  critical: Schema.optionalKey(Schema.Boolean),
+});
+
+export type TrafficEntryValue = typeof TrafficOutboxEntry.Type;
 
 const Row = Schema.Struct({ value: Schema.String });
 
@@ -26,7 +31,11 @@ export const trafficTables = (sql: Sql) => {
   );
 };
 
-export const projectTraffic = (tx: Transaction, event: Event) => {
+export const projectTraffic = (
+  tx: Transaction,
+  event: Event,
+  delegation = false
+) => {
   if (
     !Schema.is(Defs.MessageEvent)(event) &&
     !Schema.is(Defs.ReceiptEvent)(event)
@@ -43,7 +52,19 @@ export const projectTraffic = (tx: Transaction, event: Event) => {
 
   const body = Effect.runSync(Effect.option(plaintextBody(message.envelope)));
 
-  return Schema.decodeUnknownSync(TrafficEntry)({
+  const critical =
+    delegation &&
+    message.critical === true &&
+    Schema.is(Defs.MessageEvent)(event);
+
+  const metadata = {};
+
+  if (critical) {
+    Object.assign(metadata, { critical: true });
+  }
+
+  return Schema.decodeUnknownSync(TrafficOutboxEntry)({
+    ...metadata,
     ...Option.match(body, {
       onNone: () => ({}),
       onSome: (text) => ({ body: text }),
@@ -63,10 +84,35 @@ export const pendingTraffic = (sql: Sql) =>
   Array.from(
     sql.exec("SELECT value FROM traffic_outbox ORDER BY seq LIMIT 100"),
     (row) =>
-      Schema.decodeUnknownSync(Schema.fromJsonString(TrafficEntry))(
+      Schema.decodeUnknownSync(Schema.fromJsonString(TrafficOutboxEntry))(
         Schema.decodeUnknownSync(Row)(row).value
       )
   );
+
+const countCritical = (sql: Sql, entry: TrafficEntryValue) => {
+  if (entry.critical !== true || entry.state !== "accepted") {
+    return;
+  }
+
+  const inserted = [
+    ...sql.exec(
+      "INSERT OR IGNORE INTO metadata (key,value) VALUES (?,?) RETURNING key",
+      `critical-seen:${entry.senderDid}:${entry.messageId}`,
+      "1"
+    ),
+  ];
+
+  if (inserted.length === 0) {
+    return;
+  }
+
+  const day = entry.time.slice(0, 10);
+  sql.exec(
+    "INSERT INTO metadata (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=json_set(value,'$.count',json_extract(value,'$.count')+1)",
+    `critical-count:${day}:${entry.senderDid}`,
+    JSON.stringify({ count: 1, day, senderDid: entry.senderDid })
+  );
+};
 
 export const appendTraffic = (
   sql: Sql,
@@ -74,12 +120,14 @@ export const appendTraffic = (
 ) => {
   sql.transaction(() => {
     for (const entry of entries) {
+      const { critical: _critical, ...publicEntry } = entry;
       sql.exec(
         "INSERT OR IGNORE INTO traffic (recipient,recipient_seq,value) VALUES (?,?,?)",
         entry.recipientDid,
         entry.recipientSeq,
-        JSON.stringify(entry)
+        JSON.stringify(publicEntry)
       );
+      countCritical(sql, entry);
     }
   });
 };
@@ -94,7 +142,9 @@ export const trafficWatermark = (sql: Sql) => {
 
 export const listTraffic = (
   sql: Sql,
-  params: Traffic.ParamsValue
+  params: Traffic.ParamsValue,
+  delegation = false,
+  now = Effect.runSync(DateTime.now)
 ): Traffic.OutputValue => {
   const cursor = params.cursor ?? "0";
 
@@ -123,7 +173,37 @@ export const listTraffic = (
     }
   );
 
-  return { cursor: String(events.at(-1)?.seq ?? Number(cursor)), events };
+  const result: Traffic.OutputValue = {
+    cursor: String(events.at(-1)?.seq ?? Number(cursor)),
+    events,
+  };
+
+  if (delegation) {
+    const day = DateTime.formatIso(now).slice(0, 10);
+
+    const criticalCounts = [
+      ...new Set(events.map((entry) => entry.senderDid)),
+    ].flatMap((sender) => {
+      const [row] = [
+        ...sql.exec(
+          "SELECT value FROM metadata WHERE key=?",
+          `critical-count:${day}:${sender}`
+        ),
+      ];
+
+      return row === undefined
+        ? []
+        : [
+            Schema.decodeUnknownSync(
+              Schema.fromJsonString(Traffic.CriticalCount)
+            )(Schema.decodeUnknownSync(Row)(row).value),
+          ];
+    });
+
+    Object.assign(result, { criticalCounts });
+  }
+
+  return result;
 };
 
 export const trafficPermission = (

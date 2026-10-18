@@ -64,6 +64,11 @@ import { restoreOwnedData } from "./restore.ts";
 import type { RestoreRequest } from "./restore.ts";
 import { guardedShell } from "./ship-restart.ts";
 
+const delegationVars = Config.Boolean("RAT_KING_DELEGATION").pipe(
+  Config.withDefault(false),
+  Config.map((enabled) => (enabled ? { DELEGATION: "true" } : {}))
+);
+
 const issuerVars = Effect.gen(function* readIssuerVars() {
   const template = yield* Config.option(
     Config.schema(Schema.NonEmptyString, "RAT_KING_ISSUER_DID_TEMPLATE")
@@ -240,6 +245,8 @@ export const nestStack = (restore?: RestoreRequest) =>
       ).pipe(Config.withDefault([]));
 
       Object.assign(vars, yield* issuerVars);
+
+      Object.assign(vars, yield* delegationVars);
 
       if (mailboxOnly) {
         const publicDocuments = yield* Schema.decodeUnknownEffect(

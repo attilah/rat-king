@@ -34,7 +34,8 @@ export interface Quarantined {
 export interface Recovery {
   readonly refresh: (did: string) => Effect.Effect<unknown, MailboxClientError>;
   readonly open: (
-    envelope: Defs.EncryptedEnvelopeValue
+    envelope: Defs.EncryptedEnvelopeValue,
+    receipt?: Defs.ReceiptValue
   ) => Effect.Effect<OpenedMessage, MailboxClientError>;
 }
 
@@ -81,7 +82,10 @@ export const recover = (dir: string, recovery: Recovery) =>
 
     const retried = yield* recovery
       .refresh(senderDid)
-      .pipe(Effect.andThen(recovery.open(event.envelope)), Effect.result);
+      .pipe(
+        Effect.andThen(recovery.open(event.envelope, event.receipt)),
+        Effect.result
+      );
 
     if (Result.isSuccess(retried)) {
       return Option.some(retried.success);

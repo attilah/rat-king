@@ -5,6 +5,7 @@ import { Data, Match, Option } from "effect";
 import type { KindValue } from "../../mailbox-client/src/payload.ts";
 
 export interface Arrival {
+  readonly delegatedTo?: string;
   readonly copy?: boolean;
   readonly wakeStatus?: "matched" | "timedOut" | "targetGone" | "failed";
   readonly digestMinutes?: number;
@@ -40,6 +41,7 @@ export type Fact =
   | "wake";
 
 export type Reason = Data.TaggedEnum<{
+  delegated: { readonly facts: readonly Fact[] };
   intent: { readonly facts: readonly Fact[] };
   judge: { readonly facts: readonly Fact[] };
   joel: { readonly facts: readonly Fact[] };
@@ -190,6 +192,7 @@ export const forwardNames = (
   levers: Levers
 ): readonly string[] =>
   levers.enabled === true &&
+  arrival.delegatedTo === undefined &&
   arrival.copy !== true &&
   arrival.sentBy === undefined
     ? [...new Set(levers.prefs?.forward)]
@@ -251,6 +254,12 @@ export const attend = (
   _turnFold: TurnFold | undefined,
   suggestion: Option.Option<Verdict>
 ): Verdict =>
+  (arrival.delegatedTo === undefined
+    ? undefined
+    : Verdicts.Later({
+        reason: Reasons.delegated({ facts: ["digest"] }),
+        window: 60_000,
+      })) ??
   joelVerdict(arrival, levers) ??
   ownerVerdict(arrival, levers) ??
   (levers.enabled === true
@@ -273,6 +282,10 @@ export const reasonTone = (reason: Reason): "held" | "quiet" | "woken" => {
 };
 
 export const formatReason = (reason: Reason): string => {
+  if (Reasons.$is("delegated")(reason)) {
+    return "held: delegated";
+  }
+
   if (Reasons.$is("lever")(reason) && reason.rule !== undefined) {
     return `filter: ${reason.rule}`;
   }

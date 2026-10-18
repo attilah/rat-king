@@ -11,6 +11,12 @@ import { failure } from "./failure.ts";
 
 export interface Message {
   readonly critical?: boolean;
+  readonly delegationPending?: {
+    readonly copyId: string;
+    readonly delegateDid: string;
+    readonly delegateName: string;
+    readonly desk: string;
+  };
   readonly canonicalBytes: string;
   readonly envelope: Defs.EncryptedEnvelopeValue;
   readonly admission: Defs.ReceiptValue;
@@ -56,6 +62,7 @@ export interface Transaction {
   readonly setAttentionPreferences: (prefs: Prefs.MainValue) => void;
   readonly setAttentionStatus: (status: Status.MainValue) => void;
   readonly delivered: () => readonly Message[];
+  readonly pendingDelegations: () => readonly Message[];
   readonly recipient: () => string;
   readonly get: (sender: string, tid: string) => Message | undefined;
   readonly put: (message: Message) => void;

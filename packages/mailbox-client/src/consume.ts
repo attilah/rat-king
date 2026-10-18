@@ -445,14 +445,16 @@ export const consume = <E, R>(
                         seq: event.seq,
                       });
 
-                const opened = yield* mailbox.open(event.envelope).pipe(
-                  Effect.map(Option.some),
-                  Effect.catch((error) =>
-                    unopenable === undefined
-                      ? Effect.fail(error)
-                      : unopenable(event, error)
-                  )
-                );
+                const opened = yield* mailbox
+                  .open(event.envelope, event.receipt)
+                  .pipe(
+                    Effect.map(Option.some),
+                    Effect.catch((error) =>
+                      unopenable === undefined
+                        ? Effect.fail(error)
+                        : unopenable(event, error)
+                    )
+                  );
 
                 if (Option.isNone(opened)) {
                   yield* skip("unopenable");
@@ -489,10 +491,13 @@ export const consume = <E, R>(
                   return;
                 }
 
-                const ack = mailbox.ack(input).pipe(
-                  Effect.catchIf(settledRefusal, () => Effect.void),
-                  Effect.asVoid
-                );
+                const ack =
+                  event.receipt.delegatedTo === undefined
+                    ? mailbox.ack(input).pipe(
+                        Effect.catchIf(settledRefusal, () => Effect.void),
+                        Effect.asVoid
+                      )
+                    : Effect.void;
 
                 yield* handler(message, {
                   ack,

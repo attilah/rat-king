@@ -1,3 +1,5 @@
+import { EnvelopeFailure } from "@rat-king/envelope/failure";
+import { openPlaintext } from "@rat-king/envelope/signed";
 import * as PutDocument from "@rat-king/lexicon/admin.putDidDocument";
 import * as AttentionStatus from "@rat-king/lexicon/attention.status";
 import * as Defs from "@rat-king/lexicon/defs";
@@ -29,15 +31,23 @@ import { DurableObject } from "cloudflare:workers";
 import { Clock, Effect, Layer, Option, Schema } from "effect";
 
 import { defaultStatus } from "../../../packages/mailbox-client/src/attention.ts";
+import { PayloadJson } from "../../../packages/mailbox-client/src/payload.ts";
 import { AttentionDirectory } from "./attention-directory.ts";
 import { attentionMethods, attentionRequest } from "./attention-http.ts";
-import { authenticate, authenticateClaims } from "./auth.ts";
+import { authenticate, authenticateClaims, DidResolver } from "./auth.ts";
 import type { Bindings } from "./bindings.ts";
+import {
+  DelegatedCopy,
+  DelegationTransport,
+  acceptDelegated,
+  flushDelegations,
+} from "./delegation.ts";
 import { deskMethods } from "./desk.ts";
 import { documentsLayer, didAllowlist, peerDocument } from "./documents.ts";
 import { logFailure } from "./failure-log.ts";
 import type { FailureScope } from "./failure-log.ts";
 import { errorResponse, failure } from "./failure.ts";
+import { wakeHosted } from "./hosted-wake.ts";
 import { issuerInstance } from "./issuer-object.ts";
 import { issuerMethods } from "./issuer.ts";
 import { validLease } from "./lease.ts";
@@ -66,7 +76,7 @@ import {
   appendTraffic,
   listTraffic,
   pendingTraffic,
-  TrafficEntry,
+  TrafficOutboxEntry,
   trafficDid,
   trafficPermission,
   trafficWatermark,
@@ -182,13 +192,14 @@ export class Mailbox extends DurableObject<Bindings> {
       (events, lease) => {
         this.committed(events, lease);
       },
-      armTraffic(this.ctx)
+      armTraffic(this.ctx),
+      env.DELEGATION === "true"
     );
   }
   recordTraffic(json: string) {
     const entries = Schema.decodeUnknownSync(
       Schema.fromJsonString(
-        Schema.Array(TrafficEntry).check(Schema.isMaxLength(100))
+        Schema.Array(TrafficOutboxEntry).check(Schema.isMaxLength(100))
       )
     )(json);
 
@@ -214,7 +225,9 @@ export class Mailbox extends DurableObject<Bindings> {
         )(json);
 
         return {
-          body: JSON.stringify(listTraffic(this.sql, params)),
+          body: JSON.stringify(
+            listTraffic(this.sql, params, this.env.DELEGATION === "true")
+          ),
           status: 200,
         };
       }).pipe(
@@ -299,10 +312,106 @@ export class Mailbox extends DurableObject<Bindings> {
     );
   }
 
+  private hasPendingDelegations() {
+    return (
+      this.env.DELEGATION === "true" &&
+      [
+        ...this.sql.exec(
+          "SELECT 1 FROM messages WHERE json_extract(value,'$.delegationPending') IS NOT NULL LIMIT 1"
+        ),
+      ].length > 0
+    );
+  }
+
+  private delegationTransport() {
+    const { env } = this;
+
+    return Layer.succeed(DelegationTransport, {
+      append: (did, copy) =>
+        Schema.encodeEffect(Schema.fromJsonString(DelegatedCopy))(copy).pipe(
+          Effect.mapError(() => failure("InvalidRequest")),
+          Effect.flatMap((json) =>
+            Effect.tryPromise({
+              catch: () => failure("MailboxUnavailable", 503),
+              try: () => env.MAILBOX.getByName(did).appendDelegated(json),
+            })
+          )
+        ),
+    });
+  }
+
+  appendDelegated(json: string) {
+    const { env, ctx } = this;
+
+    return Effect.runPromise(
+      Effect.gen(function* appendDelegated() {
+        if (env.DELEGATION !== "true" || env.ISSUER === undefined) {
+          return yield* failure("Forbidden", 403);
+        }
+
+        const copy = yield* Schema.decodeUnknownEffect(
+          Schema.fromJsonString(DelegatedCopy)
+        )(json);
+
+        const resolver = yield* DidResolver;
+
+        const signed = yield* openPlaintext(copy.envelope, (did, key) =>
+          resolver.resolve(did, key, "authentication").pipe(
+            Effect.mapError(
+              () =>
+                new EnvelopeFailure({
+                  reason: "Unauthorized sender signing key",
+                })
+            )
+          )
+        );
+
+        const payload = yield* Schema.decodeUnknownEffect(PayloadJson)(
+          new TextDecoder().decode(signed.body)
+        );
+
+        if (payload.to !== copy.delegatedFor) {
+          return yield* failure("Forbidden", 403);
+        }
+
+        const issuers = env.ISSUER;
+
+        const deskDid = yield* Effect.tryPromise({
+          catch: () => failure("MailboxUnavailable", 503),
+          try: () =>
+            issuers.getByName(issuerInstance).lookupName(copy.delegatedFor),
+        });
+
+        if (deskDid !== copy.envelope.aad.recipientDid) {
+          return yield* failure("Forbidden", 403);
+        }
+
+        yield* acceptDelegated(copy);
+        const store = yield* MailboxStore;
+
+        const receipt = yield* store.transaction(
+          (tx) => tx.get(copy.envelope.aad.senderDid, copy.copyId)?.admission
+        );
+
+        if (receipt !== undefined) {
+          yield* wakeHosted(
+            env,
+            copy.delegateDid,
+            JSON.stringify({ receipt }),
+            ctx
+          );
+        }
+
+        return yield* Effect.void;
+      }).pipe(Effect.provide(Layer.merge(this.store, documentsLayer(env))))
+    );
+  }
+
   route(request: XrpcRequest, issuer: string) {
     const { env } = this;
 
     const layer = mailboxHandlers({
+      delegation: env.DELEGATION === "true",
       operators: didAllowlist(this.env.OPERATOR_DIDS),
       resolvers: didAllowlist(this.env.LEASE_RESOLVERS),
       staticDocuments: Schema.decodeSync(
@@ -362,6 +471,7 @@ export class Mailbox extends DurableObject<Bindings> {
           }),
         })
       ),
+      Layer.provide(this.delegationTransport()),
       Layer.provide(this.store),
       Layer.provide(Layer.succeed(Caller, { did: issuer })),
       Layer.provide(documentsLayer(this.env))
@@ -607,6 +717,22 @@ export class Mailbox extends DurableObject<Bindings> {
   }
 
   private committed(events: readonly Event[], lease: LeaseValue | undefined) {
+    if (events.length > 0 && this.hasPendingDelegations()) {
+      this.ctx.waitUntil(
+        Effect.runPromise(
+          flushDelegations.pipe(
+            Effect.provide(Layer.merge(this.store, this.delegationTransport())),
+            Effect.tapError(() =>
+              Effect.logWarning(
+                "Delegate copy pending; durable outbox will retry"
+              )
+            ),
+            Effect.ignore
+          )
+        )
+      );
+    }
+
     if (events.length > 0) {
       this.ctx.waitUntil(
         Effect.runPromise(
@@ -880,6 +1006,15 @@ export class Mailbox extends DurableObject<Bindings> {
 
     return Effect.runPromise(
       flushTraffic(this.sql, this.env).pipe(
+        Effect.andThen(
+          this.hasPendingDelegations()
+            ? flushDelegations.pipe(
+                Effect.provide(
+                  Layer.merge(this.store, this.delegationTransport())
+                )
+              )
+            : Effect.void
+        ),
         Effect.tapError(() => Effect.logWarning("Traffic retry pending")),
         Effect.ignore,
         Effect.flatMap(() => Effect.promise(() => this.mailboxAlarm()))
@@ -911,7 +1046,7 @@ export class Mailbox extends DurableObject<Bindings> {
       }
     }
 
-    if (pendingTraffic(this.sql).length > 0) {
+    if (pendingTraffic(this.sql).length > 0 || this.hasPendingDelegations()) {
       deadline = Math.min(
         deadline,
         Effect.runSync(Clock.currentTimeMillis) + 1000
@@ -923,70 +1058,6 @@ export class Mailbox extends DurableObject<Bindings> {
       : Promise.resolve();
   }
 }
-
-const scheduleWake = (
-  context: Pick<ExecutionContext, "waitUntil">,
-  wake: Effect.Effect<void, XrpcFailure>
-) => {
-  context.waitUntil(Effect.runPromise(wake.pipe(Effect.ignore)));
-};
-
-const wakeHosted = Effect.fn("Mailbox.wakeHosted")(function* wakeHosted(
-  env: Bindings,
-  recipient: string,
-  body: string,
-  context?: Pick<ExecutionContext, "waitUntil">
-) {
-  if (env.AGENT === undefined) {
-    return yield* Effect.void;
-  }
-
-  const hosts = yield* Schema.decodeUnknownEffect(
-    Schema.fromJsonString(Schema.Array(Schema.String))
-  )(env.HOSTED_AGENTS ?? "[]");
-
-  if (!hosts.includes(recipient)) {
-    return yield* Effect.void;
-  }
-
-  const admitted = yield* Schema.decodeEffect(
-    Schema.fromJsonString(Send.Output)
-  )(body);
-
-  const agents = env.AGENT;
-
-  const wake = Effect.gen(function* wakeAgent() {
-    const outcome = yield* Effect.tryPromise({
-      catch: () => failure("MailboxUnavailable", 503),
-      try: () => agents.getByName(recipient).wake(),
-    }).pipe(
-      Effect.match({
-        onFailure: () => "unavailable" as const,
-        onSuccess: () => "accepted" as const,
-      })
-    );
-
-    yield* Effect.tryPromise({
-      catch: () => failure("MailboxUnavailable", 503),
-      try: () =>
-        Promise.resolve(
-          env.MAILBOX.getByName(recipient).recordWake(
-            admitted.receipt.message.senderDid,
-            admitted.receipt.message.messageId,
-            outcome
-          )
-        ),
-    });
-  });
-
-  if (context === undefined) {
-    yield* wake;
-  } else {
-    scheduleWake(context, wake);
-  }
-
-  return yield* Effect.void;
-});
 
 const methods = new Set<string>(
   [

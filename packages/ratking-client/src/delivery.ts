@@ -30,7 +30,7 @@ export type RecipientLevelValue = typeof RecipientLevel.Type;
 export const Recipients = Schema.Array(RecipientLevel);
 
 export const DeliveryReason = Schema.Struct({
-  _tag: Schema.Literals(["intent", "lever", "judge", "joel"]),
+  _tag: Schema.Literals(["intent", "lever", "judge", "joel", "delegated"]),
   facts: Schema.Array(
     Schema.Literals([
       "to",

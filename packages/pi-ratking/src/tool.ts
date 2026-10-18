@@ -268,14 +268,19 @@ const presenceDetails = (delivered: Delivered) =>
 const recipientsOf = (delivered: Delivered) =>
   delivered.recipients ?? [{ level: "wake" as const, name: delivered.to }];
 
-export const receiptText = (lead: string, delivered: Delivered) =>
-  recipientsOf(delivered).length > 1 ||
-  recipientsOf(delivered).some((recipient) => recipient.level === "quiet")
+export const receiptText = (lead: string, delivered: Delivered) => {
+  if (delivered.delegated !== undefined) {
+    return `Delivered to ${delivered.to}; delegated to ${delivered.delegated.to}${delivered.delegated.until === undefined ? "" : ` until ${delivered.delegated.until}`} (id ${delivered.id}, seq ${delivered.seq}).`;
+  }
+
+  return recipientsOf(delivered).length > 1 ||
+    recipientsOf(delivered).some((recipient) => recipient.level === "quiet")
     ? [
         `Delivered over Rat King (id ${delivered.id}, seq ${delivered.seq}).`,
         ...recipientLines(recipientsOf(delivered)),
       ].join("\n")
     : `${lead} ${delivered.to} over Rat King (id ${delivered.id}, seq ${delivered.seq}).`;
+};
 
 export const notDeliveredText = (error: NotDelivered | QuietAsk) =>
   Match.value(error.code).pipe(

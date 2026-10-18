@@ -87,6 +87,20 @@ export const BirthContext = Schema.StructWithRest(
 
 export type BirthContextValue = typeof BirthContext.Type;
 
+export const DelegationReceipt = Schema.StructWithRest(
+  Schema.Struct({
+    to: Runtime.lexString({ type: "string" }),
+    until: Schema.optionalKey(
+      Runtime.lexString({ format: "datetime", type: "string" }).pipe(
+        Schema.brand("Lexicon:datetime")
+      )
+    ),
+  }),
+  [Schema.Record(Schema.String, Runtime.Data)]
+);
+
+export type DelegationReceiptValue = typeof DelegationReceipt.Type;
+
 export const DeliveryState = Runtime.lexString({
   description:
     "Open values: accepted = durable admission; queued = awaiting runtime; delivered = injected into leased runtime, not processed; acked = recipient acknowledgment; expired = sender-set expiry reached; failed = terminal failure with a receipt. Unknown values are not success.",
@@ -247,6 +261,9 @@ export type MessageRefValue = typeof MessageRef.Type;
 
 export const Receipt = Schema.StructWithRest(
   Schema.Struct({
+    delegated: Schema.optionalKey(DelegationReceipt),
+    delegatedFor: Schema.optionalKey(Runtime.lexString({ type: "string" })),
+    delegatedTo: Schema.optionalKey(Runtime.lexString({ type: "string" })),
     detail: Schema.optionalKey(
       Runtime.lexString({
         description: "Optional public-safe failure or expiry explanation.",
@@ -254,6 +271,11 @@ export const Receipt = Schema.StructWithRest(
       })
     ),
     message: MessageRef,
+    originalId: Schema.optionalKey(
+      Runtime.lexString({ format: "tid", type: "string" }).pipe(
+        Schema.brand("Lexicon:tid")
+      )
+    ),
     recipientDid: Runtime.lexString({ format: "did", type: "string" }).pipe(
       Schema.brand("Lexicon:did")
     ),

@@ -26,6 +26,7 @@ import type { HttpClient } from "effect/http";
 import { attentionClient } from "./attention.ts";
 import type { AttentionClient } from "./attention.ts";
 import { DidResolver, staticResolver } from "./auth.ts";
+import { openDelegated } from "./delegation.ts";
 import { clientError, MailboxClientError } from "./error.ts";
 import { importSigning, importAgreement } from "./identity.ts";
 import type { IdentityValue } from "./identity.ts";
@@ -114,6 +115,9 @@ export interface Batch {
 }
 
 export interface OpenedMessage {
+  readonly delegatedFor?: string;
+  readonly delegatedTo?: string;
+  readonly originalId?: string;
   readonly senderDid: Defs.AadValue["senderDid"];
   readonly tid: Defs.AadValue["messageId"];
   readonly body: string;
@@ -193,7 +197,8 @@ export class RatKingMailbox extends Context.Service<
       fence: LeaseFence
     ) => Stream.Stream<Batch, MailboxClientError>;
     readonly open: (
-      envelope: Defs.EncryptedEnvelopeValue
+      envelope: Defs.EncryptedEnvelopeValue,
+      receipt?: Defs.ReceiptValue
     ) => Effect.Effect<OpenedMessage, MailboxClientError>;
     readonly deliver: (
       input: FencedMessage
@@ -321,26 +326,30 @@ export const layer = (
           ),
         },
         list,
-        open: Effect.fn("RatKingMailbox.open")(function* open(input) {
+        open: Effect.fn("RatKingMailbox.open")(function* open(input, receipt) {
           const envelope = yield* Schema.decodeUnknownEffect(
             Schema.toType(Defs.EncryptedEnvelope)
           )(input);
 
-          const payload = yield* openEnvelope({
-            envelope,
-            recipientDid: identity.did,
-            recipientKey: yield* importAgreement(identity),
-            recipientKeyId: `${identity.did}#encryption`,
-            resolveSigningKey: (did, keyId) =>
-              resolver.resolve(did, keyId, "authentication").pipe(
-                Effect.mapError(
-                  () =>
-                    new EnvelopeFailure({
-                      reason: "Unauthorized sender signing key",
-                    })
-                )
-              ),
-          });
+          const resolveSigningKey = (did: string, keyId: string) =>
+            resolver.resolve(did, keyId, "authentication").pipe(
+              Effect.mapError(
+                () =>
+                  new EnvelopeFailure({
+                    reason: "Unauthorized sender signing key",
+                  })
+              )
+            );
+
+          const payload = yield* receipt?.delegatedFor === undefined
+            ? openEnvelope({
+                envelope,
+                recipientDid: identity.did,
+                recipientKey: yield* importAgreement(identity),
+                recipientKeyId: `${identity.did}#encryption`,
+                resolveSigningKey,
+              })
+            : openDelegated(envelope, receipt, identity.did, resolveSigningKey);
 
           const body = yield* Effect.try({
             catch: () =>
@@ -373,6 +382,19 @@ export const layer = (
             tid: payload.aad.messageId,
             verified: true,
           };
+
+          if (receipt?.delegatedTo !== undefined) {
+            result.delegatedTo = receipt.delegatedTo;
+          }
+
+          if (
+            receipt?.delegatedFor !== undefined &&
+            receipt.originalId !== undefined
+          ) {
+            result.delegatedFor = receipt.delegatedFor;
+            result.originalId = receipt.originalId;
+            result.tid = receipt.message.messageId;
+          }
 
           if (Option.isSome(carbonCopy)) {
             if (
