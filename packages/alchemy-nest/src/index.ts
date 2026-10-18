@@ -93,4 +93,6 @@ export { stageDeploymentFiles } from "./deployment-stage.ts";
 
 export type { DeploymentProps } from "./deployment.ts";
 
+export { GeneratedConfiguration } from "./deployment-config.ts";
+
 export type { Declaration, DeploymentBuild } from "./deployment-config.ts";

@@ -257,9 +257,11 @@ export const runNight = Effect.fn("Remembers.runNight")(
       const proof = yield* Ref.get(books);
       const next = yield* Ref.get(page);
 
-      const sample = (yield* Ref.get(records))
-        .slice(0, 10)
-        .map((record) => record.claim.sentence);
+      const sample = (yield* Ref.get(records)).slice(0, 10).map((record) => ({
+        cites: record.cites,
+        id: record.id,
+        sentence: record.claim.sentence,
+      }));
 
       yield* speaks.send({
         encrypted: true,
@@ -269,7 +271,8 @@ export const runNight = Effect.fn("Remembers.runNight")(
           books: proof,
           cursor: next.cursor,
           runId: config.runId,
-          sample,
+          sample: sample.map((item) => item.sentence),
+          sample_cites: sample,
         }),
         to: config.owner,
       });

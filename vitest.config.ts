@@ -67,6 +67,10 @@ export default defineConfig({
         test: { name: "remembers" },
       },
       {
+        extends: "packages/remembers-host/vitest.config.ts",
+        test: { name: "remembers-host" },
+      },
+      {
         extends: "packages/agent-runtime/vitest.config.ts",
         test: { name: "agent-runtime" },
       },

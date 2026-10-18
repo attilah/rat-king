@@ -11,6 +11,7 @@
     "./night": "./src/night.ts",
     "./recall": "./src/recall.ts",
     "./sqlite": "./adapters/sqlite.ts",
+    "./node-sqlite": "./adapters/node-sqlite.ts",
     "./testing": "./adapters/testing.ts",
     "./pi": "./adapters/pi.ts",
     "./private-models": "./adapters/private-models.ts",
