@@ -39,6 +39,9 @@ export type ErrorBodyValue = typeof ErrorBody.Type;
 
 export const KnownErrors = [
   "AuthRequired",
+  "DelegateCycle",
+  "DelegateNotFound",
+  "DelegateSelf",
   "Forbidden",
   "InvalidRequest",
 ] as const;

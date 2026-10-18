@@ -21,6 +21,8 @@ import { Settings } from "./config.ts";
 import type { NotDelivered } from "./ratking.ts";
 
 export interface AttentionChange {
+  readonly delegate?: string;
+  readonly exempt?: readonly string[];
   readonly note?: string;
   readonly prefs?: unknown;
   readonly status?: "available" | "busy" | "dnd";
@@ -276,6 +278,8 @@ export const attentionReader = Effect.fn("Attention.reader")(
         }
 
         if (
+          input.delegate !== undefined ||
+          input.exempt !== undefined ||
           input.status !== undefined ||
           input.until !== undefined ||
           input.note !== undefined
@@ -285,6 +289,16 @@ export const attentionReader = Effect.fn("Attention.reader")(
             state: input.status ?? status.state,
             version: "0.1",
           };
+
+          if (value.state !== "available") {
+            if (input.delegate !== undefined) {
+              Object.assign(value, { delegate: input.delegate });
+            }
+
+            if (input.exempt !== undefined) {
+              Object.assign(value, { exempt: input.exempt });
+            }
+          }
 
           if (input.until !== undefined) {
             Object.assign(value, { until: input.until });

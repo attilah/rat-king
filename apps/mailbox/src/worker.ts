@@ -1,4 +1,5 @@
 import * as PutDocument from "@rat-king/lexicon/admin.putDidDocument";
+import * as AttentionStatus from "@rat-king/lexicon/attention.status";
 import * as Defs from "@rat-king/lexicon/defs";
 import * as DeskInbox from "@rat-king/lexicon/desk.inbox";
 import * as DeskPending from "@rat-king/lexicon/desk.pending";
@@ -25,8 +26,10 @@ import * as Resolve from "@rat-king/lexicon/runtime.resolveLease";
 import type { Request as XrpcRequest } from "@rat-king/lexicon/transport";
 import { XrpcFailure } from "@rat-king/lexicon/xrpc-failure";
 import { DurableObject } from "cloudflare:workers";
-import { Clock, Effect, Layer, Schema } from "effect";
+import { Clock, Effect, Layer, Option, Schema } from "effect";
 
+import { defaultStatus } from "../../../packages/mailbox-client/src/attention.ts";
+import { AttentionDirectory } from "./attention-directory.ts";
 import { attentionMethods, attentionRequest } from "./attention-http.ts";
 import { authenticate, authenticateClaims } from "./auth.ts";
 import type { Bindings } from "./bindings.ts";
@@ -284,6 +287,18 @@ export class Mailbox extends DurableObject<Bindings> {
     ];
   }
 
+  publicAttentionStatus() {
+    return Effect.runPromise(
+      Effect.gen(function* publicAttentionStatus() {
+        const store = yield* MailboxStore;
+
+        return yield* store.transaction((tx) =>
+          JSON.stringify(tx.attentionStatus() ?? defaultStatus())
+        );
+      }).pipe(Effect.provide(this.store))
+    );
+  }
+
   route(request: XrpcRequest, issuer: string) {
     const { env } = this;
 
@@ -310,6 +325,40 @@ export class Mailbox extends DurableObject<Bindings> {
             }
 
             return yield* Effect.void;
+          }),
+        })
+      ),
+      Layer.provide(
+        Layer.succeed(AttentionDirectory, {
+          resolve: Effect.fn("AttentionDirectory.resolve")(function* resolve(
+            name: string
+          ) {
+            const issuers = env.ISSUER;
+
+            if (issuers === undefined) {
+              return yield* Effect.fail(failure("MailboxUnavailable", 503));
+            }
+
+            const did = yield* Effect.tryPromise({
+              catch: () => failure("MailboxUnavailable", 503),
+              try: () => issuers.getByName(issuerInstance).lookupName(name),
+            });
+
+            return Option.fromUndefinedOr(did);
+          }),
+          status: Effect.fn("AttentionDirectory.status")(function* status(
+            did: string
+          ) {
+            const value = yield* Effect.tryPromise({
+              catch: () => failure("MailboxUnavailable", 503),
+              try: () => env.MAILBOX.getByName(did).publicAttentionStatus(),
+            });
+
+            return yield* Schema.decodeUnknownEffect(
+              Schema.fromJsonString(AttentionStatus.Main)
+            )(value).pipe(
+              Effect.mapError(() => failure("MailboxUnavailable", 503))
+            );
           }),
         })
       ),

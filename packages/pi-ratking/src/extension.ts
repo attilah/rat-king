@@ -232,6 +232,7 @@ export { injects } from "@rat-king/ratking-client/delivery";
 
 const sendFields = {
   cc: Schema.optionalKey(Schema.Array(Schema.String)),
+  critical: Schema.optionalKey(Schema.Boolean),
   encrypt: Schema.optionalKey(Schema.Boolean),
   kind: Schema.optionalKey(Schema.Literals(["message", "ask", "data"])),
   quiet: Schema.optionalKey(Schema.Boolean),
@@ -605,6 +606,10 @@ const forwardSend = (request: typeof SendRequest.Type) =>
       replyAll: request.replyAll ?? true,
     };
 
+    if (request.critical !== undefined) {
+      Object.assign(options, { critical: request.critical });
+    }
+
     if (request.quiet === true) {
       Object.assign(options, { quiet: true });
     }
@@ -730,9 +735,11 @@ const parameters = Type.Object({
         "Send even though the message or summary addresses a cc'd name. A cc gets a quiet copy and does not wake.",
     })
   ),
+  critical: Type.Optional(Type.Boolean()),
   cwd: Type.Optional(
     Type.String({ description: "Not supported: Rat King addresses by name." })
   ),
+  delegate: Type.Optional(Type.String()),
   dueBy: Type.Optional(
     Type.Number({
       description:
@@ -745,6 +752,7 @@ const parameters = Type.Object({
         "End-to-end encrypt this send, ask or reply. Use it for secrets, credentials, customer data or private transcripts. Default: signed plaintext, readable by observers.",
     })
   ),
+  exempt: Type.Optional(Type.Array(Type.String(), { maxItems: 16 })),
   focus: Type.Optional(Type.Boolean({ description: "Unused." })),
   id: Type.Optional(Type.String()),
   message: Type.Optional(

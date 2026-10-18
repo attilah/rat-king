@@ -282,6 +282,7 @@ export const prepare = Effect.fn("Mailbox.prepare")(function* prepare(
     envelope: Defs.EncryptedEnvelopeValue,
     fence?: LeaseFence,
     intent: {
+      readonly critical?: boolean;
       readonly woke: boolean;
       readonly wakeReason: Send.InputValue["wakeReason"];
     } = directIntent
@@ -333,6 +334,7 @@ export const prepare = Effect.fn("Mailbox.prepare")(function* prepare(
     envelope: Defs.EncryptedEnvelopeValue,
     opts?: {
       readonly cc?: string;
+      readonly critical?: boolean;
       readonly fence?: LeaseFence;
       readonly woke?: boolean;
       readonly wakeReason?: Send.InputValue["wakeReason"];
@@ -342,10 +344,16 @@ export const prepare = Effect.fn("Mailbox.prepare")(function* prepare(
       return SendOutcomes.NotAttempted({ reason: "Unknown primary peer" });
     }
 
-    const primary = yield* submit(envelope, opts?.fence, {
+    const intent = {
       wakeReason: opts?.wakeReason ?? "to",
       woke: opts?.woke ?? true,
-    });
+    };
+
+    if (opts?.critical !== undefined) {
+      Object.assign(intent, { critical: opts.critical });
+    }
+
+    const primary = yield* submit(envelope, opts?.fence, intent);
 
     if (opts?.cc === undefined) {
       return primary;

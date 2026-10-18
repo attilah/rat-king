@@ -169,48 +169,64 @@ const changed = (me: Attached, value: { prefs: unknown; status: Status }) =>
     ],
   }) satisfies Report;
 
-const dndCommand = Command.make(
-  "dnd",
-  {
-    ...commonFlags,
-    duration: Argument.String("duration"),
-    note: Flag.String("note").pipe(Flag.optional),
-  },
-  (args) =>
-    named("attention dnd", args, (me) =>
-      Effect.gen(function* dnd() {
-        const inbox = yield* Inbox;
+const quietCommand = (state: "busy" | "dnd") =>
+  Command.make(
+    state,
+    {
+      ...commonFlags,
+      delegate: Flag.String("delegate").pipe(Flag.optional),
+      duration: Argument.String("duration"),
+      exempt: Flag.String("exempt").pipe(Flag.optional),
+      note: Flag.String("note").pipe(Flag.optional),
+    },
+    (args) =>
+      named(`attention ${state}`, args, (me) =>
+        Effect.gen(function* quietStatus() {
+          const inbox = yield* Inbox;
 
-        const span = parseDuration(args.duration);
+          const span = parseDuration(args.duration);
 
-        if (Option.isNone(span)) {
-          return yield* usage(
-            `${args.duration} is not a duration`,
-            "<n>s, <n>m, <n>h or <n>d, for example 90m",
-            "ratking attention dnd 2h"
+          if (Option.isNone(span)) {
+            return yield* usage(
+              `${args.duration} is not a duration`,
+              "<n>s, <n>m, <n>h or <n>d, for example 90m",
+              `ratking attention ${state} 2h`
+            );
+          }
+
+          const at = yield* Clock.currentTimeMillis;
+
+          const until = DateTime.formatIso(
+            DateTime.makeUnsafe(at + span.value)
           );
-        }
 
-        const at = yield* Clock.currentTimeMillis;
+          const value = yield* inbox.change(
+            withField(
+              {
+                ...Option.match(args.delegate, {
+                  onNone: () => ({}),
+                  onSome: (delegate) => ({ delegate }),
+                }),
+                ...Option.match(args.exempt, {
+                  onNone: () => ({}),
+                  onSome: (exempt) => ({ exempt: exempt.split(",") }),
+                }),
+                status: state,
+                until,
+              },
+              "note",
+              Option.getOrUndefined(args.note)
+            )
+          );
 
-        const until = DateTime.formatIso(DateTime.makeUnsafe(at + span.value));
-
-        const value = yield* inbox.change(
-          withField(
-            { status: "dnd" as const, until },
-            "note",
-            Option.getOrUndefined(args.note)
-          )
-        );
-
-        return changed(me, value);
-      })
+          return changed(me, value);
+        })
+      )
+  ).pipe(
+    Command.withDescription(
+      "Set busy or do-not-disturb for a duration (90m, 2h, 1d), with an optional delegate and public exemptions."
     )
-).pipe(
-  Command.withDescription(
-    "Set do-not-disturb for a duration (90m, 2h, 1d); mail is held until it ends."
-  )
-);
+  );
 
 const availableCommand = Command.make("available", commonFlags, (args) =>
   named("attention available", args, (me) =>
@@ -522,7 +538,8 @@ export const attentionCommand = Command.make("attention").pipe(
   Command.withSubcommands([
     showCommand,
     setCommand,
-    dndCommand,
+    quietCommand("busy"),
+    quietCommand("dnd"),
     availableCommand,
     nameList("allow", "Always wake for these names (--remove to drop)."),
     nameList("refuse", "Drop mail from these names (--remove to drop)."),

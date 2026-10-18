@@ -9,6 +9,7 @@ export type ParamsValue = typeof Params.Type;
 
 export const Input = Schema.StructWithRest(
   Schema.Struct({
+    critical: Schema.optionalKey(Schema.Boolean),
     envelope: Defs.EncryptedEnvelope,
     generation: Schema.optionalKey(
       Schema.Int.check(

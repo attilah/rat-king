@@ -1155,6 +1155,22 @@ import { Schema as Schema11 } from "effect";
 var Main2 = Schema11.StructWithRest(
   Schema11.Struct({
     $type: Schema11.Literal("sh.mschf.ratking.attention.status"),
+    delegate: Schema11.optionalKey(
+      lexString({ type: "string" }).check(
+        Schema11.isPattern(
+          /^(?:[a-z0-9]+(?:-[a-z0-9]+)*\/)?[a-z][a-z0-9_-]{0,31}$/u
+        )
+      )
+    ),
+    exempt: Schema11.optionalKey(
+      Schema11.Array(
+        lexString({ type: "string" }).check(
+          Schema11.isPattern(
+            /^(?:[a-z0-9]+(?:-[a-z0-9]+)*\/)?[a-z][a-z0-9_-]{0,31}$/u
+          )
+        )
+      ).check(Schema11.isMinLength(0), Schema11.isMaxLength(16))
+    ),
     note: Schema11.optionalKey(
       lexString({ maxLength: 120, type: "string" })
     ),
@@ -1511,6 +1527,7 @@ import { Schema as Schema18 } from "effect";
 var Params10 = Schema18.Undefined;
 var Input9 = Schema18.StructWithRest(
   Schema18.Struct({
+    critical: Schema18.optionalKey(Schema18.Boolean),
     envelope: EncryptedEnvelope,
     generation: Schema18.optionalKey(
       Schema18.Int.check(
@@ -3115,10 +3132,16 @@ var watch = (config, poll, afterSeq, fence) => Stream.suspend(() => {
 });
 
 // packages/mailbox-client/src/mailbox.ts
-var sendIntent = (opts) => ({
-  wakeReason: opts?.wakeReason ?? "to",
-  woke: opts?.woke ?? true
-});
+var sendIntent = (opts) => {
+  const intent = {
+    wakeReason: opts?.wakeReason ?? "to",
+    woke: opts?.woke ?? true
+  };
+  if (opts?.critical !== void 0) {
+    Object.assign(intent, { critical: opts.critical });
+  }
+  return intent;
+};
 var RatKingMailbox = class extends Context6.Service()("@rat-king/mailbox-client/RatKingMailbox") {
 };
 var layer = (config, resolverLayer = staticResolver(config.documents)) => Layer4.effect(
@@ -4399,10 +4422,14 @@ var prepare = Effect26.fn("Mailbox.prepare")(function* prepare2(options) {
     if (!peers.has(envelope.aad.recipientDid)) {
       return SendOutcomes.NotAttempted({ reason: "Unknown primary peer" });
     }
-    const primary = yield* submit(envelope, opts?.fence, {
+    const intent = {
       wakeReason: opts?.wakeReason ?? "to",
       woke: opts?.woke ?? true
-    });
+    };
+    if (opts?.critical !== void 0) {
+      Object.assign(intent, { critical: opts.critical });
+    }
+    const primary = yield* submit(envelope, opts?.fence, intent);
     if (opts?.cc === void 0) {
       return primary;
     }

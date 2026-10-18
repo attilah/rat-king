@@ -4,6 +4,18 @@
       "key": "literal:self",
       "record": {
         "properties": {
+          "delegate": {
+            "x-pattern": "^(?:[a-z0-9]+(?:-[a-z0-9]+)*/)?[a-z][a-z0-9_-]{0,31}$",
+            "type": "string"
+          },
+          "exempt": {
+            "items": {
+              "x-pattern": "^(?:[a-z0-9]+(?:-[a-z0-9]+)*/)?[a-z][a-z0-9_-]{0,31}$",
+              "type": "string"
+            },
+            "maxLength": 16,
+            "type": "array"
+          },
           "note": { "maxLength": 120, "type": "string" },
           "state": { "enum": ["available", "busy", "dnd"], "type": "string" },
           "until": { "format": "datetime", "type": "string" },

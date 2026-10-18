@@ -8,7 +8,7 @@ import { Caller } from "./caller.ts";
 import { didAllowlist } from "./documents.ts";
 import { failure } from "./failure.ts";
 import type { PublicDocument } from "./issuer-policy.ts";
-import { issuerStore } from "./issuer-store.ts";
+import { IssuerStore, issuerStore } from "./issuer-store.ts";
 import {
   DocumentRegistry,
   issuerConfig,
@@ -37,6 +37,16 @@ export class Issuer extends DurableObject<Bindings> {
       transaction: <A>(operation: () => A) =>
         ctx.storage.transactionSync(operation),
     });
+  }
+
+  lookupName(name: string) {
+    return Effect.runPromise(
+      Effect.gen(function* lookupName() {
+        const store = yield* IssuerStore;
+
+        return yield* store.transaction((tx) => tx.binding(name)?.did);
+      }).pipe(Effect.provide(this.store))
+    );
   }
 
   route(request: XrpcRequest, caller: string) {
