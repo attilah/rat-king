@@ -63,10 +63,6 @@ export default defineConfig({
         test: { name: "mailbox" },
       },
       {
-        extends: "packages/remembers/vitest.config.ts",
-        test: { name: "remembers" },
-      },
-      {
         extends: "packages/agent-runtime/vitest.config.ts",
         test: { name: "agent-runtime" },
       },

@@ -10,7 +10,6 @@ overrides:
 
 allowBuilds:
   "@google/genai": true
-  "@mischief/worker@https://codeload.github.com/joelhooks/mischief/tar.gz/639eb265ae50b2df2bafd796fb6b6796b97080dd#path:/apps/worker/bundle": true
   esbuild: true
   lefthook: true
   msgpackr-extract: true
