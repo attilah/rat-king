@@ -42,7 +42,7 @@ The observer step uses `remembers-slice` only as an **ephemeral** capability. Th
 
 Never expose `remembers-slice` or `remembers-judge-input` as ordinary journaled call steps. Their results intentionally contain raw evidence. The exported step builders place them only in ephemeral positions. Restrict plan submission at the host boundary.
 
-`composeWorker` needs `Store`, `SliceSource` and `CanonSource` Layers. Supply private model prompts to the step builders at runtime. The production `PlanSteps` adapter, cell bindings, scheduling, model routing and deployment composition belong to the host. `MISCHIEF_STEP_KINDS=call` remains off unless the owner separately approves a real run.
+`composeWorker` needs `Store`, `SliceSource` and `CanonSource` Layers. Supply private model prompts to the step builders at runtime. The production `PlanSteps` adapter, cell bindings, scheduling, model routing and deployment composition live in [Remembers host](../remembers-host/README.md). Its Node supervisor owns SQLite and scheduling; its dedicated celld worker owns ephemeral evidence and model calls. `MISCHIEF_STEP_KINDS=call` is declared only on that worker, and no real run starts without owner installation.
 
 The HTTP slice adapter implements `/slice` and `/quote`, bearer authentication, per-role text caps, identity checks and quote-hash verification. Cursor windowing and the full-store literal-count query remain injected jobs, so the package cannot silently substitute sampled counts or invent a source cursor.
 

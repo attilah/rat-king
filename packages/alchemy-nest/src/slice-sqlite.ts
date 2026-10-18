@@ -29,12 +29,17 @@ WHERE position BETWEEN first AND last ORDER BY position LIMIT 8193`;
 
 const budgetSql = `${rangeCte} SELECT sum(length(CAST(text AS BLOB)) + length(CAST(role AS BLOB)) + length(CAST(chunk_id AS BLOB)) + 32) AS bytes FROM ordered, bounds WHERE position BETWEEN first AND last`;
 
-const pageSql = `WITH activity AS (
- SELECT runs.conversation_id, max(chunks.started_at) AS latest FROM chunks JOIN runs ON chunks.run_id=runs.run_id GROUP BY runs.conversation_id
-), prefix AS (
- SELECT chunks.rowid AS rowid, chunks.chunk_id, runs.conversation_id AS conversation, chunks.role, chunks.started_at, chunks.token_count, activity.latest
- FROM chunks JOIN runs ON chunks.run_id=runs.run_id JOIN activity ON activity.conversation_id=runs.conversation_id
+const pageSql = `WITH window AS MATERIALIZED (
+ SELECT chunks.rowid AS rowid, chunks.chunk_id, runs.conversation_id AS conversation, chunks.role, chunks.started_at, chunks.token_count
+ FROM chunks JOIN runs ON chunks.run_id=runs.run_id
  WHERE chunks.rowid > ? ORDER BY chunks.rowid LIMIT ?
+), activity AS MATERIALIZED (
+ SELECT runs.conversation_id, max(chunks.started_at) AS latest
+ FROM runs JOIN chunks ON chunks.run_id=runs.run_id
+ WHERE runs.conversation_id IN (SELECT conversation FROM window)
+ GROUP BY runs.conversation_id
+), prefix AS (
+ SELECT window.*, activity.latest FROM window JOIN activity ON activity.conversation_id=window.conversation
 )
 SELECT rowid, chunk_id, conversation, role, started_at, token_count FROM prefix
 WHERE rowid < coalesce((SELECT min(rowid) FROM prefix WHERE latest >= ?), 9223372036854775807) ORDER BY rowid`;

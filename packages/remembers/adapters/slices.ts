@@ -10,7 +10,7 @@ const WireSlice = Schema.Struct({
     Schema.Struct({
       chunk_id: Schema.String,
       role: Schema.String,
-      started_at: Schema.String,
+      started_at: Schema.Union([Schema.Int, Schema.String]),
       text: Schema.String,
     })
   ),
