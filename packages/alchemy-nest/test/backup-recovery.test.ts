@@ -256,8 +256,9 @@ it.effect.prop(
       yield* validateUnit(unit);
 
       const lines = unit.sections.flatMap((section) => section.lines);
-      expect(lines).toContainEqual(["MemoryHigh", "128M"]);
-      expect(lines).toContainEqual(["MemoryMax", "256M"]);
+      expect(lines).toContainEqual(["MemoryHigh", "1536M"]);
+      expect(lines).toContainEqual(["MemoryMax", "2G"]);
+      expect(lines).toContainEqual(["CPUQuota", "200%"]);
       expect(lines).toContainEqual(["TimeoutStartSec", "2h"]);
       expect(lines).toContainEqual(["TimeoutStopSec", "90s"]);
       expect(lines).toContainEqual(["OOMPolicy", "stop"]);
