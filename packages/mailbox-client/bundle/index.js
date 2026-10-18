@@ -3505,6 +3505,10 @@ var consumerMachine = createMachine({
     waiting: { on: { RETRY: { target: "acquiring" } } }
   }
 });
+var ATTEMPT_MS = 3e3;
+var attemptTimedOut = (reason) => new MailboxClientError({ error: "MailboxUnavailable", reason });
+var TIMED_OUT = "Renewal attempt timed out";
+var unavailable = (error) => error.status === void 0 ? error.error === void 0 || error.error === "MailboxUnavailable" : error.status >= 500 || error.status === 429;
 var expiredRefusal = (error) => error.error === "InvalidTransition" && error.reason === "Expired message";
 var settledRefusal = (error) => error.error === "InvalidTransition";
 var releasedRefusal = (error) => error.error === "LeaseMismatch";
@@ -3539,6 +3543,10 @@ var consume = (mailbox, did, handler, options) => Effect21.scoped(
         `lease acquire-attempt name=${options.leaseName ?? did} generation=${input.generation ?? "new"} expiresAt=${input.expiresAt} reason=acquire requested`
       );
       return yield* mailbox.lease.acquire(input).pipe(
+        Effect21.timeoutOrElse({
+          duration: ATTEMPT_MS,
+          orElse: () => Effect21.fail(attemptTimedOut("Acquire attempt timed out"))
+        }),
         Effect21.tapError(
           (error) => Effect21.logInfo(
             `lease acquire-failed name=${options.leaseName ?? did} generation=${input.generation ?? "new"} expiresAt=${input.expiresAt} reason=${JSON.stringify(error.error ?? error.reason)}`
@@ -3594,6 +3602,10 @@ var consume = (mailbox, did, handler, options) => Effect21.scoped(
           generation: current.generation,
           leaseId: current.leaseId
         }).pipe(
+          Effect21.timeoutOrElse({
+            duration: ATTEMPT_MS,
+            orElse: () => Effect21.fail(attemptTimedOut("Release attempt timed out"))
+          }),
           Effect21.tap(() => logLease("release", current, "scope closed")),
           Effect21.catchIf(
             releasedRefusal,
@@ -3647,6 +3659,7 @@ var consume = (mailbox, did, handler, options) => Effect21.scoped(
         new MailboxClientError({ error: reason, reason: error.reason })
       );
     });
+    let timedOut = false;
     const renew = Effect21.gen(function* renew2() {
       const now = yield* Clock4.currentTimeMillis;
       const remaining = Date.parse(current.expiresAt) - now;
@@ -3682,9 +3695,9 @@ var consume = (mailbox, did, handler, options) => Effect21.scoped(
             return logLease("renew-attempt", current, "renew requested").pipe(
               Effect21.andThen(mailbox.lease.renew(renewal)),
               Effect21.timeoutOrElse({
-                duration: left,
+                duration: Math.min(left, ATTEMPT_MS),
                 orElse: () => Effect21.fail(
-                  new MailboxClientError({
+                  left > ATTEMPT_MS ? attemptTimedOut(TIMED_OUT) : new MailboxClientError({
                     error: "LeaseExpired",
                     reason: "Renewal exceeded lease expiry"
                   })
@@ -3695,7 +3708,11 @@ var consume = (mailbox, did, handler, options) => Effect21.scoped(
         )
       ).pipe(
         Effect21.tapError(
-          (error) => logLease("renew-failed", current, error.reason)
+          (error) => Effect21.sync(() => {
+            timedOut = error.reason === TIMED_OUT;
+          }).pipe(
+            Effect21.andThen(logLease("renew-failed", current, error.reason))
+          )
         ),
         Effect21.retry(
           Schedule2.spaced("1 second").pipe(
@@ -3703,7 +3720,7 @@ var consume = (mailbox, did, handler, options) => Effect21.scoped(
               () => Clock4.currentTimeMillis.pipe(
                 Effect21.map(
                   (time) => Duration2.millis(
-                    Math.max(
+                    timedOut ? 0 : Math.max(
                       1,
                       Math.min(1e3, Date.parse(current.expiresAt) - time)
                     )
@@ -3714,7 +3731,7 @@ var consume = (mailbox, did, handler, options) => Effect21.scoped(
             Schedule2.while(
               ({ input }) => Clock4.currentTimeMillis.pipe(
                 Effect21.map(
-                  (time) => (input.status === void 0 ? input.error === void 0 || input.error === "MailboxUnavailable" : input.status >= 500 || input.status === 429) && Date.parse(current.expiresAt) > time
+                  (time) => unavailable(input) && Date.parse(current.expiresAt) > time
                 )
               )
             )

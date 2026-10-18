@@ -50,6 +50,18 @@ export interface MessageMeta {
   readonly seq: number;
 }
 
+const ATTEMPT_MS = 3000;
+
+const attemptTimedOut = (reason: string) =>
+  new MailboxClientError({ error: "MailboxUnavailable", reason });
+
+const TIMED_OUT = "Renewal attempt timed out";
+
+const unavailable = (error: MailboxClientError) =>
+  error.status === undefined
+    ? error.error === undefined || error.error === "MailboxUnavailable"
+    : error.status >= 500 || error.status === 429;
+
 const expiredRefusal = (error: MailboxClientError) =>
   error.error === "InvalidTransition" && error.reason === "Expired message";
 
@@ -134,6 +146,11 @@ export const consume = <E, R>(
         );
 
         return yield* mailbox.lease.acquire(input).pipe(
+          Effect.timeoutOrElse({
+            duration: ATTEMPT_MS,
+            orElse: () =>
+              Effect.fail(attemptTimedOut("Acquire attempt timed out")),
+          }),
           Effect.tapError((error) =>
             Effect.logInfo(
               `lease acquire-failed name=${options.leaseName ?? did} generation=${input.generation ?? "new"} expiresAt=${input.expiresAt} reason=${JSON.stringify(error.error ?? error.reason)}`
@@ -208,6 +225,11 @@ export const consume = <E, R>(
                 leaseId: current.leaseId,
               })
               .pipe(
+                Effect.timeoutOrElse({
+                  duration: ATTEMPT_MS,
+                  orElse: () =>
+                    Effect.fail(attemptTimedOut("Release attempt timed out")),
+                }),
                 Effect.tap(() => logLease("release", current, "scope closed")),
                 Effect.catchIf(releasedRefusal, () =>
                   logLease("loss", current, "release fence mismatch")
@@ -279,6 +301,8 @@ export const consume = <E, R>(
           );
         });
 
+      let timedOut = false;
+
       const renew = Effect.gen(function* renew() {
         const now = yield* Clock.currentTimeMillis;
         const remaining = Date.parse(current.expiresAt) - now;
@@ -321,13 +345,15 @@ export const consume = <E, R>(
               return logLease("renew-attempt", current, "renew requested").pipe(
                 Effect.andThen(mailbox.lease.renew(renewal)),
                 Effect.timeoutOrElse({
-                  duration: left,
+                  duration: Math.min(left, ATTEMPT_MS),
                   orElse: () =>
                     Effect.fail(
-                      new MailboxClientError({
-                        error: "LeaseExpired",
-                        reason: "Renewal exceeded lease expiry",
-                      })
+                      left > ATTEMPT_MS
+                        ? attemptTimedOut(TIMED_OUT)
+                        : new MailboxClientError({
+                            error: "LeaseExpired",
+                            reason: "Renewal exceeded lease expiry",
+                          })
                     ),
                 })
               );
@@ -335,7 +361,11 @@ export const consume = <E, R>(
           )
         ).pipe(
           Effect.tapError((error) =>
-            logLease("renew-failed", current, error.reason)
+            Effect.sync(() => {
+              timedOut = error.reason === TIMED_OUT;
+            }).pipe(
+              Effect.andThen(logLease("renew-failed", current, error.reason))
+            )
           ),
           Effect.retry(
             Schedule.spaced("1 second").pipe(
@@ -343,10 +373,12 @@ export const consume = <E, R>(
                 Clock.currentTimeMillis.pipe(
                   Effect.map((time) =>
                     Duration.millis(
-                      Math.max(
-                        1,
-                        Math.min(1000, Date.parse(current.expiresAt) - time)
-                      )
+                      timedOut
+                        ? 0
+                        : Math.max(
+                            1,
+                            Math.min(1000, Date.parse(current.expiresAt) - time)
+                          )
                     )
                   )
                 )
@@ -356,10 +388,7 @@ export const consume = <E, R>(
                   Clock.currentTimeMillis.pipe(
                     Effect.map(
                       (time) =>
-                        (input.status === undefined
-                          ? input.error === undefined ||
-                            input.error === "MailboxUnavailable"
-                          : input.status >= 500 || input.status === 429) &&
+                        unavailable(input) &&
                         Date.parse(current.expiresAt) > time
                     )
                   )

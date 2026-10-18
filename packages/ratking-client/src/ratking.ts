@@ -450,7 +450,7 @@ const peersOf = (documents: readonly PeerDocument[]) => [
 const instant = (millis: number) => DateTime.makeUnsafe(millis);
 
 const backoff = (attempt: number) =>
-  Duration.millis(Math.min(30_000, 1000 * 2 ** Math.min(attempt, 5)));
+  Duration.millis(Math.min(5000, 1000 * 2 ** Math.min(attempt, 5)));
 
 const unsettled = (event: Defs.MessageEventValue) =>
   event.receipt.state !== "acked" &&
