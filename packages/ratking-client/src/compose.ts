@@ -3,6 +3,7 @@ import { clampSummary } from "./summary.ts";
 import type { ClampedSummary } from "./summary.ts";
 
 export interface SendingInput {
+  readonly critical?: boolean | undefined;
   readonly ccOnPurpose?: boolean | undefined;
   readonly encrypt?: boolean | undefined;
   readonly quiet?: boolean | undefined;
@@ -19,6 +20,10 @@ export const sendingOptions = (input: SendingInput): Sending => {
 
   const clamp =
     input.summary === undefined ? undefined : clampSummary(input.summary);
+
+  if (input.critical !== undefined) {
+    Object.assign(options, { critical: input.critical });
+  }
 
   if (input.encrypt !== undefined) {
     Object.assign(options, { encrypt: input.encrypt });

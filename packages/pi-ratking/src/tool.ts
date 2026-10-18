@@ -77,9 +77,14 @@ export const ToolParams = Schema.Struct({
   attachments: Schema.optionalKey(Schema.Array(Attachment)),
   cc: Schema.optionalKey(Schema.Array(Schema.String)),
   ccOnPurpose: Schema.optionalKey(Schema.Boolean),
+  critical: Schema.optionalKey(Schema.Boolean),
   cwd: Schema.optionalKey(Schema.String),
+  delegate: Schema.optionalKey(Schema.String),
   dueBy: Schema.optionalKey(Schema.Finite),
   encrypt: Schema.optionalKey(Schema.Boolean),
+  exempt: Schema.optionalKey(
+    Schema.Array(Schema.String).check(Schema.isMaxLength(16))
+  ),
   focus: Schema.optionalKey(Schema.Boolean),
   id: Schema.optionalKey(Schema.String),
   limit: Schema.optionalKey(

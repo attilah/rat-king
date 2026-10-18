@@ -1,7 +1,7 @@
 {
   "defs": {
     "main": {
-      "errors": [{ "name": "AuthRequired" }, { "name": "Forbidden" }, { "name": "InvalidRequest" }],
+      "errors": [{ "name": "AuthRequired" }, { "name": "DelegateCycle" }, { "name": "DelegateNotFound" }, { "name": "DelegateSelf" }, { "name": "Forbidden" }, { "name": "InvalidRequest" }],
       "input": {
         "encoding": "application/json",
         "schema": {

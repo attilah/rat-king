@@ -12,6 +12,8 @@ export declare const Input: Schema.StructWithRest<Schema.Struct<{
     }>, readonly [Schema.$Record<Schema.String, Schema.String>]>>, never, never>;
     readonly status: Schema.StructWithRest<Schema.Struct<{
         readonly $type: Schema.Literal<"sh.mschf.ratking.attention.status">;
+        readonly delegate: Schema.optionalKey<Schema.String>;
+        readonly exempt: Schema.optionalKey<Schema.$Array<Schema.String>>;
         readonly note: Schema.optionalKey<Schema.String>;
         readonly state: Schema.compose<Schema.Literals<readonly ["available", "busy", "dnd"]>, Schema.String>;
         readonly until: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:datetime">>;
@@ -22,6 +24,8 @@ export type InputValue = typeof Input.Type;
 export declare const Output: Schema.StructWithRest<Schema.Struct<{
     readonly status: Schema.StructWithRest<Schema.Struct<{
         readonly $type: Schema.Literal<"sh.mschf.ratking.attention.status">;
+        readonly delegate: Schema.optionalKey<Schema.String>;
+        readonly exempt: Schema.optionalKey<Schema.$Array<Schema.String>>;
         readonly note: Schema.optionalKey<Schema.String>;
         readonly state: Schema.compose<Schema.Literals<readonly ["available", "busy", "dnd"]>, Schema.String>;
         readonly until: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:datetime">>;
@@ -34,7 +38,7 @@ export declare const ErrorBody: Schema.StructWithRest<Schema.Struct<{
     readonly message: Schema.optionalKey<Schema.String>;
 }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
 export type ErrorBodyValue = typeof ErrorBody.Type;
-export declare const KnownErrors: readonly ["AuthRequired", "Forbidden", "InvalidRequest"];
+export declare const KnownErrors: readonly ["AuthRequired", "DelegateCycle", "DelegateNotFound", "DelegateSelf", "Forbidden", "InvalidRequest"];
 export type KnownError = (typeof KnownErrors)[number];
 export declare const isKnownError: (value: string) => value is KnownError;
 export declare const Method: {
@@ -53,6 +57,8 @@ export declare const Method: {
         }>, readonly [Schema.$Record<Schema.String, Schema.String>]>>, never, never>;
         readonly status: Schema.StructWithRest<Schema.Struct<{
             readonly $type: Schema.Literal<"sh.mschf.ratking.attention.status">;
+            readonly delegate: Schema.optionalKey<Schema.String>;
+            readonly exempt: Schema.optionalKey<Schema.$Array<Schema.String>>;
             readonly note: Schema.optionalKey<Schema.String>;
             readonly state: Schema.compose<Schema.Literals<readonly ["available", "busy", "dnd"]>, Schema.String>;
             readonly until: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:datetime">>;
@@ -65,6 +71,8 @@ export declare const Method: {
     readonly output: Schema.StructWithRest<Schema.Struct<{
         readonly status: Schema.StructWithRest<Schema.Struct<{
             readonly $type: Schema.Literal<"sh.mschf.ratking.attention.status">;
+            readonly delegate: Schema.optionalKey<Schema.String>;
+            readonly exempt: Schema.optionalKey<Schema.$Array<Schema.String>>;
             readonly note: Schema.optionalKey<Schema.String>;
             readonly state: Schema.compose<Schema.Literals<readonly ["available", "busy", "dnd"]>, Schema.String>;
             readonly until: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:datetime">>;

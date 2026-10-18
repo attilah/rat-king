@@ -87,6 +87,7 @@ interface RawSigningPayload {
 }
 
 interface SealedSendInput {
+  critical?: boolean;
   woke: boolean;
   wakeReason: Send.InputValue["wakeReason"];
   envelope: Defs.EncryptedEnvelopeValue;
@@ -128,6 +129,7 @@ export interface OpenedMessage {
 }
 
 export interface SendOptions {
+  readonly critical?: boolean;
   readonly woke?: boolean;
   readonly wakeReason?: Send.InputValue["wakeReason"];
   readonly recordType?: string;
@@ -138,10 +140,18 @@ export interface SendOptions {
   readonly encrypt?: boolean;
 }
 
-const sendIntent = (opts: SendOptions | undefined) => ({
-  wakeReason: opts?.wakeReason ?? "to",
-  woke: opts?.woke ?? true,
-});
+const sendIntent = (opts: SendOptions | undefined) => {
+  const intent: Pick<SealedSendInput, "critical" | "wakeReason" | "woke"> = {
+    wakeReason: opts?.wakeReason ?? "to",
+    woke: opts?.woke ?? true,
+  };
+
+  if (opts?.critical !== undefined) {
+    Object.assign(intent, { critical: opts.critical });
+  }
+
+  return intent;
+};
 
 export interface FencedMessage {
   readonly message: Defs.MessageRefValue;

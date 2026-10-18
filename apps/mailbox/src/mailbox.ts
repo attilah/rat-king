@@ -453,12 +453,19 @@ export const mailboxHandlers = (policy: MailboxPolicy) =>
               receipt,
               seq,
             });
-            tx.put({
+
+            const message: Message = {
               admission: receipt,
               canonicalBytes: bytes,
               current: receipt,
               envelope,
-            });
+            };
+
+            if (input.critical !== undefined) {
+              Object.assign(message, { critical: input.critical });
+            }
+
+            tx.put(message);
 
             return { receipt };
           });

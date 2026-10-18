@@ -5,6 +5,22 @@ import * as Runtime from "./runtime.ts";
 export const Main = Schema.StructWithRest(
   Schema.Struct({
     $type: Schema.Literal("sh.mschf.ratking.attention.status"),
+    delegate: Schema.optionalKey(
+      Runtime.lexString({ type: "string" }).check(
+        Schema.isPattern(
+          /^(?:[a-z0-9]+(?:-[a-z0-9]+)*\/)?[a-z][a-z0-9_-]{0,31}$/u
+        )
+      )
+    ),
+    exempt: Schema.optionalKey(
+      Schema.Array(
+        Runtime.lexString({ type: "string" }).check(
+          Schema.isPattern(
+            /^(?:[a-z0-9]+(?:-[a-z0-9]+)*\/)?[a-z][a-z0-9_-]{0,31}$/u
+          )
+        )
+      ).check(Schema.isMinLength(0), Schema.isMaxLength(16))
+    ),
     note: Schema.optionalKey(
       Runtime.lexString({ maxLength: 120, type: "string" })
     ),

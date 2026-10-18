@@ -3,6 +3,7 @@ import * as Runtime from "./runtime.js";
 export declare const Params: Schema.Undefined;
 export type ParamsValue = typeof Params.Type;
 export declare const Input: Schema.StructWithRest<Schema.Struct<{
+    readonly critical: Schema.optionalKey<Schema.Boolean>;
     readonly envelope: Schema.StructWithRest<Schema.Struct<{
         readonly aad: Schema.StructWithRest<Schema.Struct<{
             readonly expiresAt: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:datetime">>;
@@ -67,6 +68,7 @@ export declare const Method: {
         readonly message: Schema.optionalKey<Schema.String>;
     }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
     readonly input: Schema.StructWithRest<Schema.Struct<{
+        readonly critical: Schema.optionalKey<Schema.Boolean>;
         readonly envelope: Schema.StructWithRest<Schema.Struct<{
             readonly aad: Schema.StructWithRest<Schema.Struct<{
                 readonly expiresAt: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:datetime">>;

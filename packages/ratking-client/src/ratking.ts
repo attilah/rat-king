@@ -322,6 +322,7 @@ const oneLineSummary = (text: string) =>
 export interface SendOptions {
   readonly ccOnPurpose?: boolean;
   readonly copyTo?: string;
+  readonly critical?: boolean;
   readonly encrypt?: boolean;
   readonly kind?: KindValue;
   readonly onDispatch?: Effect.Effect<void>;
@@ -334,7 +335,13 @@ export interface SendOptions {
 
 export type AskOptions = Pick<
   SendOptions,
-  "ccOnPurpose" | "encrypt" | "cc" | "onDispatch" | "quiet" | "summary"
+  | "ccOnPurpose"
+  | "critical"
+  | "encrypt"
+  | "cc"
+  | "onDispatch"
+  | "quiet"
+  | "summary"
 > & {
   readonly dueBy?: number;
   readonly onDelivered?: Effect.Effect<void>;
@@ -1457,6 +1464,10 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
           Option.isNone(textBody),
           options.copyTo !== undefined
         );
+
+        if (options.critical !== undefined) {
+          Object.assign(intent, { critical: options.critical });
+        }
 
         const holderFence = (outcome: SendOutcome) =>
           Effect.gen(function* adoptHolder() {

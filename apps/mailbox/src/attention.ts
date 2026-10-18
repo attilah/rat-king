@@ -5,13 +5,14 @@ import * as PutStatus from "@rat-king/lexicon/attention.putStatus";
 import * as Receipt from "@rat-king/lexicon/attention.receipt";
 import type * as Status from "@rat-king/lexicon/attention.status";
 import type { HandlerInterface } from "@rat-king/lexicon/mailbox-handlers";
-import { Effect, Schema } from "effect";
+import { Clock, Effect, Option, Schema } from "effect";
 
 import {
   attentionBytes,
   defaultPreferences,
   defaultStatus,
 } from "../../../packages/mailbox-client/src/attention.ts";
+import { AttentionDirectory, delegates } from "./attention-directory.ts";
 import { DidResolver } from "./auth.ts";
 import { Caller } from "./caller.ts";
 import { failure } from "./failure.ts";
@@ -46,6 +47,7 @@ export const attentionHandlers = Effect.gen(function* attentionHandlers() {
   const caller = yield* Caller;
   const store = yield* MailboxStore;
   const resolver = yield* DidResolver;
+  const directory = yield* Effect.serviceOption(AttentionDirectory);
 
   const own = (did: string) =>
     caller.did === did ? Effect.void : Effect.fail(failure("Forbidden", 403));
@@ -106,6 +108,33 @@ export const attentionHandlers = Effect.gen(function* attentionHandlers() {
     ),
     putStatus: Effect.fn("Attention.putStatus")(function* putStatus(input) {
       yield* signed(input, PutStatus.Method.nsid, input.status);
+
+      if (input.status.delegate !== undefined) {
+        if (Option.isNone(directory)) {
+          return yield* Effect.fail(failure("MailboxUnavailable", 503));
+        }
+
+        const peer = yield* directory.value.resolve(input.status.delegate);
+
+        if (Option.isNone(peer)) {
+          return yield* Effect.fail(failure("DelegateNotFound"));
+        }
+
+        if (peer.value === input.did) {
+          return yield* Effect.fail(failure("DelegateSelf"));
+        }
+
+        const status = yield* directory.value.status(peer.value);
+        const now = yield* Clock.currentTimeMillis;
+
+        if (delegates(status, now) && status.delegate !== undefined) {
+          const back = yield* directory.value.resolve(status.delegate);
+
+          if (Option.isSome(back) && back.value === input.did) {
+            return yield* Effect.fail(failure("DelegateCycle"));
+          }
+        }
+      }
 
       return yield* store.transaction((tx) => {
         recipient(tx.recipient(), input.did);

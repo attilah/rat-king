@@ -10,6 +10,7 @@ import { Context, Effect, Schema } from "effect";
 import { failure } from "./failure.ts";
 
 export interface Message {
+  readonly critical?: boolean;
   readonly canonicalBytes: string;
   readonly envelope: Defs.EncryptedEnvelopeValue;
   readonly admission: Defs.ReceiptValue;

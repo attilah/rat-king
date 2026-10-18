@@ -30,6 +30,7 @@ const NumberRow = Schema.Struct({
 const Persisted = Schema.Struct({
   admission: Defs.Receipt,
   canonicalBytes: Schema.String,
+  critical: Schema.optionalKey(Schema.Boolean),
   current: Defs.Receipt,
   envelope: Defs.EncryptedEnvelope,
 });
