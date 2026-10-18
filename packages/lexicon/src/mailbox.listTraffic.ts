@@ -3,6 +3,22 @@ import { Effect, Schema } from "effect";
 import * as Query from "./query.ts";
 import * as Runtime from "./runtime.ts";
 
+export const CriticalCount = Schema.StructWithRest(
+  Schema.Struct({
+    count: Schema.Int.check(
+      Schema.isGreaterThanOrEqualTo(1),
+      Schema.isLessThanOrEqualTo(9_007_199_254_740_991)
+    ),
+    day: Runtime.lexString({ type: "string" }),
+    senderDid: Runtime.lexString({ format: "did", type: "string" }).pipe(
+      Schema.brand("Lexicon:did")
+    ),
+  }),
+  [Schema.Record(Schema.String, Runtime.Data)]
+);
+
+export type CriticalCountValue = typeof CriticalCount.Type;
+
 export const Entry = Schema.StructWithRest(
   Schema.Struct({
     body: Schema.optionalKey(
@@ -74,6 +90,12 @@ export type InputValue = typeof Input.Type;
 
 export const Output = Schema.StructWithRest(
   Schema.Struct({
+    criticalCounts: Schema.optionalKey(
+      Schema.Array(CriticalCount).check(
+        Schema.isMinLength(0),
+        Schema.isMaxLength(100)
+      )
+    ),
     cursor: Runtime.lexString({ type: "string" }),
     events: Schema.Array(Entry).check(
       Schema.isMinLength(0),

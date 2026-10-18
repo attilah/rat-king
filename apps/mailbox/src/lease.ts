@@ -261,6 +261,7 @@ export const leaseLayer = Layer.effect(
 );
 
 export interface MailboxPolicy {
+  readonly delegation?: boolean;
   readonly resolvers: readonly string[];
   readonly operators: readonly string[];
   readonly staticDocuments: readonly Defs.DidDocumentValue[];

@@ -271,11 +271,31 @@ export interface Self {
 }
 
 interface Admitted {
+  readonly delegated?: Defs.DelegationReceiptValue;
   readonly id: string;
   readonly seq: number;
   readonly to: string;
   readonly did: string;
 }
+
+const admissionOf = (
+  target: { readonly did: string; readonly name: string },
+  id: string,
+  receipt: Defs.ReceiptValue
+): Admitted => {
+  const admitted: Admitted = {
+    did: target.did,
+    id,
+    seq: receipt.seq,
+    to: target.name,
+  };
+
+  if (receipt.delegated !== undefined) {
+    Object.assign(admitted, { delegated: receipt.delegated });
+  }
+
+  return admitted;
+};
 
 export interface HandledAck {
   readonly acked: true;
@@ -817,6 +837,17 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
         verified,
       };
 
+      if (message.delegatedTo !== undefined) {
+        Object.assign(inbound, { delegatedTo: message.delegatedTo });
+      }
+
+      if (message.delegatedFor !== undefined) {
+        Object.assign(inbound, {
+          delegatedFor: message.delegatedFor,
+          originalId: message.originalId,
+        });
+      }
+
       if (settings.attentionLevers === true) {
         Object.assign(inbound, {
           sender: Option.getOrElse(known, () =>
@@ -839,11 +870,9 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
         }
 
         if (payload.value.to !== undefined) {
-          const copy = addressedElsewhere(
-            settings.reserved,
-            payload.value.to,
-            own.name
-          );
+          const copy =
+            message.delegatedFor === undefined &&
+            addressedElsewhere(settings.reserved, payload.value.to, own.name);
 
           Object.assign(inbound, { copy, to: payload.value.to });
 
@@ -1529,12 +1558,9 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
 
         const delivered = yield* SendOutcomes.$match(outcome, {
           Accepted: ({ receipt }) =>
-            Effect.succeed({
-              did: target.did,
-              id: envelope.aad.messageId,
-              seq: receipt.seq,
-              to: target.name,
-            }),
+            Effect.succeed(
+              admissionOf(target, envelope.aad.messageId, receipt)
+            ),
           NotAttempted: ({ reason }) =>
             Effect.fail(refused("NotAttempted")(reason)),
           Rejected: ({ error }) =>
@@ -2246,15 +2272,17 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
               continue;
             }
 
-            const opened = yield* client.open(event.envelope).pipe(
-              Effect.catch((error) =>
-                client.refresh(event.envelope.aad.senderDid).pipe(
-                  Effect.andThen(client.open(event.envelope)),
-                  Effect.mapError((retry) => ({ error, retry }))
-                )
-              ),
-              Effect.result
-            );
+            const opened = yield* client
+              .open(event.envelope, event.receipt)
+              .pipe(
+                Effect.catch((error) =>
+                  client.refresh(event.envelope.aad.senderDid).pipe(
+                    Effect.andThen(client.open(event.envelope, event.receipt)),
+                    Effect.mapError((retry) => ({ error, retry }))
+                  )
+                ),
+                Effect.result
+              );
 
             if (Result.isFailure(opened)) {
               unreadable.push({
@@ -2867,12 +2895,17 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
         return yield* refused("Self")("No other thread participant");
       }
 
+      const originalId = record.value.originalId ?? id;
+
       const replyOptions: SendOptions = {
         ...options,
         cc: recipients.slice(1),
         kind: options?.kind === "data" ? "data" : "reply",
-        replyTo: { messageId: id, senderDid: record.value.did },
-        thread: record.value.thread ?? id,
+        replyTo: {
+          messageId: originalId,
+          senderDid: record.value.did,
+        },
+        thread: record.value.thread ?? originalId,
       };
 
       if (record.value.relay !== undefined && options?.encrypt === undefined) {

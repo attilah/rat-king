@@ -34,6 +34,8 @@ const Details = Schema.Struct({
   body: Schema.String,
   cc: Schema.Boolean,
   ccNames: Schema.optional(Schema.Array(Schema.String)),
+  delegatedFor: Schema.optional(Schema.String),
+  delegatedTo: Schema.optional(Schema.String),
   did: Schema.String,
   from: Schema.String,
   id: Schema.String,
@@ -105,6 +107,12 @@ const footer = (value: InboundView, expanded: boolean): string =>
   [
     `id ${oneLine(value.id)}`,
     reasonText(value),
+    value.delegatedFor === undefined
+      ? undefined
+      : `for ${oneLine(value.delegatedFor)}`,
+    value.delegatedTo === undefined
+      ? undefined
+      : `handled by ${oneLine(value.delegatedTo)}`,
     value.relay === undefined ? undefined : `via ${oneLine(value.relay.name)}`,
     value.relay?.encrypted === true ? "encrypted" : undefined,
     value.verified ? undefined : `unverified sender ${oneLine(value.did)}`,

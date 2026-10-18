@@ -28,6 +28,7 @@
             "cursor"
           ],
           "properties": {
+            "criticalCounts": { "type": "array", "maxLength": 100, "items": { "type": "ref", "ref": "#criticalCount" } },
             "events": {
               "type": "array",
               "maxLength": 100,
@@ -56,6 +57,15 @@
           "name": "MailboxUnavailable"
         }
       ]
+    },
+    "criticalCount": {
+      "type": "object",
+      "required": ["senderDid", "day", "count"],
+      "properties": {
+        "senderDid": { "type": "string", "format": "did" },
+        "day": { "type": "string" },
+        "count": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 }
+      }
     },
     "entry": {
       "type": "object",

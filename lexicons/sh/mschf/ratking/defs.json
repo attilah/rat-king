@@ -301,6 +301,14 @@
         }
       }
     },
+    "delegationReceipt": {
+      "type": "object",
+      "required": ["to"],
+      "properties": {
+        "to": { "type": "string" },
+        "until": { "type": "string", "format": "datetime" }
+      }
+    },
     "receipt": {
       "type": "object",
       "description": "Sequenced receipt in the recipient's private log. State transitions append events, never overwrite history.",
@@ -311,6 +319,10 @@
         "seq"
       ],
       "properties": {
+        "delegated": { "type": "ref", "ref": "#delegationReceipt" },
+        "delegatedTo": { "type": "string" },
+        "delegatedFor": { "type": "string" },
+        "originalId": { "type": "string", "format": "tid" },
         "message": {
           "type": "ref",
           "ref": "sh.mschf.ratking.defs#messageRef"

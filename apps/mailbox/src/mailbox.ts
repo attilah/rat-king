@@ -3,12 +3,14 @@ import { EnvelopeFailure } from "@rat-king/envelope/failure";
 import { openPlaintext } from "@rat-king/envelope/signed";
 import * as Defs from "@rat-king/lexicon/defs";
 import { MailboxHandlers } from "@rat-king/lexicon/mailbox-handlers";
-import { Clock, DateTime, Effect, Layer, Schema } from "effect";
+import { Clock, DateTime, Effect, Layer, Option, Schema } from "effect";
 
+import { AttentionDirectory, delegates } from "./attention-directory.ts";
 import { attentionHandlers } from "./attention.ts";
 import { base64url, DidResolver, Document } from "./auth.ts";
 import { Caller } from "./caller.ts";
 import { decodeCursor, encodeCursor } from "./cursor.ts";
+import { DelegationTransport, prepareDelegation } from "./delegation.ts";
 import { failure } from "./failure.ts";
 import { LeaseAuthority, leaseLayer, validLease } from "./lease.ts";
 import type { MailboxPolicy } from "./lease.ts";
@@ -158,6 +160,8 @@ export const mailboxHandlers = (policy: MailboxPolicy) =>
       const leases = yield* LeaseAuthority;
 
       const attention = yield* attentionHandlers;
+      const directory = yield* Effect.serviceOption(AttentionDirectory);
+      const transport = yield* Effect.serviceOption(DelegationTransport);
 
       return MailboxHandlers.of({
         ...attention,
@@ -379,8 +383,10 @@ export const mailboxHandlers = (policy: MailboxPolicy) =>
             "keyAgreement"
           );
 
+          let signed: Defs.SigningPayloadValue | undefined;
+
           if (plaintext(envelope)) {
-            yield* openPlaintext(envelope, (did, keyId) =>
+            signed = yield* openPlaintext(envelope, (did, keyId) =>
               resolver.resolve(did, keyId, "authentication").pipe(
                 Effect.mapError(
                   () =>
@@ -396,8 +402,48 @@ export const mailboxHandlers = (policy: MailboxPolicy) =>
             );
           }
 
-          const now = yield* Clock.currentTimeMillis;
+          if (policy.delegation === true && Option.isNone(transport)) {
+            return yield* failure("MailboxUnavailable", 503);
+          }
+
           const bytes = base64url(canonical(envelope));
+
+          const replay =
+            policy.delegation === true
+              ? yield* store.transaction((tx) =>
+                  tx.get(envelope.aad.senderDid, envelope.aad.messageId)
+                )
+              : undefined;
+
+          if (replay !== undefined) {
+            if (replay.canonicalBytes !== bytes) {
+              return yield* failure("Conflict", 409);
+            }
+
+            return { receipt: replay.admission };
+          }
+
+          const plan =
+            policy.delegation === true
+              ? yield* Option.match(directory, {
+                  onNone: () => Effect.fail(failure("MailboxUnavailable", 503)),
+                  onSome: (port) =>
+                    prepareDelegation(
+                      envelope,
+                      signed,
+                      input.critical,
+                      policy.operators
+                    ).pipe(
+                      Effect.provideService(MailboxStore, store),
+                      Effect.provideService(AttentionDirectory, port),
+                      Effect.catchTag("XrpcFailure", () =>
+                        Effect.succeed(Option.none())
+                      )
+                    ),
+                })
+              : Option.none();
+
+          const now = yield* Clock.currentTimeMillis;
 
           return yield* store.transaction((tx) => {
             if (tx.recipient() !== envelope.aad.recipientDid) {
@@ -439,7 +485,32 @@ export const mailboxHandlers = (policy: MailboxPolicy) =>
               state: "accepted",
             });
 
-            if (input.woke !== undefined) {
+            const status =
+              policy.delegation === true ? tx.attentionStatus() : undefined;
+
+            const route =
+              Option.isSome(plan) &&
+              status !== undefined &&
+              status.delegate === plan.value.delegateName &&
+              delegates(status, now)
+                ? plan.value
+                : undefined;
+
+            if (route !== undefined) {
+              const delegated = { to: route.delegateName };
+
+              if (status?.until !== undefined) {
+                Object.assign(delegated, { until: status.until });
+              }
+
+              Object.assign(receipt, {
+                delegated,
+                delegatedTo: route.delegateName,
+                woke: false,
+              });
+            }
+
+            if (input.woke !== undefined && route === undefined) {
               Object.assign(receipt, { woke: input.woke });
             }
 
@@ -463,6 +534,10 @@ export const mailboxHandlers = (policy: MailboxPolicy) =>
 
             if (input.critical !== undefined) {
               Object.assign(message, { critical: input.critical });
+            }
+
+            if (route !== undefined) {
+              Object.assign(message, { delegationPending: route });
             }
 
             tx.put(message);

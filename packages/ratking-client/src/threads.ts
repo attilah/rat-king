@@ -13,6 +13,7 @@ export interface Reply {
 }
 
 export interface Received {
+  readonly originalId?: string;
   readonly relay?: NonNullable<Inbound["relay"]>;
   readonly id: string;
   readonly from: string;
@@ -84,7 +85,13 @@ const makeThreads = Effect.sync((): ThreadsApi => {
       Effect.sync(() => {
         waiters.delete(id);
       }),
-    lookup: (id) => Effect.sync(() => Option.fromNullishOr(received.get(id))),
+    lookup: (id) =>
+      Effect.sync(() =>
+        Option.fromNullishOr(
+          received.get(id) ??
+            [...received.values()].find((record) => record.originalId === id)
+        )
+      ),
     pending: Effect.sync(() =>
       [...received.values()].filter((record) => record.ask && !record.answered)
     ),
@@ -98,6 +105,10 @@ const makeThreads = Effect.sync((): ThreadsApi => {
           id: inbound.id,
           preview: inbound.body.replaceAll(/\s+/gu, " ").slice(0, 80),
         };
+
+        if (inbound.originalId !== undefined) {
+          Object.assign(record, { originalId: inbound.originalId });
+        }
 
         if (inbound.ccNames !== undefined) {
           Object.assign(record, { ccNames: inbound.ccNames });

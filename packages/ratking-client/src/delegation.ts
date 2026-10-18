@@ -7,6 +7,7 @@ import type { Arrival } from "./attend.ts";
 export interface DelegationArrival extends Arrival {
   readonly critical?: boolean;
   readonly delegated?: boolean;
+  readonly encrypted?: boolean;
   readonly openAsk?: boolean;
   readonly operator?: boolean;
 }
@@ -16,6 +17,7 @@ export type DelegationReason = Data.TaggedEnum<{
   cc: Readonly<Record<never, never>>;
   critical: Readonly<Record<never, never>>;
   delegated: Readonly<Record<never, never>>;
+  encrypted: Readonly<Record<never, never>>;
   exempt: Readonly<Record<never, never>>;
   expired: Readonly<Record<never, never>>;
   inactive: Readonly<Record<never, never>>;
@@ -23,6 +25,7 @@ export type DelegationReason = Data.TaggedEnum<{
   openAsk: Readonly<Record<never, never>>;
   operator: Readonly<Record<never, never>>;
   quietDesk: Readonly<Record<never, never>>;
+  reply: Readonly<Record<never, never>>;
 }>;
 
 export const DelegationReasons = Data.taggedEnum<DelegationReason>();
@@ -38,6 +41,10 @@ const protectedReason = (
   arrival: DelegationArrival,
   status: Status.MainValue | undefined
 ): DelegationReason | undefined => {
+  if (arrival.encrypted === true) {
+    return DelegationReasons.encrypted();
+  }
+
   if (arrival.copy === true) {
     return DelegationReasons.cc();
   }
@@ -56,6 +63,10 @@ const protectedReason = (
 
   if (arrival.kind === "reply" && arrival.openAsk === true) {
     return DelegationReasons.openAsk();
+  }
+
+  if (arrival.kind === "reply") {
+    return DelegationReasons.reply();
   }
 
   if (arrival.critical === true) {

@@ -39,6 +39,12 @@ export declare const Output: Schema.StructWithRest<Schema.Struct<{
             readonly version: Schema.Int;
         }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
         readonly receipt: Schema.StructWithRest<Schema.Struct<{
+            readonly delegated: Schema.optionalKey<Schema.StructWithRest<Schema.Struct<{
+                readonly to: Schema.String;
+                readonly until: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:datetime">>;
+            }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>>;
+            readonly delegatedFor: Schema.optionalKey<Schema.String>;
+            readonly delegatedTo: Schema.optionalKey<Schema.String>;
             readonly detail: Schema.optionalKey<Schema.String>;
             readonly message: Schema.StructWithRest<Schema.Struct<{
                 readonly cid: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:cid">>;
@@ -46,6 +52,7 @@ export declare const Output: Schema.StructWithRest<Schema.Struct<{
                 readonly senderDid: Schema.brand<Schema.String, "Lexicon:did">;
                 readonly uri: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:at-uri">>;
             }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
+            readonly originalId: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:tid">>;
             readonly recipientDid: Schema.brand<Schema.String, "Lexicon:did">;
             readonly recordedAt: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:datetime">>;
             readonly seq: Schema.Int;
@@ -57,6 +64,12 @@ export declare const Output: Schema.StructWithRest<Schema.Struct<{
     }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>, Schema.StructWithRest<Schema.Struct<{
         readonly $type: Schema.Literal<"sh.mschf.ratking.defs#receiptEvent">;
         readonly receipt: Schema.StructWithRest<Schema.Struct<{
+            readonly delegated: Schema.optionalKey<Schema.StructWithRest<Schema.Struct<{
+                readonly to: Schema.String;
+                readonly until: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:datetime">>;
+            }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>>;
+            readonly delegatedFor: Schema.optionalKey<Schema.String>;
+            readonly delegatedTo: Schema.optionalKey<Schema.String>;
             readonly detail: Schema.optionalKey<Schema.String>;
             readonly message: Schema.StructWithRest<Schema.Struct<{
                 readonly cid: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:cid">>;
@@ -64,6 +77,7 @@ export declare const Output: Schema.StructWithRest<Schema.Struct<{
                 readonly senderDid: Schema.brand<Schema.String, "Lexicon:did">;
                 readonly uri: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:at-uri">>;
             }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
+            readonly originalId: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:tid">>;
             readonly recipientDid: Schema.brand<Schema.String, "Lexicon:did">;
             readonly recordedAt: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:datetime">>;
             readonly seq: Schema.Int;
@@ -157,6 +171,12 @@ export declare const Method: {
                 readonly version: Schema.Int;
             }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
             readonly receipt: Schema.StructWithRest<Schema.Struct<{
+                readonly delegated: Schema.optionalKey<Schema.StructWithRest<Schema.Struct<{
+                    readonly to: Schema.String;
+                    readonly until: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:datetime">>;
+                }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>>;
+                readonly delegatedFor: Schema.optionalKey<Schema.String>;
+                readonly delegatedTo: Schema.optionalKey<Schema.String>;
                 readonly detail: Schema.optionalKey<Schema.String>;
                 readonly message: Schema.StructWithRest<Schema.Struct<{
                     readonly cid: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:cid">>;
@@ -164,6 +184,7 @@ export declare const Method: {
                     readonly senderDid: Schema.brand<Schema.String, "Lexicon:did">;
                     readonly uri: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:at-uri">>;
                 }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
+                readonly originalId: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:tid">>;
                 readonly recipientDid: Schema.brand<Schema.String, "Lexicon:did">;
                 readonly recordedAt: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:datetime">>;
                 readonly seq: Schema.Int;
@@ -175,6 +196,12 @@ export declare const Method: {
         }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>, Schema.StructWithRest<Schema.Struct<{
             readonly $type: Schema.Literal<"sh.mschf.ratking.defs#receiptEvent">;
             readonly receipt: Schema.StructWithRest<Schema.Struct<{
+                readonly delegated: Schema.optionalKey<Schema.StructWithRest<Schema.Struct<{
+                    readonly to: Schema.String;
+                    readonly until: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:datetime">>;
+                }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>>;
+                readonly delegatedFor: Schema.optionalKey<Schema.String>;
+                readonly delegatedTo: Schema.optionalKey<Schema.String>;
                 readonly detail: Schema.optionalKey<Schema.String>;
                 readonly message: Schema.StructWithRest<Schema.Struct<{
                     readonly cid: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:cid">>;
@@ -182,6 +209,7 @@ export declare const Method: {
                     readonly senderDid: Schema.brand<Schema.String, "Lexicon:did">;
                     readonly uri: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:at-uri">>;
                 }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
+                readonly originalId: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:tid">>;
                 readonly recipientDid: Schema.brand<Schema.String, "Lexicon:did">;
                 readonly recordedAt: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:datetime">>;
                 readonly seq: Schema.Int;

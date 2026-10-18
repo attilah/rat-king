@@ -32,6 +32,14 @@ const Persisted = Schema.Struct({
   canonicalBytes: Schema.String,
   critical: Schema.optionalKey(Schema.Boolean),
   current: Defs.Receipt,
+  delegationPending: Schema.optionalKey(
+    Schema.Struct({
+      copyId: Schema.String,
+      delegateDid: Schema.String,
+      delegateName: Schema.String,
+      desk: Schema.String,
+    })
+  ),
   envelope: Defs.EncryptedEnvelope,
 });
 
@@ -53,7 +61,8 @@ export const sqliteStore = (
   sql: Sql,
   recipient: string,
   committed?: (events: readonly Event[], lease: LeaseValue | undefined) => void,
-  beforeTransaction: Effect.Effect<void> = Effect.void
+  beforeTransaction: Effect.Effect<void> = Effect.void,
+  delegation = false
 ) => {
   sql.exec(
     "CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
@@ -182,11 +191,21 @@ export const sqliteStore = (
         ? undefined
         : Schema.decodeUnknownSync(Lease)(JSON.parse(value));
     },
+    pendingDelegations: () =>
+      Array.from(
+        sql.exec(
+          "SELECT value FROM messages WHERE json_extract(value,'$.delegationPending') IS NOT NULL ORDER BY json_extract(value,'$.admission.seq') LIMIT 100"
+        ),
+        (row) =>
+          Schema.decodeUnknownSync(Persisted)(
+            JSON.parse(Schema.decodeUnknownSync(Row)(row).value)
+          )
+      ),
     put: (message: Message) => {
       sql.exec(
         "INSERT INTO messages (sender,tid,value) VALUES (?,?,?) ON CONFLICT(sender,tid) DO UPDATE SET value=excluded.value",
-        message.envelope.aad.senderDid,
-        message.envelope.aad.messageId,
+        message.admission.message.senderDid,
+        message.admission.message.messageId,
         JSON.stringify(Schema.encodeSync(Persisted)(message))
       );
     },
@@ -270,7 +289,7 @@ export const sqliteStore = (
                     continue;
                   }
 
-                  const entry = projectTraffic(transaction, event);
+                  const entry = projectTraffic(transaction, event, delegation);
                   sql.exec(
                     "INSERT INTO traffic_outbox (seq,value) VALUES (?,?)",
                     entry.recipientSeq,

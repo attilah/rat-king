@@ -11,6 +11,7 @@ export interface Bindings {
   readonly DESK?: DurableObjectNamespace<Desk>;
   readonly ISSUER_DID_TEMPLATE?: string;
   readonly ISSUER_RESERVED?: string;
+  readonly DELEGATION?: string;
   readonly SERVICE_DID: string;
   readonly DID_DOCUMENTS: string;
   readonly LEASE_RESOLVERS?: string;

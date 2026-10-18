@@ -1,5 +1,11 @@
 import { Effect, Schema } from "effect";
 import * as Runtime from "./runtime.js";
+export declare const CriticalCount: Schema.StructWithRest<Schema.Struct<{
+    readonly count: Schema.Int;
+    readonly day: Schema.String;
+    readonly senderDid: Schema.brand<Schema.String, "Lexicon:did">;
+}>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
+export type CriticalCountValue = typeof CriticalCount.Type;
 export declare const Entry: Schema.StructWithRest<Schema.Struct<{
     readonly body: Schema.optionalKey<Schema.String>;
     readonly ciphertextSize: Schema.Int;
@@ -20,6 +26,11 @@ export type ParamsValue = typeof Params.Type;
 export declare const Input: Schema.Undefined;
 export type InputValue = typeof Input.Type;
 export declare const Output: Schema.StructWithRest<Schema.Struct<{
+    readonly criticalCounts: Schema.optionalKey<Schema.$Array<Schema.StructWithRest<Schema.Struct<{
+        readonly count: Schema.Int;
+        readonly day: Schema.String;
+        readonly senderDid: Schema.brand<Schema.String, "Lexicon:did">;
+    }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>>>;
     readonly cursor: Schema.String;
     readonly events: Schema.$Array<Schema.StructWithRest<Schema.Struct<{
         readonly body: Schema.optionalKey<Schema.String>;
@@ -72,6 +83,11 @@ export declare const Method: {
     readonly method: "GET";
     readonly nsid: "sh.mschf.ratking.mailbox.listTraffic";
     readonly output: Schema.StructWithRest<Schema.Struct<{
+        readonly criticalCounts: Schema.optionalKey<Schema.$Array<Schema.StructWithRest<Schema.Struct<{
+            readonly count: Schema.Int;
+            readonly day: Schema.String;
+            readonly senderDid: Schema.brand<Schema.String, "Lexicon:did">;
+        }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>>>;
         readonly cursor: Schema.String;
         readonly events: Schema.$Array<Schema.StructWithRest<Schema.Struct<{
             readonly body: Schema.optionalKey<Schema.String>;
