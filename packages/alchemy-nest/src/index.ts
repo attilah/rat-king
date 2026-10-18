@@ -36,6 +36,20 @@ export type { BucketOutput } from "./object-store.ts";
 
 export { Celld } from "./celld.ts";
 
+export { Darwin, LaunchdService, LaunchdServiceProvider } from "./darwin.ts";
+
+export { DarwinInstance, darwinProviders } from "./darwin-instance.ts";
+
+export type { DarwinInstanceProps } from "./darwin-instance.ts";
+
+export { darwinLocalShell } from "./darwin-local.ts";
+
+export { darwinCelldBinary, darwinWeedBinary } from "./darwin-pins.ts";
+
+export type { LaunchdProps } from "./launchd-plist.ts";
+
+export type { LaunchdAttributes } from "./launchd.ts";
+
 export { SecretSource } from "./secret-source.ts";
 
 export type { CredentialNames } from "./store-credentials.ts";

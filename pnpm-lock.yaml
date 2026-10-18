@@ -449,6 +449,9 @@ importers:
       esbuild:
         specifier: 0.28.2
         version: 0.28.2
+      xstate:
+        specifier: 6.0.0-alpha.65
+        version: 6.0.0-alpha.65
     devDependencies:
       '@effect/platform-node':
         specifier: 4.0.0
