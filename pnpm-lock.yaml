@@ -588,6 +588,40 @@ importers:
         specifier: 5.0.1
         version: 5.0.1(@types/node@24.13.6)(vite@8.3.2(@types/node@24.13.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
+  packages/remembers:
+    dependencies:
+      '@effect/platform-node':
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.1)(redis@6.3.0)
+      '@mischief/worker':
+        specifier: github:joelhooks/mischief#639eb265ae50b2df2bafd796fb6b6796b97080dd&path:/apps/worker/bundle
+        version: https://codeload.github.com/joelhooks/mischief/tar.gz/639eb265ae50b2df2bafd796fb6b6796b97080dd#path:/apps/worker/bundle
+      '@rat-king/capability':
+        specifier: workspace:*
+        version: link:../capability
+      '@xstate/effect':
+        specifier: 0.1.0-alpha.2
+        version: 0.1.0-alpha.2(effect@4.0.1)(xstate@6.0.0-alpha.65)
+      effect:
+        specifier: 4.0.1
+        version: 4.0.1
+      xstate:
+        specifier: 6.0.0-alpha.65
+        version: 6.0.0-alpha.65
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: 5.20261004.1
+        version: 5.20261004.1
+      '@earendil-works/pi-coding-agent':
+        specifier: 1.0.2
+        version: 1.0.2(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.5)
+      fast-check:
+        specifier: 4.10.2
+        version: 4.10.2
+      typebox:
+        specifier: 1.3.27
+        version: 1.3.27
+
 packages:
 
   '@alchemy.run/cloudflare-runtime@2.0.0-beta.83':
@@ -1501,6 +1535,10 @@ packages:
     resolution: {integrity: sha512-4/0CvEdhi6+KjMxMaVbFM2n2Z44escBRoEYpR+gZg64DdetzGnYm8mcNLcoySaDJZNaBd6wz5DNdgRmcI4hXcg==}
     cpu: [x64]
     os: [win32]
+
+  '@mischief/worker@https://codeload.github.com/joelhooks/mischief/tar.gz/639eb265ae50b2df2bafd796fb6b6796b97080dd#path:/apps/worker/bundle':
+    resolution: {gitHosted: true, integrity: sha512-y9iHEJ7U/FVbr/3TMoFTzVyleFQbna0OTKlLYFpyPD5+jK5hdi9U+tvfZwNCDUmnNLLnebTLeyBQRNJgRb9b7g==, path: /apps/worker/bundle, tarball: https://codeload.github.com/joelhooks/mischief/tar.gz/639eb265ae50b2df2bafd796fb6b6796b97080dd}
+    version: 0.1.0
 
   '@modelcontextprotocol/sdk@1.29.0':
     resolution: {integrity: sha512-zo37mZA9hJWpULgkRpowewez1y6ML5GsXJPY8FI0tBBCd77HEvza4jDqRKOXgHNn867PVGCyTdzqpz0izu5ZjQ==}
@@ -4913,6 +4951,10 @@ snapshots:
 
   '@libsql/win32-x64-msvc@0.5.29':
     optional: true
+
+  '@mischief/worker@https://codeload.github.com/joelhooks/mischief/tar.gz/639eb265ae50b2df2bafd796fb6b6796b97080dd#path:/apps/worker/bundle':
+    dependencies:
+      effect: 4.0.1
 
   '@modelcontextprotocol/sdk@1.29.0(zod@4.6.5)':
     dependencies:

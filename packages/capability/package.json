@@ -4,6 +4,11 @@
   "private": true,
   "type": "module",
   "exports": {
+    ".": "./src/index.ts",
+    "./actor-watch": {
+      "types": "./src/actor-watch.ts",
+      "import": "./src/actor-watch.ts"
+    },
     "./read-only": "./src/read-only.ts"
   },
   "dependencies": {
