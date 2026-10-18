@@ -1,0 +1,429 @@
+{
+  "defs": {
+    "agree": {
+      "nullable": [
+        "text"
+      ],
+      "properties": {
+        "at": {
+          "format": "datetime",
+          "type": "string",
+          "x-maxCodeUnits": 40,
+          "x-minCodeUnits": 1
+        },
+        "by": {
+          "type": "string",
+          "x-maxCodeUnits": 200,
+          "x-minCodeUnits": 1
+        },
+        "findingId": {
+          "type": "string",
+          "x-pattern": "^[a-f0-9]{64}$"
+        },
+        "kind": {
+          "enum": [
+            "agree"
+          ],
+          "type": "string"
+        },
+        "text": {
+          "type": "string",
+          "x-maxCodeUnits": 1200,
+          "x-minCodeUnits": 1
+        }
+      },
+      "required": [
+        "at",
+        "by",
+        "findingId",
+        "kind",
+        "text"
+      ],
+      "type": "object",
+      "x-strict": true
+    },
+    "comment": {
+      "properties": {
+        "at": {
+          "format": "datetime",
+          "type": "string",
+          "x-maxCodeUnits": 40,
+          "x-minCodeUnits": 1
+        },
+        "by": {
+          "type": "string",
+          "x-maxCodeUnits": 200,
+          "x-minCodeUnits": 1
+        },
+        "findingId": {
+          "type": "string",
+          "x-pattern": "^[a-f0-9]{64}$"
+        },
+        "kind": {
+          "enum": [
+            "comment"
+          ],
+          "type": "string"
+        },
+        "text": {
+          "type": "string",
+          "x-maxCodeUnits": 1200,
+          "x-minCodeUnits": 1
+        }
+      },
+      "required": [
+        "at",
+        "by",
+        "findingId",
+        "kind",
+        "text"
+      ],
+      "type": "object",
+      "x-strict": true
+    },
+    "dispute": {
+      "properties": {
+        "at": {
+          "format": "datetime",
+          "type": "string",
+          "x-maxCodeUnits": 40,
+          "x-minCodeUnits": 1
+        },
+        "by": {
+          "type": "string",
+          "x-maxCodeUnits": 200,
+          "x-minCodeUnits": 1
+        },
+        "findingId": {
+          "type": "string",
+          "x-pattern": "^[a-f0-9]{64}$"
+        },
+        "kind": {
+          "enum": [
+            "dispute"
+          ],
+          "type": "string"
+        },
+        "source": {
+          "ref": "sh.mschf.rulegarden.finding#source",
+          "type": "ref"
+        },
+        "text": {
+          "type": "string",
+          "x-maxCodeUnits": 1200,
+          "x-minCodeUnits": 1
+        }
+      },
+      "required": [
+        "at",
+        "by",
+        "findingId",
+        "kind",
+        "source",
+        "text"
+      ],
+      "type": "object",
+      "x-strict": true
+    },
+    "duplicate": {
+      "properties": {
+        "at": {
+          "format": "datetime",
+          "type": "string",
+          "x-maxCodeUnits": 40,
+          "x-minCodeUnits": 1
+        },
+        "by": {
+          "type": "string",
+          "x-maxCodeUnits": 200,
+          "x-minCodeUnits": 1
+        },
+        "findingId": {
+          "type": "string",
+          "x-pattern": "^[a-f0-9]{64}$"
+        },
+        "kind": {
+          "enum": [
+            "duplicate"
+          ],
+          "type": "string"
+        },
+        "of": {
+          "type": "string",
+          "x-pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "at",
+        "by",
+        "findingId",
+        "kind",
+        "of"
+      ],
+      "type": "object",
+      "x-strict": true
+    },
+    "evidence": {
+      "nullable": [
+        "source"
+      ],
+      "properties": {
+        "at": {
+          "format": "datetime",
+          "type": "string",
+          "x-maxCodeUnits": 40,
+          "x-minCodeUnits": 1
+        },
+        "by": {
+          "type": "string",
+          "x-maxCodeUnits": 200,
+          "x-minCodeUnits": 1
+        },
+        "findingId": {
+          "type": "string",
+          "x-pattern": "^[a-f0-9]{64}$"
+        },
+        "kind": {
+          "enum": [
+            "evidence"
+          ],
+          "type": "string"
+        },
+        "source": {
+          "ref": "sh.mschf.rulegarden.finding#source",
+          "type": "ref"
+        },
+        "text": {
+          "type": "string",
+          "x-maxCodeUnits": 1200,
+          "x-minCodeUnits": 1
+        }
+      },
+      "required": [
+        "at",
+        "by",
+        "findingId",
+        "kind",
+        "source",
+        "text"
+      ],
+      "type": "object",
+      "x-strict": true
+    },
+    "fixed": {
+      "nullable": [
+        "text"
+      ],
+      "properties": {
+        "at": {
+          "format": "datetime",
+          "type": "string",
+          "x-maxCodeUnits": 40,
+          "x-minCodeUnits": 1
+        },
+        "by": {
+          "type": "string",
+          "x-maxCodeUnits": 200,
+          "x-minCodeUnits": 1
+        },
+        "commit": {
+          "type": "string",
+          "x-maxCodeUnits": 120,
+          "x-minCodeUnits": 1
+        },
+        "findingId": {
+          "type": "string",
+          "x-pattern": "^[a-f0-9]{64}$"
+        },
+        "kind": {
+          "enum": [
+            "fixed"
+          ],
+          "type": "string"
+        },
+        "repo": {
+          "type": "string",
+          "x-maxCodeUnits": 200,
+          "x-minCodeUnits": 1
+        },
+        "text": {
+          "type": "string",
+          "x-maxCodeUnits": 1200,
+          "x-minCodeUnits": 1
+        }
+      },
+      "required": [
+        "at",
+        "by",
+        "commit",
+        "findingId",
+        "kind",
+        "repo",
+        "text"
+      ],
+      "type": "object",
+      "x-strict": true
+    },
+    "main": {
+      "key": "tid",
+      "record": {
+        "nullable": [
+          "source",
+          "text"
+        ],
+        "properties": {
+          "at": {
+            "format": "datetime",
+            "type": "string",
+            "x-maxCodeUnits": 40,
+            "x-minCodeUnits": 1
+          },
+          "by": {
+            "type": "string",
+            "x-maxCodeUnits": 200,
+            "x-minCodeUnits": 1
+          },
+          "commit": {
+            "type": "string",
+            "x-maxCodeUnits": 120,
+            "x-minCodeUnits": 1
+          },
+          "findingId": {
+            "type": "string",
+            "x-pattern": "^[a-f0-9]{64}$"
+          },
+          "kind": {
+            "enum": [
+              "agree",
+              "dispute",
+              "evidence",
+              "comment",
+              "fixed",
+              "wontfix",
+              "reopen",
+              "duplicate"
+            ],
+            "type": "string"
+          },
+          "of": {
+            "type": "string",
+            "x-pattern": "^[a-f0-9]{64}$"
+          },
+          "repo": {
+            "type": "string",
+            "x-maxCodeUnits": 200,
+            "x-minCodeUnits": 1
+          },
+          "source": {
+            "ref": "sh.mschf.rulegarden.finding#source",
+            "type": "ref"
+          },
+          "text": {
+            "type": "string",
+            "x-maxCodeUnits": 1200,
+            "x-minCodeUnits": 1
+          }
+        },
+        "required": [
+          "at",
+          "by",
+          "findingId",
+          "kind"
+        ],
+        "type": "object",
+        "x-strict": true
+      },
+      "type": "record",
+      "x-variants": [
+        "#agree",
+        "#dispute",
+        "#evidence",
+        "#comment",
+        "#fixed",
+        "#wontfix",
+        "#reopen",
+        "#duplicate"
+      ]
+    },
+    "reopen": {
+      "properties": {
+        "at": {
+          "format": "datetime",
+          "type": "string",
+          "x-maxCodeUnits": 40,
+          "x-minCodeUnits": 1
+        },
+        "by": {
+          "type": "string",
+          "x-maxCodeUnits": 200,
+          "x-minCodeUnits": 1
+        },
+        "findingId": {
+          "type": "string",
+          "x-pattern": "^[a-f0-9]{64}$"
+        },
+        "kind": {
+          "enum": [
+            "reopen"
+          ],
+          "type": "string"
+        },
+        "text": {
+          "type": "string",
+          "x-maxCodeUnits": 1200,
+          "x-minCodeUnits": 1
+        }
+      },
+      "required": [
+        "at",
+        "by",
+        "findingId",
+        "kind",
+        "text"
+      ],
+      "type": "object",
+      "x-strict": true
+    },
+    "wontfix": {
+      "properties": {
+        "at": {
+          "format": "datetime",
+          "type": "string",
+          "x-maxCodeUnits": 40,
+          "x-minCodeUnits": 1
+        },
+        "by": {
+          "type": "string",
+          "x-maxCodeUnits": 200,
+          "x-minCodeUnits": 1
+        },
+        "findingId": {
+          "type": "string",
+          "x-pattern": "^[a-f0-9]{64}$"
+        },
+        "kind": {
+          "enum": [
+            "wontfix"
+          ],
+          "type": "string"
+        },
+        "text": {
+          "type": "string",
+          "x-maxCodeUnits": 1200,
+          "x-minCodeUnits": 1
+        }
+      },
+      "required": [
+        "at",
+        "by",
+        "findingId",
+        "kind",
+        "text"
+      ],
+      "type": "object",
+      "x-strict": true
+    }
+  },
+  "id": "sh.mschf.rulegarden.event",
+  "lexicon": 1
+}

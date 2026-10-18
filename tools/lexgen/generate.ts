@@ -107,6 +107,9 @@ const Extensions = Schema.Struct({
   ),
   "x-strict": Schema.optionalKey(Schema.Boolean),
   "x-unboundedInteger": Schema.optionalKey(Schema.Boolean),
+  "x-variants": Schema.optionalKey(
+    Schema.Array(Schema.String).check(Schema.isMinLength(1))
+  ),
 });
 
 const member = (key: string) =>
@@ -319,6 +322,31 @@ const renderer = (docs: readonly LexiconDoc[], doc: LexiconDoc) => {
     return `Schema.Union([${variants.join(",\n")}])`;
   };
 
+  const recordExpression = (
+    field: Extract<Field, { type: "record" }>,
+    contextId: string,
+    render: (field: Field, tag: string | undefined, contextId: string) => string
+  ): string => {
+    const variants = Schema.decodeUnknownSync(Extensions)(field)["x-variants"];
+
+    if (variants === undefined) {
+      return render(field.record, contextId, contextId);
+    }
+
+    const members = variants.map((ref) => {
+      const target = resolve(contextId, ref);
+      const found = definition(target.document, target.name);
+
+      if (found.type !== "object") {
+        return unsupported("Record variant must name an object");
+      }
+
+      return render(found, contextId, target.document);
+    });
+
+    return `Schema.Union([${members.join(",\n")}])`;
+  };
+
   const expression = (
     field: Field,
     tag?: string,
@@ -375,7 +403,7 @@ const renderer = (docs: readonly LexiconDoc[], doc: LexiconDoc) => {
       }
 
       case "record": {
-        return expression(field.record, contextId, contextId);
+        return recordExpression(field, contextId, expression);
       }
 
       case "permission-set":
@@ -684,7 +712,8 @@ export const generate = Effect.fn("lexgen.generate")(function* generate({
       !(
         doc.id.startsWith(namespace) ||
         doc.id.startsWith("sh.ratking.") ||
-        doc.id.startsWith("sh.mschf.agentgraph.")
+        doc.id.startsWith("sh.mschf.agentgraph.") ||
+        doc.id.startsWith("sh.mschf.rulegarden.")
       ) ||
       path
         .relative(path.join(root, "lexicons"), source)

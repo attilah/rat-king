@@ -1,7 +1,7 @@
 {
   "effect": "4.0.1",
   "generatorVersion": "0.1.0",
-  "sourceDigest": "4919fdd781665b61718f85fb599894e169ff90c1e7b537f4ba61f777c6d407dd",
+  "sourceDigest": "a06a897f3af78fcbbe1b72815df6ad95f71b2bc79644208a99a9319aa3bca905",
   "sources": [
     "lexicons/sh/mschf/agentgraph/checkin.json",
     "lexicons/sh/mschf/agentgraph/friction.json",
@@ -55,6 +55,8 @@
     "lexicons/sh/mschf/ratking/runtime/resolveLease.json",
     "lexicons/sh/mschf/ratking/triage/judge.json",
     "lexicons/sh/mschf/ratking/triage/verdict.json",
+    "lexicons/sh/mschf/rulegarden/event.json",
+    "lexicons/sh/mschf/rulegarden/finding.json",
     "lexicons/sh/ratking/identity.json",
     "lexicons/sh/ratking/invite.json",
     "lexicons/sh/ratking/revocation.json"
