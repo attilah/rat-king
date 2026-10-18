@@ -18,7 +18,7 @@ it.effect(
   () =>
     Effect.gen(function* cellBindings() {
       const fs = yield* FileSystem.FileSystem;
-      const root = yield* fs.makeTempDirectoryScoped();
+      const root = yield* fs.realPath(yield* fs.makeTempDirectoryScoped());
       yield* fs.makeDirectory(`${root}/remembers`, { mode: 0o700 });
       yield* Effect.gen(function* checks() {
         const cells = yield* SqlCells;
