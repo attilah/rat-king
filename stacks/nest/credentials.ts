@@ -3,7 +3,7 @@ import { Effect } from "effect";
 import { Host } from "../../packages/alchemy-nest/src/host.ts";
 import { InventoryError } from "../../packages/alchemy-nest/src/inventory-error.ts";
 
-export const fleetLegacyRandomCredentials = true;
+export const fleetLegacyRandomCredentials = false;
 
 export const fleetStoreCredentials = Effect.fn("Nest.fleetStoreCredentials")(
   function* fleetStoreCredentials(
