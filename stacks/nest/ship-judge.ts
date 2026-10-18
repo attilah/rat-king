@@ -83,6 +83,7 @@ export const Sha = Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/u));
 
 export const ShipHealth = Schema.Struct({
   listeners: Schema.NullOr(Schema.Struct({ count: Count, expected: Count })),
+  reasons: Schema.optional(Schema.Array(Schema.String)),
   status: Status,
 });
 
@@ -196,27 +197,67 @@ const deliveryReasons = (baseline: WindowFacts, after: WindowFacts) => {
   return { failures, unknowns };
 };
 
-const healthReasons = ({ listeners, status }: JudgeHealth) => [
-  ...(listeners !== null && listeners.count < listeners.expected
+export const restartReason = "celld started since the last digest";
+
+const statusRank = { fail: 2, ok: 0, warn: 1 } as const;
+
+const reasonKey = (reason: string) => reason.replaceAll(/\d+/gu, "#");
+
+const statusWorsened = (
+  health: JudgeHealth,
+  prior: JudgeHealth | null,
+  restarted: boolean
+) => {
+  if (health.status === "ok") {
+    return false;
+  }
+
+  if (
+    prior === null ||
+    prior.reasons === undefined ||
+    health.reasons === undefined
+  ) {
+    return statusRank[health.status] > statusRank[prior?.status ?? "ok"];
+  }
+
+  const known = new Set([
+    ...prior.reasons.map(reasonKey),
+    ...(restarted ? [reasonKey(restartReason)] : []),
+  ]);
+
+  return health.reasons.some((reason) => !known.has(reasonKey(reason)));
+};
+
+const healthReasons = (
+  health: JudgeHealth,
+  prior: JudgeHealth | null,
+  restarted: boolean
+) => [
+  ...(health.listeners !== null &&
+  health.listeners.count < health.listeners.expected
     ? [
         ListenersMissing.make({
-          limit: listeners.expected,
-          value: listeners.count,
+          limit: health.listeners.expected,
+          value: health.listeners.count,
         }),
       ]
     : []),
-  ...(status === "ok"
-    ? []
-    : [HealthStatus.make({ limit: "ok", value: status })]),
+  ...(statusWorsened(health, prior, restarted)
+    ? [HealthStatus.make({ limit: "ok", value: health.status })]
+    : []),
 ];
 
 export const judgeShip = (input: {
   readonly after: WindowFacts;
   readonly baseline: WindowFacts;
   readonly health: JudgeHealth | null;
+  readonly prior?: JudgeHealth | null;
+  readonly restarted?: boolean;
   readonly sha: string;
 }): Verdict => {
   const { after, baseline, health, sha } = input;
+  const prior = input.prior ?? null;
+  const restarted = input.restarted ?? false;
   const quietest = Math.min(baseline.sent, after.sent);
   const judgeable = quietest >= ShipLimits.minimumSent;
 
@@ -241,7 +282,7 @@ export const judgeShip = (input: {
 
   const failures = [
     ...delivery.failures,
-    ...(health === null ? [] : healthReasons(health)),
+    ...(health === null ? [] : healthReasons(health, prior, restarted)),
   ];
 
   const fields = {
@@ -618,7 +659,7 @@ export const gitIn = Effect.fn("ShipJudge.gitIn")(function* gitIn(
 });
 
 const usageText =
-  "Usage: ship-judge --sha <40hex> --shipped-at <ISO> --input <traffic.jsonl> [--window-minutes 10] [--baseline-end <ISO>] [--health <health.json>] | ship-judge --revertible <base>..<sha> [--repo <dir>] | ship-judge --one-way <base>..<sha> [--repo <dir>] | ship-judge --one-way-replay --last 30 [--repo <dir>]";
+  "Usage: ship-judge --sha <40hex> --shipped-at <ISO> --input <traffic.jsonl> [--window-minutes 10] [--baseline-end <ISO>] [--health <health.json>] [--pre-health <health.json>] [--restarted true|false] | ship-judge --revertible <base>..<sha> [--repo <dir>] | ship-judge --one-way <base>..<sha> [--repo <dir>] | ship-judge --one-way-replay --last 30 [--repo <dir>]";
 
 const parseFlags = (args: readonly string[], known: readonly string[]) => {
   const flags = new Map<string, string>();
@@ -736,18 +777,24 @@ const judgeVerdict = Effect.fn("ShipJudge.verdict")(function* judgeVerdict(
   }
 
   const fs = yield* FileSystem.FileSystem;
-  const healthPath = flags.get("--health");
 
-  const health =
-    healthPath === undefined
-      ? null
-      : yield* fs
-          .readFileString(healthPath)
+  const readHealth = (path: string | undefined) =>
+    path === undefined
+      ? Effect.succeed(null)
+      : fs
+          .readFileString(path)
           .pipe(
             Effect.flatMap(
               Schema.decodeUnknownEffect(Schema.fromJsonString(ShipHealth))
             )
           );
+
+  const health = yield* readHealth(flags.get("--health"));
+  const prior = yield* readHealth(flags.get("--pre-health"));
+
+  const restarted = yield* Schema.decodeUnknownEffect(
+    Schema.Literals(["true", "false"])
+  )(flags.get("--restarted") ?? "false");
 
   const window = (bounds: WindowBounds) =>
     usageWindow(
@@ -759,6 +806,8 @@ const judgeVerdict = Effect.fn("ShipJudge.verdict")(function* judgeVerdict(
     after: yield* window(windows.after),
     baseline: yield* window(windows.baseline),
     health,
+    prior,
+    restarted: restarted === "true",
     sha,
   });
 });
@@ -799,6 +848,8 @@ export const shipJudgeCommand = (args: readonly string[]) =>
       "--input",
       "--window-minutes",
       "--health",
+      "--pre-health",
+      "--restarted",
     ]);
 
     if (flags === null) {
