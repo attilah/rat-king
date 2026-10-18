@@ -98,7 +98,11 @@ export const identityContent = (
   };
 };
 
-const lines = (bucket: string, url: string) =>
+export const environmentTemplate = (
+  bucket: string,
+  url: string,
+  tuning: Readonly<Record<string, string>>
+) =>
   [
     "AWS_ACCESS_KEY_ID={{ACCESS_KEY}}",
     "AWS_SECRET_ACCESS_KEY={{SECRET_KEY}}",
@@ -106,13 +110,17 @@ const lines = (bucket: string, url: string) =>
     `S3_ENDPOINT=${envQuote(url)}`,
     `CELLD_BUCKET=${envQuote(`s3://${bucket}`)}`,
     "CELLD_OTEL=0",
+    ...Object.keys(tuning)
+      .toSorted()
+      .map((key) => `${key}=${envQuote(tuning[key] ?? "")}`),
     "",
   ].join("\n");
 
 export const environmentContent = (
   credentials: StoreCredentials,
   name: Output.Output<string>,
-  endpoint: Output.Output<string>
+  endpoint: Output.Output<string>,
+  tuning: Readonly<Record<string, string>> = {}
 ) => {
   if (credentials.kind === "references") {
     return {
@@ -125,7 +133,7 @@ export const environmentContent = (
                 ACCESS_KEY: credentials.names.accessKey,
                 SECRET_KEY: credentials.names.secretKey,
               },
-              template: lines(bucket, url),
+              template: environmentTemplate(bucket, url, tuning),
             }) satisfies ContentFrom
         )
       ),
@@ -141,7 +149,7 @@ export const environmentContent = (
     ).pipe(
       Output.map(([access, secret, bucket, url]) =>
         Redacted.make(
-          lines(bucket, url)
+          environmentTemplate(bucket, url, tuning)
             .replace("{{ACCESS_KEY}}", () => envQuote(Redacted.value(access)))
             .replace("{{SECRET_KEY}}", () => envQuote(Redacted.value(secret)))
         )

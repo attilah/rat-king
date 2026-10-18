@@ -23,8 +23,22 @@ export interface CelldProps extends InstanceProps, ServiceLimits {
   readonly host: HostNode;
   readonly prepared?: readonly Output.Output<string>[];
   readonly purgeOnDelete?: boolean;
+  readonly tuning?: Readonly<Record<string, string>>;
   readonly workerIPv4?: string;
 }
+
+const reservedTuning: ReadonlySet<string> = new Set([
+  "CELLD_BUCKET",
+  "CELLD_OTEL",
+]);
+
+export const validTuning = (tuning: Readonly<Record<string, string>>) =>
+  Object.entries(tuning).every(
+    ([key, value]) =>
+      /^CELLD_[A-Z0-9_]{1,64}$/u.test(key) &&
+      !reservedTuning.has(key) &&
+      /^[A-Za-z0-9._:/-]{1,128}$/u.test(value)
+  );
 
 export const Node = (id: string, props: CelldProps) =>
   Effect.gen(function* node() {
@@ -46,6 +60,12 @@ export const Node = (id: string, props: CelldProps) =>
       (props.portBase !== undefined && props.portBase !== layout.portBase)
     ) {
       return yield* refuse("Node instance must match its bucket.");
+    }
+
+    if (props.tuning !== undefined && !validTuning(props.tuning)) {
+      return yield* refuse(
+        "Node tuning keys must be CELLD_ names other than CELLD_BUCKET and CELLD_OTEL, with short plain values."
+      );
     }
 
     const workerIPv4 = props.workerIPv4 ?? host.tailnetIPv4;
@@ -74,7 +94,8 @@ export const Node = (id: string, props: CelldProps) =>
       ...environmentContent(
         bucket.credentials,
         bucket.resource.name,
-        bucket.resource.endpoint
+        bucket.resource.endpoint,
+        props.tuning ?? {}
       ),
       mode: 0o600,
       path: Output.interpolate`${bucket.configuration}/celld.env`,
