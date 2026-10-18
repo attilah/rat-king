@@ -77,6 +77,7 @@ export interface HostDeploymentProps {
   readonly node: Effect.Success<ReturnType<typeof DarwinInstance>>;
   readonly hostEntrypoint: string;
   readonly hostEnvironment: string;
+  readonly deploymentEnvironment: string;
   readonly workerBindings: string;
   readonly workerUrl: string;
   readonly worker: Effect.Success<ReturnType<typeof buildWorker>>;
@@ -114,6 +115,12 @@ export const RemembersHost = (id: string, props: HostDeploymentProps) =>
       path: `${props.instance.root}/remembers-worker-bindings.json`,
     });
 
+    const deploymentEnvironment = yield* RemoteFile("deployment-environment", {
+      contentFrom: { secret: props.deploymentEnvironment },
+      mode: 0o600,
+      path: `${props.instance.root}/remembers-deploy.env`,
+    });
+
     const deployment = yield* Celld.Deployment("remembers-worker", {
       ...props.worker,
       binary: props.instance.binaries.celld,
@@ -124,7 +131,7 @@ export const RemembersHost = (id: string, props: HostDeploymentProps) =>
         )
       ),
       directory: `${props.instance.root}/remembers-deployment`,
-      environmentFile: `${props.instance.root}/node.json`,
+      environmentFile: deploymentEnvironment.path,
       internalUrl: Output.all(instance.node.sha256).pipe(
         Output.map(() => `http://127.0.0.1:${props.instance.ports.internal}`)
       ),

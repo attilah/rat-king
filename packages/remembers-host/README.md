@@ -17,11 +17,12 @@ Both submission boundaries accept one fixed plan shape. Observation uses `observ
 Add `RemembersHost` to the existing private Alchemy declaration. Pass the existing `DarwinInstance` result as `node`; do not recreate the instance under a new resource ID.
 
 ```ts
-const node = yield * DarwinInstance(existingInstanceId, inventory);
-const worker = yield * buildWorker(workerEntrypoint, version, commit);
-const remembers =
-  yield *
-  RemembersHost("remembers", {
+const declaration = Effect.gen(function* declare() {
+  const node = yield* DarwinInstance(existingInstanceId, inventory);
+  const worker = yield* buildWorker(workerEntrypoint, version, commit);
+
+  return yield* RemembersHost("remembers", {
+    deploymentEnvironment: deployEnvironmentReference,
     hostEntrypoint,
     hostEnvironment: hostEnvironmentReference,
     instance: inventory,
@@ -30,9 +31,10 @@ const remembers =
     workerBindings: workerBindingsReference,
     workerUrl,
   });
+});
 ```
 
-Use the existing Darwin providers plus `Celld.DeploymentProvider()`. `buildWorker` uses the existing bundle/configuration builder. `RemembersHost` uses `Celld.Deployment` unchanged, against the instance's node environment and internal listener. It declares four Mischief SQLite Durable Object classes and restricts the private binding allowlist to `workerPrivateKeys`. The configuration includes a binding-file revision digest, so private binding or canon rotation changes the existing provider's deployment fingerprint without changing that provider.
+Use the existing Darwin providers plus `Celld.DeploymentProvider()`. `buildWorker` uses the existing bundle/configuration builder. `RemembersHost` uses `Celld.Deployment` unchanged, against the instance's node and internal listener. The deploy CLI gets a separate mode-0600 POSIX environment file through `deploymentEnvironment`. The provider sources that file with `sh`; it must not receive the Darwin daemon's JSON environment file. It declares four Mischief SQLite Durable Object classes and restricts the private binding allowlist to `workerPrivateKeys`. The configuration includes a binding-file revision digest, so private binding or canon rotation changes the existing provider's deployment fingerprint without changing that provider.
 
 The new supervisor is a `Darwin.LaunchdService` named `<labelPrefix>.host`. It uses the instance's environment launcher. Its plist contains environment-file references and digests, not resolved credentials. The existing launcher gives it Background process type, nice 10 and low-priority I/O. The supervisor also sets its own nice value to 10.
 
@@ -65,6 +67,8 @@ The supervisor environment is a private JSON object of string values, supplied t
 | `REMEMBERS_THROUGH_DAY` | Required in catch-up mode: inclusive UTC `YYYY-MM-DD`, before today |
 
 The mailbox file follows the existing client Schemas: `identity`, `endpoint`, `serviceDid`, trusted `peers` documents, and `names: { from, peers }`. `names.peers` maps recipient DIDs to names. The owner and defect recipients must resolve in that trusted mapping. The worker must allow the supervisor identity in its caller documents. This creates a send-only client, not another mailbox reader or gateway loop.
+
+`deploymentEnvironment` is a private reference to a complete POSIX environment file for the celld deploy CLI. It supplies the deployment store's `CELLD_BUCKET`, `CELLD_TEST_DATA_DIR`, `S3_ENDPOINT`, `AWS_REGION`, `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` as shell-safe assignments. Use the same store configuration as the instance. This is separate from the supervisor's JSON `hostEnvironment` and the worker's JSON `workerBindings`.
 
 Keep all files, identities, endpoints, credentials and secret-reference names outside this repository. No prompt or rubric ships here.
 
