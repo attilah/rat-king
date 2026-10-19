@@ -339,6 +339,9 @@ const observed = (name: string, hook: Effect.Effect<void> | undefined) =>
 const oneLineSummary = (text: string) =>
   text.replaceAll(/\s+/gu, " ").trim().slice(0, SUMMARY_MAX);
 
+const NAMELESS_REASON =
+  "This Pi has no Rat King name. Nameless Pis don't register, to stop dead mailboxes, and workers never hold their desk's key. Set RATKING_PRINT_NAME or RATKING_NAME";
+
 export interface SendOptions {
   readonly ccOnPurpose?: boolean;
   readonly copyTo?: string;
@@ -352,6 +355,39 @@ export interface SendOptions {
   readonly cc?: readonly string[];
   readonly thread?: string;
 }
+
+export const markVia = (
+  via: string,
+  body: string | LexiconRecordValue,
+  options?: SendOptions
+): Result.Result<
+  { readonly body: string; readonly options: SendOptions },
+  NotDelivered
+> => {
+  const text = Option.liftPredicate(body, Schema.is(Schema.String));
+
+  if (Option.isNone(text)) {
+    return Result.fail(
+      new NotDelivered({
+        code: "NoIdentity",
+        reason:
+          "This Pi has no Rat King name, so it cannot send a record. A typed record has no place for a via marker, so signed by the desk it would assert data as the desk. Give this Pi a name with RATKING_PRINT_NAME or RATKING_NAME",
+      })
+    );
+  }
+
+  const original = options?.summary ?? "";
+
+  return Result.succeed({
+    body: `↳ via headless Pi ${via}\n\n${text.value}`,
+    options: {
+      ...options,
+      summary: oneLineSummary(
+        `via ${via.replace(/ \([^)]*\)$/u, "")}${original === "" ? "" : ` · ${original}`}`
+      ),
+    },
+  });
+};
 
 export type AskOptions = Pick<
   SendOptions,
@@ -544,7 +580,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
   const attempts = yield* Ref.make(0);
   const self = yield* Deferred.make<Self, NotDelivered>();
   const established = yield* Ref.make(Option.none<Self>());
-  const deskVia = yield* Ref.make(Option.none<() => string>());
+  const nameBar = yield* Ref.make(Option.none<string>());
   const fence = yield* Ref.make(Option.none<LeaseFence>());
   const adopting = yield* Ref.make(false);
   const attached = yield* Ref.make(false);
@@ -1950,41 +1986,15 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
     } satisfies Attached;
   });
 
-  const sendThroughDesk = (facts: SessionFacts) =>
-    Effect.gen(function* nameless() {
-      const owner = Option.getOrUndefined(facts.owner ?? Option.none());
+  const refuseNameless = Effect.gen(function* nameless() {
+    const reason = NAMELESS_REASON;
 
-      const stop = (detail: string) => {
-        const reason = `This Pi has no Rat King name. Nameless Pis don't register, to stop dead mailboxes${detail}. Set RATKING_PRINT_NAME or RATKING_NAME, or send through your desk`;
-
-        return setState(ReaderState.Refused({ name: "nameless", reason })).pipe(
-          Effect.andThen(
-            Deferred.fail(
-              self,
-              new NotDelivered({ code: "NoIdentity", reason })
-            )
-          ),
-          Effect.asVoid
-        );
-      };
-
-      if (owner === undefined) {
-        return yield* stop("");
-      }
-
-      const desk = yield* attach(owner).pipe(Effect.option);
-
-      if (Option.isNone(desk)) {
-        return yield* stop(` (this machine holds no key for desk ${owner})`);
-      }
-
-      return yield* setState(
-        ReaderState.SendOnly({
-          name: desk.value.name,
-          reason: `Nameless Pi: send-only as desk ${desk.value.name}, no reader and no lease`,
-        })
-      );
-    });
+    yield* setState(ReaderState.Refused({ name: "nameless", reason }));
+    yield* Deferred.fail(
+      self,
+      new NotDelivered({ code: "NoIdentity", reason })
+    );
+  });
 
   const loop = Effect.fn("RatKing.run")(function* loop(
     facts: SessionFacts,
@@ -1992,7 +2002,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
     startedAt: number
   ) {
     if (facts.nameless === true) {
-      return yield* sendThroughDesk(facts);
+      return yield* refuseNameless;
     }
 
     const claimed = yield* supervise(
@@ -2195,14 +2205,8 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
         );
       }
 
-      if (
-        facts.nameless === true &&
-        Option.isSome(facts.owner ?? Option.none())
-      ) {
-        yield* Ref.set(
-          deskVia,
-          Option.some(facts.via ?? (() => facts.session.slice(0, 8)))
-        );
+      if (facts.nameless === true) {
+        yield* Ref.set(nameBar, Option.some(NAMELESS_REASON));
       }
 
       yield* loop(facts, deliver, startedAt).pipe(Effect.forkScoped);
@@ -2724,54 +2728,17 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
     }
   );
 
-  const deskOnly = (what: string) =>
-    Ref.get(deskVia).pipe(
-      Effect.flatMap((via) =>
-        Option.isSome(via)
-          ? Effect.fail(
-              refused("NoIdentity")(
-                `This Pi has no Rat King name, so it cannot ${what}. An answer would reach the desk with nobody waiting for it. Send instead, or give this Pi a name with RATKING_PRINT_NAME or RATKING_NAME`
-              )
-            )
-          : Effect.void
-      )
-    );
-
-  const viaDesk = (body: string | LexiconRecordValue, options?: SendOptions) =>
-    Ref.get(deskVia).pipe(
-      Effect.flatMap((via) => {
-        const text = Option.liftPredicate(body, Schema.is(Schema.String));
-
-        if (Option.isNone(via)) {
-          return Effect.succeed({ body, options });
-        }
-
-        if (Option.isNone(text)) {
-          return Effect.fail(
-            refused("NoIdentity")(
-              "This Pi has no Rat King name, so it cannot send a record. A typed record has no place for a via marker, so signed by the desk it would assert data as the desk. Give this Pi a name with RATKING_PRINT_NAME or RATKING_NAME"
-            )
-          );
-        }
-
-        const label = via.value();
-        const original = options?.summary ?? "";
-
-        return Effect.succeed({
-          body: `↳ via headless Pi ${label}\n\n${text.value}`,
-          options: {
-            ...options,
-            summary: oneLineSummary(
-              `via ${label.replace(/ \([^)]*\)$/u, "")}${original === "" ? "" : ` · ${original}`}`
-            ),
-          },
-        });
-      })
-    );
+  const unlessBarred = Ref.get(nameBar).pipe(
+    Effect.flatMap((reason) =>
+      Option.isSome(reason)
+        ? Effect.fail(refused("NoIdentity")(reason.value))
+        : Effect.void
+    )
+  );
 
   const ratking = RatKing.of({
     ask: Effect.fn("RatKing.ask")(function* ask(to, body, timeout, options) {
-      yield* deskOnly("ask");
+      yield* unlessBarred;
 
       if (options?.quiet === true) {
         return yield* quietAsk();
@@ -2889,8 +2856,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       );
     }),
     attention: attention.change,
-    handled: (id) =>
-      deskOnly("confirm").pipe(Effect.andThen(confirmHandled(id))),
+    handled: (id) => unlessBarred.pipe(Effect.andThen(confirmHandled(id))),
     list: Effect.gen(function* list() {
       const remote = yield* issuer.names.pipe(
         Effect.tapError(() =>
@@ -2942,7 +2908,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       ];
     }),
     reply: Effect.fn("RatKing.reply")(function* reply(id, body, options) {
-      yield* deskOnly("reply");
+      yield* unlessBarred;
 
       if (options?.quiet === true && options.kind === "ask") {
         return yield* quietAsk();
@@ -3105,16 +3071,10 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       );
     }),
     run,
-    send: Effect.fn("RatKing.send")(function* send(to, given, asked) {
-      if (asked?.quiet === true && asked.kind === "ask") {
+    send: Effect.fn("RatKing.send")(function* send(to, body, options) {
+      if (options?.quiet === true && options.kind === "ask") {
         return yield* quietAsk();
       }
-
-      if (asked?.kind === "ask") {
-        yield* deskOnly("ask");
-      }
-
-      const { body, options } = yield* viaDesk(given, asked);
 
       const { delivered, sent } = yield* transmit(
         to,
