@@ -307,6 +307,8 @@ export const collectFacts = (
   parentSession?: string
 ) =>
   Effect.gen(function* sessionFacts() {
+    const path = yield* Path.Path;
+
     const given = yield* Config.option(
       Config.String(interactive ? "RATKING_NAME" : "RATKING_PRINT_NAME")
     );
@@ -357,6 +359,12 @@ export const collectFacts = (
 
     const owner = yield* resolveTurnOwner();
 
+    const nameless =
+      Option.isNone(env) &&
+      !entries.some(
+        (entry) => entry.session === session && entry.source === "default"
+      );
+
     return {
       alive,
       ancestors: () => ancestorsOf(process.pid, parentOfProcess),
@@ -371,6 +379,7 @@ export const collectFacts = (
           ),
           () => pane
         ),
+      nameless,
       owner,
       pane,
       parent: choice.parent,
@@ -379,6 +388,11 @@ export const collectFacts = (
       session,
       source: choice.source,
       successor: successor && choice.source === "env",
+      via: () =>
+        `${Option.fromNullishOr(sessionName?.()).pipe(
+          Option.filter((name) => name.trim() !== ""),
+          Option.getOrElse(() => path.basename(process.cwd()))
+        )} (${session.slice(0, 8)})`,
     } satisfies NamedFacts;
   }).pipe(Effect.provide(NodeServices.layer));
 
@@ -1770,7 +1784,14 @@ export const ratkingExtension = (options: ExtensionOptions) =>
         onState: (reader) => {
           const named = stateName(reader);
 
-          if (Option.isSome(named)) {
+          if (
+            Option.isSome(named) &&
+            !(
+              collected.nameless === true &&
+              (Predicate.isTagged(reader, "SendOnly") ||
+                Predicate.isTagged(reader, "Refused"))
+            )
+          ) {
             ownName = named.value;
             remember(named.value);
           }

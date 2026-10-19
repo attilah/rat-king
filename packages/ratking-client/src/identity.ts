@@ -46,6 +46,8 @@ export interface SessionFacts {
   readonly label?: () => Option.Option<string>;
   readonly alive: (pid: number) => boolean;
   readonly ancestors?: () => readonly number[];
+  readonly nameless?: boolean;
+  readonly via?: () => string;
   readonly reads?: boolean;
   readonly successor?: boolean;
   readonly owner?: Option.Option<string>;
