@@ -72,6 +72,44 @@ export const parentEntry = (
     (entry) => entry.session === session || entry.session === undefined
   );
 
+const restoredChoice = (entry: NameEntryValue): NameChoice => {
+  const choice: NameChoice = {
+    name: Option.some(entry.name),
+    source: "restored",
+  };
+
+  if (entry.parent !== undefined) {
+    Object.assign(choice, { parent: entry.parent });
+  }
+
+  return choice;
+};
+
+const ownChoice = (
+  input: ChooseInput,
+  isFork: boolean,
+  canonicalParent: Option.Option<string>,
+  successor: boolean
+): NameChoice | undefined => {
+  const own = input.entries.findLast(
+    (entry) =>
+      input.session !== undefined &&
+      entry.source !== "default" &&
+      entry.session === input.session
+  );
+
+  if (own === undefined || (successor && Option.isSome(input.env))) {
+    return undefined;
+  }
+
+  const renamed =
+    Option.isSome(input.env) &&
+    input.env.value !== own.name &&
+    !(isFork && Option.contains(canonicalParent, input.env.value));
+
+  return renamed ? { name: input.env, source: "env" } : restoredChoice(own);
+};
+
 export const chooseName = (input: ChooseInput): NameChoice => {
   const isFork =
     input.fork ??
@@ -83,6 +121,12 @@ export const chooseName = (input: ChooseInput): NameChoice => {
 
   const successor =
     input.succeeds !== undefined && input.succeeds === input.parentSession;
+
+  const own = ownChoice(input, isFork, canonicalParent, successor);
+
+  if (own !== undefined) {
+    return own;
+  }
 
   const explicit =
     Option.isSome(input.env) &&
@@ -102,16 +146,7 @@ export const chooseName = (input: ChooseInput): NameChoice => {
   );
 
   if (restorable !== undefined) {
-    const choice: NameChoice = {
-      name: Option.some(restorable.name),
-      source: "restored",
-    };
-
-    if (restorable.parent !== undefined) {
-      Object.assign(choice, { parent: restorable.parent });
-    }
-
-    return choice;
+    return restoredChoice(restorable);
   }
 
   if (
