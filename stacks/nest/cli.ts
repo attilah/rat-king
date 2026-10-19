@@ -192,13 +192,22 @@ const program = Effect.gen(function* launcher() {
             config.ship.restart.marker
           );
 
+          const windows = runtime.readAlarmWindowReceipts(
+            config.ship.restart.marker
+          );
+
           if (operation === "alarm-worker") {
-            return yield* alarmWorker(config, runtime.healthDigest(), marker);
+            return yield* alarmWorker(
+              config,
+              runtime.healthDigest(),
+              marker,
+              windows
+            );
           }
 
           return yield* Console.log(
             JSON.stringify(
-              yield* alarmCheck(config, runtime.healthDigest(), marker)
+              yield* alarmCheck(config, runtime.healthDigest(), marker, windows)
             )
           );
         }

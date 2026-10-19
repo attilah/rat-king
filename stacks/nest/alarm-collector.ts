@@ -15,7 +15,7 @@ import { HeartbeatJson } from "../../packages/ratking-client/src/reader-health.t
 import { collectSessionsBackup } from "./alarm-backups.ts";
 import { collectInstanceHealth } from "./alarm-instances.ts";
 import { collectRecallCanary } from "./alarm-recall.ts";
-import type { DeployMarker } from "./alarm-sources.ts";
+import type { DeployMarker, WindowReceipt } from "./alarm-sources.ts";
 import { AlarmFacts, CacheBreach, sightReaders } from "./alarm-sources.ts";
 import type { WakeSighting, WakeTarget } from "./alarm-wakes.ts";
 import { collectComms } from "./comms.ts";
@@ -28,6 +28,8 @@ import type { StageConfigValue } from "./stage-config.ts";
 import { crashedReader } from "./turn-crash-record.ts";
 
 type CacheBreachValue = typeof CacheBreach.Type;
+
+type WindowReceiptValue = typeof WindowReceipt.Type;
 
 const HeartbeatLine = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("now"), now: Schema.Finite }),
@@ -216,7 +218,7 @@ const backupWindowOf = (digest: HealthDigest | null) => {
 };
 
 export const collectAlarmFacts = Effect.fn("Alarm.collect")(
-  function* collectAlarmFacts<E, R, E2, R2, R3 = never>(
+  function* collectAlarmFacts<E, R, E2, R2, R3 = never, E4 = never, R4 = never>(
     config: StageConfigValue,
     health: Effect.Effect<HealthDigest, E, R>,
     deploy: Effect.Effect<typeof DeployMarker.Type | null, E2, R2>,
@@ -226,7 +228,12 @@ export const collectAlarmFacts = Effect.fn("Alarm.collect")(
       readonly (typeof WakeSighting.Type)[] | null,
       never,
       R3
-    > = () => Effect.succeed(null)
+    > = () => Effect.succeed(null),
+    windows: Effect.Effect<
+      readonly WindowReceiptValue[],
+      E4,
+      R4
+    > = Effect.succeed([])
   ) {
     if (config.alarm === undefined || config.ship === undefined) {
       return yield* new FleetError({
@@ -329,6 +336,7 @@ export const collectAlarmFacts = Effect.fn("Alarm.collect")(
           config.alarm.sessionsBackup === undefined
             ? Effect.succeed("off" as const)
             : collectSessionsBackup(config.alarm.sessionsBackup),
+        windows: probe(windows),
       },
       { concurrency: "unbounded" }
     );
@@ -378,6 +386,7 @@ export const collectAlarmFacts = Effect.fn("Alarm.collect")(
       sessionsBackup: observations.sessionsBackup,
       slots: healthy?.storage.slots ?? null,
       wakes,
+      windows: Option.getOrElse(observations.windows, () => []),
     }).pipe(
       Effect.mapError(
         () => new FleetError({ reason: "Alarm measurements unavailable" })
