@@ -619,6 +619,7 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
             recipients: recipientsOf(delivered),
             replyTo: target,
             seq: delivered.seq,
+            to: delivered.to,
             ...presenceDetails(delivered),
           }
         );
@@ -725,6 +726,7 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
               id: delivered.id,
               recipients: recipientsOf(delivered),
               seq: delivered.seq,
+              to: delivered.to,
             }
           );
         }
@@ -741,6 +743,7 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
             recipients: recipientsOf(delivered),
             replyId: reply.id,
             seq: delivered.seq,
+            to: delivered.to,
           }
         );
       })
