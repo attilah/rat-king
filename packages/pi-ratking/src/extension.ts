@@ -299,6 +299,8 @@ export const collectFacts = (
   parentSession?: string
 ) =>
   Effect.gen(function* sessionFacts() {
+    const path = yield* Path.Path;
+
     const given = yield* Config.option(
       Config.String(interactive ? "RATKING_NAME" : "RATKING_PRINT_NAME")
     );
@@ -378,6 +380,11 @@ export const collectFacts = (
       session,
       source: choice.source,
       successor: successor && choice.source === "env",
+      via: () =>
+        `${Option.fromNullishOr(sessionName?.()).pipe(
+          Option.filter((name) => name.trim() !== ""),
+          Option.getOrElse(() => path.basename(process.cwd()))
+        )} (${session.slice(0, 8)})`,
     } satisfies NamedFacts;
   }).pipe(Effect.provide(NodeServices.layer));
 

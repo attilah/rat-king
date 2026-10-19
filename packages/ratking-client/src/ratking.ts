@@ -544,6 +544,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
   const attempts = yield* Ref.make(0);
   const self = yield* Deferred.make<Self, NotDelivered>();
   const established = yield* Ref.make(Option.none<Self>());
+  const deskVia = yield* Ref.make(Option.none<() => string>());
   const fence = yield* Ref.make(Option.none<LeaseFence>());
   const adopting = yield* Ref.make(false);
   const attached = yield* Ref.make(false);
@@ -2194,6 +2195,16 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
         );
       }
 
+      if (
+        facts.nameless === true &&
+        Option.isSome(facts.owner ?? Option.none())
+      ) {
+        yield* Ref.set(
+          deskVia,
+          Option.some(facts.via ?? (() => facts.session.slice(0, 8)))
+        );
+      }
+
       yield* loop(facts, deliver, startedAt).pipe(Effect.forkScoped);
       yield* publish.pipe(
         Effect.repeat(Schedule.spaced(HEARTBEAT_EVERY)),
@@ -2713,8 +2724,47 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
     }
   );
 
+  const deskOnly = (what: string) =>
+    Ref.get(deskVia).pipe(
+      Effect.flatMap((via) =>
+        Option.isSome(via)
+          ? Effect.fail(
+              refused("NoIdentity")(
+                `This Pi has no Rat King name, so it cannot ${what}. An answer would reach the desk with nobody waiting for it. Send instead, or give this Pi a name with RATKING_PRINT_NAME or RATKING_NAME`
+              )
+            )
+          : Effect.void
+      )
+    );
+
+  const viaDesk = (body: string | LexiconRecordValue, options?: SendOptions) =>
+    Ref.get(deskVia).pipe(
+      Effect.map((via) => {
+        const text = Option.liftPredicate(body, Schema.is(Schema.String));
+
+        if (Option.isNone(via) || Option.isNone(text)) {
+          return { body, options };
+        }
+
+        const label = via.value();
+        const original = options?.summary ?? "";
+
+        return {
+          body: `↳ via headless Pi ${label}\n\n${text.value}`,
+          options: {
+            ...options,
+            summary: oneLineSummary(
+              `via ${label.replace(/ \([^)]*\)$/u, "")}${original === "" ? "" : ` · ${original}`}`
+            ),
+          },
+        };
+      })
+    );
+
   const ratking = RatKing.of({
     ask: Effect.fn("RatKing.ask")(function* ask(to, body, timeout, options) {
+      yield* deskOnly("ask");
+
       if (options?.quiet === true) {
         return yield* quietAsk();
       }
@@ -2831,7 +2881,8 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       );
     }),
     attention: attention.change,
-    handled: confirmHandled,
+    handled: (id) =>
+      deskOnly("confirm").pipe(Effect.andThen(confirmHandled(id))),
     list: Effect.gen(function* list() {
       const remote = yield* issuer.names.pipe(
         Effect.tapError(() =>
@@ -2883,6 +2934,8 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       ];
     }),
     reply: Effect.fn("RatKing.reply")(function* reply(id, body, options) {
+      yield* deskOnly("reply");
+
       if (options?.quiet === true && options.kind === "ask") {
         return yield* quietAsk();
       }
@@ -3044,10 +3097,16 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       );
     }),
     run,
-    send: Effect.fn("RatKing.send")(function* send(to, body, options) {
-      if (options?.quiet === true && options.kind === "ask") {
+    send: Effect.fn("RatKing.send")(function* send(to, given, asked) {
+      if (asked?.quiet === true && asked.kind === "ask") {
         return yield* quietAsk();
       }
+
+      if (asked?.kind === "ask") {
+        yield* deskOnly("ask");
+      }
+
+      const { body, options } = yield* viaDesk(given, asked);
 
       const { delivered, sent } = yield* transmit(
         to,

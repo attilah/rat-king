@@ -1,7 +1,10 @@
 import { NodeServices } from "@effect/platform-node";
 import { it } from "@effect/vitest";
+import * as Defs from "@rat-king/lexicon/defs";
+import { layer, RatKingMailbox } from "@rat-king/mailbox-client";
 import { Directory } from "@rat-king/ratking-client/directory";
-import { nameFor, secretName } from "@rat-king/ratking-client/name";
+import { secretName } from "@rat-king/ratking-client/name";
+import { PayloadJson } from "@rat-king/ratking-client/payload";
 import { RatKing, ReaderState } from "@rat-king/ratking-client/ratking";
 import {
   Arbitrary,
@@ -9,6 +12,8 @@ import {
   Duration,
   Effect,
   FileSystem,
+  Path,
+  Match,
   Option,
   Predicate,
   Schema,
@@ -156,12 +161,71 @@ it.live.prop(
   60_000
 );
 
-it.live(
-  "a desk send from a nameless Pi reaches the recipient as the desk, with no marker of the Pi behind it",
-  () =>
+const SESSION = "0123456789abcdef";
+
+const VIA = "lane (01234567)";
+
+const LABELLED = { ...facts, session: SESSION, via: () => VIA };
+
+interface Wire {
+  readonly calls: string[];
+  readonly envelopes: Defs.EncryptedEnvelopeValue[];
+}
+
+const mailbox = (wire: Wire) =>
+  HttpClient.make((request) =>
+    Effect.gen(function* fakeMailbox() {
+      wire.calls.push(request.url);
+
+      if (
+        !request.url.endsWith("sh.mschf.ratking.mailbox.send") ||
+        !Predicate.isTagged(request.body, "Uint8Array")
+      ) {
+        return HttpClientResponse.fromWeb(
+          request,
+          Response.json({ error: "MailboxUnavailable" }, { status: 503 })
+        );
+      }
+
+      const input = yield* Schema.decodeUnknownEffect(
+        Schema.fromJsonString(
+          Schema.Struct({ envelope: Defs.EncryptedEnvelope })
+        )
+      )(new TextDecoder().decode(request.body.body)).pipe(Effect.orDie);
+
+      wire.envelopes.push(input.envelope);
+
+      return HttpClientResponse.fromWeb(
+        request,
+        Response.json({
+          receipt: {
+            message: {
+              messageId: input.envelope.aad.messageId,
+              senderDid: input.envelope.aad.senderDid,
+            },
+            recipientDid: input.envelope.aad.recipientDid,
+            seq: wire.envelopes.length,
+            state: "accepted",
+          },
+        })
+      );
+    })
+  );
+
+const SUMMARY = Schema.String.check(Schema.isPattern(/^[a-z]{1,40}$/u));
+
+it.live.prop(
+  "a nameless desk send arrives from the desk, marked in body and summary as sent via the headless Pi; a named Pi's send is unmarked",
+  [
+    Arbitrary.schema(SUMMARY),
+    Arbitrary.schema(SUMMARY),
+    Arbitrary.schema(Schema.Boolean),
+  ],
+  ([text, summary, named]) =>
     Effect.gen(function* attribution() {
       const fs = yield* FileSystem.FileSystem;
       const state = yield* fs.makeTempDirectoryScoped();
+      const wire: Wire = { calls: [], envelopes: [] };
 
       const deskIdentity = yield* identity(
         "did:web:desk.agents.example.invalid"
@@ -169,64 +233,138 @@ it.live(
 
       const peer = yield* identity("did:web:peer.agents.example.invalid");
 
-      const submitted: string[] = [];
-
-      const http = HttpClient.make((request) =>
-        Effect.sync(() => {
-          if (
-            request.url.endsWith("sh.mschf.ratking.mailbox.send") &&
-            Predicate.isTagged(request.body, "Uint8Array")
-          ) {
-            submitted.push(new TextDecoder().decode(request.body.body));
-          }
-
-          return HttpClientResponse.fromWeb(
-            request,
-            Response.json({ error: "Conflict" }, { status: 409 })
-          );
-        })
-      );
-
-      yield* Effect.gen(function* run() {
+      const documents = yield* Effect.gen(function* run() {
         const directory = yield* Directory;
         const ratking = yield* RatKing;
 
         yield* directory.record(DESK, yield* document(deskIdentity));
         yield* directory.record("peer", yield* document(peer));
         yield* ratking.run(
-          { ...facts, owner: Option.some(DESK) },
+          named
+            ? { ...LABELLED, env: Option.some(DESK), nameless: false }
+            : { ...LABELLED, owner: Option.some(DESK) },
           () => Effect.void
         );
-        yield* ratking.send("peer", "hello").pipe(Effect.flip);
+        yield* ratking.send("peer", text, { summary });
+
+        return yield* directory.documents;
       }).pipe(
         Effect.provide(
-          harness(state, http, [], {
+          harness(state, mailbox(wire), [], {
             secrets: new Map([[DESK_KEY, JSON.stringify(deskIdentity)]]),
           })
         )
       );
 
-      const [body] = submitted;
+      const [envelope] = wire.envelopes;
 
-      expect(submitted).toHaveLength(1);
+      if (envelope === undefined) {
+        throw new Error("Missing envelope");
+      }
 
-      const sender = yield* Schema.decodeUnknownEffect(
-        Schema.fromJsonString(
-          Schema.Struct({
-            envelope: Schema.Struct({
-              aad: Schema.Struct({ senderDid: Schema.String }),
-            }),
+      const opened = yield* RatKingMailbox.use((client) =>
+        client.open(envelope)
+      ).pipe(
+        Effect.provide(
+          layer({
+            documents: yield* Schema.decodeUnknownEffect(
+              Schema.Array(Schema.toType(Defs.DidDocument))
+            )(documents),
+            endpoint: "https://mailbox.example.invalid",
+            identity: peer,
+            serviceDid: "did:web:mailbox.example.invalid",
+          })
+        ),
+        Effect.provideService(HttpClient.HttpClient, mailbox(wire))
+      );
+
+      const payload = yield* Schema.decodeEffect(PayloadJson)(opened.body);
+
+      expect(envelope.aad.senderDid).toBe(deskIdentity.did);
+      expect(payload.from).toBe(DESK);
+      expect(payload.body).toBe(
+        named ? text : `↳ via headless Pi ${VIA}\n\n${text}`
+      );
+      expect(payload.summary).toBe(named ? summary : `via lane · ${summary}`);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  { arbitrary: { runs: 10 }, timeout: 60_000 }
+);
+
+it.live.prop(
+  "a nameless desk send refuses ask, reply and handled in three parts, without touching the mailbox",
+  [Arbitrary.schema(Schema.Literals(["ask", "ask-kind", "reply", "handled"]))],
+  ([action]) =>
+    Effect.gen(function* askRefusal() {
+      const fs = yield* FileSystem.FileSystem;
+      const state = yield* fs.makeTempDirectoryScoped();
+      const wire: Wire = { calls: [], envelopes: [] };
+
+      const deskIdentity = yield* identity(
+        "did:web:desk.agents.example.invalid"
+      );
+
+      const failure = yield* Effect.gen(function* run() {
+        const directory = yield* Directory;
+        const ratking = yield* RatKing;
+
+        yield* directory.record(DESK, yield* document(deskIdentity));
+        yield* ratking.run(
+          { ...LABELLED, owner: Option.some(DESK) },
+          () => Effect.void
+        );
+        wire.calls.length = 0;
+
+        return yield* Match.value(action).pipe(
+          Match.when("ask", () => ratking.ask(DESK, "q")),
+          Match.when("ask-kind", () =>
+            ratking.send(DESK, "q", { kind: "ask" })
+          ),
+          Match.when("reply", () => ratking.reply("some-id", "a")),
+          Match.orElse(() => ratking.handled("some-id")),
+          Effect.flip
+        );
+      }).pipe(
+        Effect.provide(
+          harness(state, mailbox(wire), [], {
+            secrets: new Map([[DESK_KEY, JSON.stringify(deskIdentity)]]),
           })
         )
-      )(body);
+      );
 
-      expect(sender.envelope.aad.senderDid).toBe(deskIdentity.did);
-      expect(
-        nameFor(
-          "did:web:{agent}.agents.example.invalid",
-          {},
-          sender.envelope.aad.senderDid
+      const reason = Schema.is(Schema.Struct({ reason: Schema.String }))(
+        failure
+      )
+        ? failure.reason
+        : "";
+
+      expect(reason).toContain("no Rat King name");
+      expect(reason).toContain("nobody waiting");
+      expect(reason).toContain("RATKING_PRINT_NAME");
+      expect(wire.calls).toEqual([]);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  { arbitrary: { runs: 8 }, timeout: 60_000 }
+);
+
+it.effect.prop(
+  "the via label is the session name, else the cwd basename, then the first 8 characters of the session id",
+  [Arbitrary.schema(Schema.Option(SUMMARY))],
+  ([name]) =>
+    Effect.gen(function* viaLabel() {
+      const collected = yield* collectFacts(
+        "0123456789abcdef",
+        () => Option.getOrUndefined(name),
+        false,
+        []
+      ).pipe(
+        Effect.provide(
+          ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} }))
         )
-      ).toEqual(Option.some(DESK));
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer))
+      );
+
+      const path = yield* Path.Path;
+
+      expect(collected.via?.()).toBe(
+        `${Option.getOrElse(name, () => path.basename(process.cwd()))} (01234567)`
+      );
+    }).pipe(Effect.provide(NodeServices.layer))
 );
