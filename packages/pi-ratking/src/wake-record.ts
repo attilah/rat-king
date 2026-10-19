@@ -75,10 +75,16 @@ export const turnInbox = (
 ) => {
   const displayed = new Set<string>();
   const pending = new Map<string, Set<string>>();
+  const heard = new Set<string>();
   let remember: ((key: string) => void) | undefined;
 
   return {
+    heard: (from: string) => {
+      heard.add(from);
+    },
     receive: (inbound: InboundRecord, settled: boolean, verdict?: Verdict) => {
+      const reported = inbound.verified && heard.delete(inbound.from);
+
       if (verdict?._tag === "Never") {
         host.consume(inbound.id);
 
@@ -91,6 +97,15 @@ export const turnInbox = (
         new Set([...displayed, ...pending.keys()]),
         receiver()
       );
+
+      if (Option.isSome(turn) && turn.value.state === "done" && reported) {
+        const key = turnKey(turn.value);
+        displayed.add(key);
+        remember?.(key);
+        host.consume(inbound.id);
+
+        return;
+      }
 
       if (Option.isNone(turn)) {
         const duplicate = signedTurn(

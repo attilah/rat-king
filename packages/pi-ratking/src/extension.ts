@@ -1293,6 +1293,10 @@ export const ratkingExtension = (options: ExtensionOptions) =>
 
         pi.events.emit(MESSAGE_EVENT, inboundDetails(inbound, settled));
 
+        if (inbound.verified) {
+          turnMail.heard(inbound.from);
+        }
+
         const verdict = attend(
           {
             ...inbound,
