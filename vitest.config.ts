@@ -17,6 +17,13 @@ export default defineConfig({
         },
       },
       {
+        extends: false,
+        test: {
+          include: ["packages/lexicon/test/pass*.test.ts"],
+          name: "lexicon-passes",
+        },
+      },
+      {
         extends: "tools/lexgen/vitest.config.ts",
         test: { name: "lexgen" },
       },

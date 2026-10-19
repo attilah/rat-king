@@ -2,6 +2,12 @@
 
 Generated from the v0 JSON contract in `lexicons/`. Do not edit `src/` or `manifest.json`; run `pnpm lexgen:write`.
 
+## Desk delegation
+
+The shared [ticket and pass verifier](PASSES.md) lives beside `trust.ts` and is exported as `@rat-king/lexicon/passes`. It verifies offline and has no mailbox or launcher wiring.
+
+An exposed pinned issuer private key can attest arbitrary desk keys and names inside that issuer's pinned namespaces. Ticket expiry does not stop an attacker who can mint new tickets. Remove or rotate that issuer pin through the owning configuration process.
+
 The package root exports `MailboxClient` and `clientLayer`. Subpaths expose `mailbox-handlers`, `mailbox-server`, `transport`, `transport-failure`, `xrpc-failure`, `runtime`, `query` and each NSID suffix (`defs`, `mailbox.send`, `mailbox.ack`, `mailbox.list`, `agent.profile`, `runtime.lease`, `desk.theme`).
 
 Schemas use PascalCase names; decoded types use the `Value` suffix. Method modules export `Params`, `Input`, `Output`, `ErrorBody`, `KnownErrors` and `Method`. List also exports query codecs and entry encoders/decoders. Known-value helpers never treat unknown strings as known delivery states.
