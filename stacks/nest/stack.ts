@@ -318,6 +318,7 @@ export const nestStack = (restore?: RestoreRequest) =>
         purgeOnDelete: !recoverState,
         restartGateBundle,
         slice: slice.sha256,
+        volumeMax: 2048,
       });
 
       const cells = yield* Celld.Node("celld", {
