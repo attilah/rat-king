@@ -182,6 +182,17 @@ const dispatching = <T extends object>(options: T, dispatch?: Dispatch): T => {
 
 type RatKingService = typeof RatKing.Service;
 
+export const retireOwn = (
+  ratking: Pick<RatKingService, "retire">,
+  successor: string | undefined
+) =>
+  ratking.retire(
+    Option.fromNullishOr(successor).pipe(
+      Option.map((name) => name.trim()),
+      Option.filter((name) => name !== "")
+    )
+  );
+
 const handledIssuing =
   (dispatch: Dispatch, call: RatKingService["handled"]) => (id: string) =>
     Ref.set(dispatch, "issued").pipe(Effect.andThen(call(id)));
@@ -736,12 +747,7 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
     ),
     Match.when("retire", () =>
       Effect.gen(function* retire() {
-        const successor = Option.fromNullishOr(params.successor).pipe(
-          Option.map((name) => name.trim()),
-          Option.filter((name) => name !== "")
-        );
-
-        const retired = yield* ratking.retire(successor);
+        const retired = yield* retireOwn(ratking, params.successor);
 
         return ok(
           `Retired ${retired.name} at ${retired.retiredAt}. Mail to it is now refused${

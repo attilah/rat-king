@@ -94,6 +94,14 @@ import {
   WAKE_REASON,
 } from "./pending.ts";
 import type { DigestVariant, HistoryEntry, PendingMail } from "./pending.ts";
+import {
+  againOutcome,
+  noNameOutcome,
+  RETIRE_COMMAND,
+  RETIRE_COMMAND_DESCRIPTION,
+  retireCommand,
+} from "./retire.ts";
+import type { RetireOutcome, Retirement } from "./retire.ts";
 import { forkLabel, parentSessionId } from "./session-parent.ts";
 import { callView, resultView } from "./tool-view.ts";
 import {
@@ -470,6 +478,16 @@ export interface PiHost {
     handler: (start: SessionStart) => Promise<void>
   ) => void;
   readonly onSessionEnd: (handler: () => Promise<void>) => void;
+  readonly registerCommand?: (
+    name: string,
+    command: {
+      readonly description: string;
+      readonly handler: (
+        args: string,
+        print: (line: string) => void
+      ) => Promise<void>;
+    }
+  ) => void;
 }
 
 interface MailDispatch {
@@ -568,6 +586,16 @@ export const piHost = (pi: ExtensionAPI): PiHost => {
     onTurnEnd: (handler) => {
       pi.on("turn_end", () => {
         handler();
+      });
+    },
+    registerCommand: (name, command) => {
+      pi.registerCommand(name, {
+        description: command.description,
+        handler: async (args, ctx) => {
+          await command.handler(args, (line) => {
+            ctx.ui.notify(line, "info");
+          });
+        },
       });
     },
     registerMessageRenderer: (customType, renderer) => {
@@ -1393,6 +1421,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
       });
 
     let retired = false;
+    let retirement: Retirement | undefined;
     let degraded: string | undefined;
 
     const run = async <A>(
@@ -1446,6 +1475,28 @@ export const ratkingExtension = (options: ExtensionOptions) =>
       }
     };
 
+    const markRetired = async () => {
+      retired = true;
+      await stop();
+    };
+
+    pi.registerCommand?.(RETIRE_COMMAND, {
+      description: RETIRE_COMMAND_DESCRIPTION,
+      handler: async (args, print) => {
+        const outcome =
+          retirement === undefined
+            ? await run<RetireOutcome>(retireCommand(args), noNameOutcome)
+            : againOutcome(args, retirement);
+
+        if (outcome.retired !== undefined && retirement === undefined) {
+          retirement = outcome.retired;
+          await markRetired();
+        }
+
+        print(outcome.line);
+      },
+    });
+
     pi.registerTool({
       description: description(tool),
       execute: async (_id, params, signal, onUpdate) => {
@@ -1498,8 +1549,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
                 outcome.details
               )
             ) {
-              retired = true;
-              await stop();
+              await markRetired();
             }
 
             return outcome;
@@ -1628,10 +1678,8 @@ export const ratkingExtension = (options: ExtensionOptions) =>
         Schema.Struct({ requestId: Schema.optionalKey(Schema.String) })
       )(data ?? {});
 
-      retired = true;
-
       const retire = async () => {
-        await stop();
+        await markRetired();
 
         pi.events.emit(RETIRE_RESULT_EVENT, {
           ...Option.getOrElse(request, () => ({})),
@@ -1644,6 +1692,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
 
     pi.onSessionStart(async (start) => {
       retired = false;
+      retirement = undefined;
       isIdle = start.isIdle ?? idle;
 
       await stop();
