@@ -101,6 +101,7 @@ export const AlarmFacts = Schema.Struct({
   deployKnown: Schema.Boolean,
   digest: Schema.NullOr(Schema.Literals(["ok", "warn", "fail"])),
   doctor: Schema.Boolean,
+  doctorFinished: Schema.optionalKey(Schema.Boolean),
   doctorReasons: Schema.optionalKey(Schema.Array(Schema.String)),
   entered: Schema.NullOr(Schema.Finite),
   failed: Schema.optionalKey(Schema.Array(Schema.String)),
@@ -454,6 +455,13 @@ const doctorReading = (
   }
 
   const named = (facts.doctorReasons ?? []).join("; ");
+
+  if (facts.doctorFinished === false) {
+    return firing(
+      "warn",
+      `Configuration doctor did not report twice in a row, so identity was not checked; the alarm host may be overloaded: ${named}`
+    );
+  }
 
   return firing(
     "critical",
