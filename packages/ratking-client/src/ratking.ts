@@ -2739,17 +2739,25 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
 
   const viaDesk = (body: string | LexiconRecordValue, options?: SendOptions) =>
     Ref.get(deskVia).pipe(
-      Effect.map((via) => {
+      Effect.flatMap((via) => {
         const text = Option.liftPredicate(body, Schema.is(Schema.String));
 
-        if (Option.isNone(via) || Option.isNone(text)) {
-          return { body, options };
+        if (Option.isNone(via)) {
+          return Effect.succeed({ body, options });
+        }
+
+        if (Option.isNone(text)) {
+          return Effect.fail(
+            refused("NoIdentity")(
+              "This Pi has no Rat King name, so it cannot send a record. A typed record has no place for a via marker, so signed by the desk it would assert data as the desk. Give this Pi a name with RATKING_PRINT_NAME or RATKING_NAME"
+            )
+          );
         }
 
         const label = via.value();
         const original = options?.summary ?? "";
 
-        return {
+        return Effect.succeed({
           body: `↳ via headless Pi ${label}\n\n${text.value}`,
           options: {
             ...options,
@@ -2757,7 +2765,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
               `via ${label.replace(/ \([^)]*\)$/u, "")}${original === "" ? "" : ` · ${original}`}`
             ),
           },
-        };
+        });
       })
     );
 

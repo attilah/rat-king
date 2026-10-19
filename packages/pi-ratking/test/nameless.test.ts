@@ -291,8 +291,12 @@ it.live.prop(
 );
 
 it.live.prop(
-  "a nameless desk send refuses ask, reply and handled in three parts, without touching the mailbox",
-  [Arbitrary.schema(Schema.Literals(["ask", "ask-kind", "reply", "handled"]))],
+  "a nameless desk send refuses ask, reply, handled and records in three parts, without touching the mailbox",
+  [
+    Arbitrary.schema(
+      Schema.Literals(["ask", "ask-kind", "reply", "handled", "record"])
+    ),
+  ],
   ([action]) =>
     Effect.gen(function* askRefusal() {
       const fs = yield* FileSystem.FileSystem;
@@ -319,6 +323,9 @@ it.live.prop(
           Match.when("ask-kind", () =>
             ratking.send(DESK, "q", { kind: "ask" })
           ),
+          Match.when("record", () =>
+            ratking.send(DESK, { $type: "example.invalid#record" })
+          ),
           Match.when("reply", () => ratking.reply("some-id", "a")),
           Match.orElse(() => ratking.handled("some-id")),
           Effect.flip
@@ -338,7 +345,9 @@ it.live.prop(
         : "";
 
       expect(reason).toContain("no Rat King name");
-      expect(reason).toContain("nobody waiting");
+      expect(reason).toContain(
+        action === "record" ? "via marker" : "nobody waiting"
+      );
       expect(reason).toContain("RATKING_PRINT_NAME");
       expect(wire.calls).toEqual([]);
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
