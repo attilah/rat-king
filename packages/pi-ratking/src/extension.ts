@@ -349,6 +349,12 @@ export const collectFacts = (
 
     const owner = yield* resolveTurnOwner();
 
+    const nameless =
+      Option.isNone(env) &&
+      !entries.some(
+        (entry) => entry.session === session && entry.source === "default"
+      );
+
     return {
       alive,
       ancestors: () => ancestorsOf(process.pid, parentOfProcess),
@@ -363,6 +369,7 @@ export const collectFacts = (
           ),
           () => pane
         ),
+      nameless,
       owner,
       pane,
       parent: choice.parent,
@@ -1721,7 +1728,14 @@ export const ratkingExtension = (options: ExtensionOptions) =>
         onState: (reader) => {
           const named = stateName(reader);
 
-          if (Option.isSome(named)) {
+          if (
+            Option.isSome(named) &&
+            !(
+              collected.nameless === true &&
+              (Predicate.isTagged(reader, "SendOnly") ||
+                Predicate.isTagged(reader, "Refused"))
+            )
+          ) {
             ownName = named.value;
             remember(named.value);
           }
