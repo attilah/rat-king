@@ -8,7 +8,7 @@ deadline=rat-king-celld-window-deadline
 deadline_after=30min
 state_dir=${XDG_STATE_HOME:-$HOME/.local/state}/rat-king
 marker=$state_dir/deploy.json
-receipts=$state_dir/window-receipts.jsonl
+receipts=
 proc_root=/proc
 reason=
 approval=
@@ -32,6 +32,8 @@ while [ $# -gt 0 ]; do
     *) usage ;;
   esac
 done
+
+[ -n "$receipts" ] || receipts=$(dirname "$marker")/window-receipts.jsonl
 
 [ -n "$reason" ] && [ -n "$approval" ] && [ $# -gt 0 ] || usage
 

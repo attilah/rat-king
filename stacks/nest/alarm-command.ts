@@ -8,7 +8,7 @@ import type { SecretStore } from "../../apps/mailbox/cli/secrets.ts";
 import { secretStoreLayer } from "../../apps/mailbox/cli/secrets.ts";
 import { collectAlarmFacts } from "./alarm-collector.ts";
 import { prepareAlarmDeliveries, sendAlarmDelivery } from "./alarm-mail.ts";
-import type { DeployMarker } from "./alarm-sources.ts";
+import type { DeployMarker, WindowReceipt } from "./alarm-sources.ts";
 import { observeAlarms } from "./alarm-sources.ts";
 import { collectWakeHealth } from "./alarm-wake-collector.ts";
 import { AlarmJournal, alarmCycle, emptyJournal } from "./alarm.ts";
@@ -76,10 +76,11 @@ export const readAlarmJournal = Effect.fn("Alarm.readJournal")(
 );
 
 export const alarmWorker = Effect.fn("Alarm.worker")(
-  function* alarmWorker<E, R, E2, R2>(
+  function* alarmWorker<E, R, E2, R2, E4 = never, R4 = never>(
     config: StageConfigValue,
     health: Effect.Effect<HealthDigest, E, R>,
-    deploy: Effect.Effect<typeof DeployMarker.Type | null, E2, R2>
+    deploy: Effect.Effect<typeof DeployMarker.Type | null, E2, R2>,
+    windows?: Effect.Effect<readonly (typeof WindowReceipt.Type)[], E4, R4>
   ) {
     if (
       config.alarm?.enabled !== true ||
@@ -147,7 +148,8 @@ export const alarmWorker = Effect.fn("Alarm.worker")(
           health,
           deploy,
           (readers) =>
-            collectWakeHealth(config, readers, prior.sources.wakeTargets)
+            collectWakeHealth(config, readers, prior.sources.wakeTargets),
+          windows
         );
 
         const ports: AlarmPorts<
@@ -277,10 +279,11 @@ export const alarmCommand = Effect.fn("Alarm.command")(function* alarmCommand(
 }, Effect.scoped);
 
 export const alarmCheck = Effect.fn("Alarm.check")(
-  function* alarmCheck<E, R, E2, R2>(
+  function* alarmCheck<E, R, E2, R2, E4 = never, R4 = never>(
     config: StageConfigValue,
     health: Effect.Effect<HealthDigest, E, R>,
-    deploy: Effect.Effect<typeof DeployMarker.Type | null, E2, R2>
+    deploy: Effect.Effect<typeof DeployMarker.Type | null, E2, R2>,
+    windows?: Effect.Effect<readonly (typeof WindowReceipt.Type)[], E4, R4>
   ) {
     const fs = yield* FileSystem.FileSystem;
 
@@ -288,8 +291,13 @@ export const alarmCheck = Effect.fn("Alarm.check")(
       yield* fs.realPath(config.runtime.RAT_KING_STATE_DIR)
     );
 
-    const facts = yield* collectAlarmFacts(config, health, deploy, (readers) =>
-      collectWakeHealth(config, readers, prior.sources.wakeTargets)
+    const facts = yield* collectAlarmFacts(
+      config,
+      health,
+      deploy,
+      (readers) =>
+        collectWakeHealth(config, readers, prior.sources.wakeTargets),
+      windows
     );
 
     return observeAlarms(prior.sources, facts, yield* Clock.currentTimeMillis)

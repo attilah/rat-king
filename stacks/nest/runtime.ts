@@ -27,6 +27,8 @@ import { stopUnits } from "../../packages/alchemy-nest/src/startup-contract.ts";
 import { deleteDeclaredUnit } from "../../packages/alchemy-nest/src/systemd.ts";
 import { removeStoreSockets } from "../../packages/alchemy-nest/src/unit-cleanup.ts";
 import { DeployMarker } from "./alarm-sources.ts";
+import type { WindowReceipt } from "./alarm-sources.ts";
+import { readWindowReceipts } from "./alarm-windows.ts";
 import { stageName, workerIPv4, workerUrl } from "./config.ts";
 import { assess, collectHealth, DigestJson } from "./health.ts";
 import { qualifyPlanActions } from "./plan-guard.ts";
@@ -547,6 +549,15 @@ export const readAlarmDeployMarker = Effect.fn("Alarm.readDeployMarker")(
       )
     )
 );
+
+export const readAlarmWindowReceipts = (markerPath: string) =>
+  Effect.gen(function* liveWindowReceipts() {
+    return yield* readWindowReceipts(yield* HostShell, markerPath);
+  }).pipe(
+    Effect.provide(connection.pipe(Layer.provide(NodeServices.layer))),
+    Effect.timeout("10 seconds"),
+    Effect.orElseSucceed((): readonly (typeof WindowReceipt.Type)[] => [])
+  );
 
 export const healthDigest = (previous?: string) =>
   Effect.gen(function* collectNestHealth() {
