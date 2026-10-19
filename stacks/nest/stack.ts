@@ -326,6 +326,7 @@ export const nestStack = (restore?: RestoreRequest) =>
         host: node,
         prepared: staged,
         purgeOnDelete: !recoverState,
+        tuning: { CELLD_LTX_LOCAL_L0_KEEP: "1000" },
         workerIPv4,
       });
 
