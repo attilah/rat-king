@@ -94,6 +94,22 @@ export const BackupWindow = Schema.Struct({
   start: Schema.Finite,
 });
 
+const CelldSighting = Schema.Struct({
+  entered: Schema.String,
+  pid: Count,
+});
+
+export const WindowReceipt = Schema.Struct({
+  approval: Schema.NonEmptyString,
+  celldAfter: Schema.NullOr(CelldSighting),
+  celldBefore: CelldSighting,
+  end: Schema.Number,
+  kind: Schema.Literal("window"),
+  reason: Schema.NonEmptyString,
+  result: Schema.Literals(["success", "failed"]),
+  start: Schema.Number,
+});
+
 export const AlarmFacts = Schema.Struct({
   backup: Schema.optionalKey(Schema.NullOr(BackupWindow)),
   cacheBreaches: Schema.NullOr(Schema.Array(CacheBreach)),
@@ -125,6 +141,7 @@ export const AlarmFacts = Schema.Struct({
   ),
   slots: Schema.NullOr(Schema.Struct({ free: Count, max: Count })),
   wakes: Schema.optionalKey(Schema.NullOr(Schema.Array(WakeSighting))),
+  windows: Schema.optionalKey(Schema.Array(WindowReceipt)),
 });
 
 export const SourceState = Schema.Struct({
@@ -179,6 +196,9 @@ const trackSources = (
     facts.receipts.some(
       (receipt) =>
         receipt.start * 1000 <= instant && receipt.end * 1000 >= instant
+    ) ||
+    (facts.windows ?? []).some(
+      (window) => window.start * 1000 <= instant && window.end * 1000 >= instant
     ) ||
     (facts.backup !== undefined &&
       facts.backup !== null &&
