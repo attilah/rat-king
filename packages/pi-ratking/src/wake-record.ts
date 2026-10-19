@@ -66,8 +66,28 @@ export const turnWake = (
 
 export interface TurnWakeHost {
   readonly consume: (id: string) => void;
+  readonly show?: (mail: PendingMail) => void;
   readonly take: (mail: PendingMail, hold: Hold) => void;
 }
+
+const mailOf = (
+  inbound: InboundRecord,
+  turn: TurnValue,
+  coalesce: boolean
+): PendingMail => ({
+  coalesce,
+  content: `turn · ${turn.agent} · ${turn.state} · ${turn.stopReason ?? turn.reason ?? ""}`,
+  details: {
+    body: JSON.stringify(inbound.record),
+    cc: false,
+    did: inbound.did,
+    from: inbound.from,
+    id: inbound.id,
+    kind: "data",
+    verified: inbound.verified,
+  },
+  id: inbound.id,
+});
 
 export const turnInbox = (
   host: TurnWakeHost,
@@ -76,9 +96,25 @@ export const turnInbox = (
   const displayed = new Set<string>();
   const pending = new Map<string, Set<string>>();
   const heard = new Set<string>();
+  const addressed = new Set<string>();
+  const started = new Set<string>();
   let remember: ((key: string) => void) | undefined;
 
+  const silent = (turn: TurnValue, reported: boolean) => {
+    const waiting = addressed.delete(turn.agent);
+    const first = !started.has(turn.session);
+
+    if (turn.state === "done") {
+      started.add(turn.session);
+    }
+
+    return turn.state === "done" && (reported || !(waiting || first));
+  };
+
   return {
+    addressed: (to: string) => {
+      addressed.add(to);
+    },
     heard: (from: string) => {
       heard.add(from);
     },
@@ -98,13 +134,22 @@ export const turnInbox = (
         receiver()
       );
 
-      if (Option.isSome(turn) && turn.value.state === "done" && reported) {
-        const key = turnKey(turn.value);
-        displayed.add(key);
-        remember?.(key);
-        host.consume(inbound.id);
+      if (Option.isSome(turn)) {
+        const quiet = silent(turn.value, reported);
 
-        return;
+        if (quiet) {
+          const key = turnKey(turn.value);
+          displayed.add(key);
+          remember?.(key);
+
+          if (!reported) {
+            host.show?.(mailOf(inbound, turn.value, false));
+          }
+
+          host.consume(inbound.id);
+
+          return;
+        }
       }
 
       if (Option.isNone(turn)) {
@@ -131,20 +176,11 @@ export const turnInbox = (
       const key = turnKey(turn.value);
       pending.set(key, new Set([inbound.id]));
       host.take(
-        {
-          coalesce: verdict?._tag === "Next" || verdict?._tag === "Later",
-          content: `turn · ${turn.value.agent} · ${turn.value.state} · ${turn.value.stopReason ?? turn.value.reason ?? ""}`,
-          details: {
-            body: JSON.stringify(inbound.record),
-            cc: false,
-            did: inbound.did,
-            from: inbound.from,
-            id: inbound.id,
-            kind: "data",
-            verified: inbound.verified,
-          },
-          id: inbound.id,
-        },
+        mailOf(
+          inbound,
+          turn.value,
+          verdict?._tag === "Next" || verdict?._tag === "Later"
+        ),
         verdict?._tag === "Next" || verdict?._tag === "Later"
           ? "nextTurn"
           : "steer"
@@ -156,10 +192,22 @@ export const turnInbox = (
     ) => {
       displayed.clear();
       pending.clear();
+      started.clear();
       remember = note;
 
       for (const key of keys) {
         displayed.add(key);
+
+        const [turnId, state] = Option.getOrElse(
+          Schema.decodeUnknownOption(
+            Schema.fromJsonString(Schema.Tuple([Schema.String, Schema.String]))
+          )(key),
+          () => ["", ""]
+        );
+
+        if (state === "done" && turnId.includes(":")) {
+          started.add(turnId.slice(0, turnId.lastIndexOf(":")));
+        }
       }
     },
     shown: (id: string) => {

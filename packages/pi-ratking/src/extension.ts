@@ -1065,6 +1065,17 @@ export const ratkingExtension = (options: ExtensionOptions) =>
     const turnMail = turnInbox(
       {
         consume,
+        show: (pending) => {
+          dispatch.send(
+            {
+              content: pending.content,
+              customType: MAIL_MESSAGE,
+              details: pending.details,
+              display: true,
+            },
+            { deliverAs: "nextTurn", triggerTurn: false }
+          );
+        },
         take: (pending, hold) => {
           if (hold === "steer") {
             mail.take(pending, isIdle() ? "followUp" : "steer");
@@ -1566,6 +1577,14 @@ export const ratkingExtension = (options: ExtensionOptions) =>
               await markRetired();
             }
 
+            const sentTo = Schema.decodeUnknownOption(
+              Schema.Struct({ to: Schema.String })
+            )(outcome.details);
+
+            if (!outcome.isError && Option.isSome(sentTo)) {
+              turnMail.addressed(sentTo.value.to);
+            }
+
             return outcome;
           }),
           update
@@ -1605,6 +1624,10 @@ export const ratkingExtension = (options: ExtensionOptions) =>
         requestId: request.requestId,
         status: "not-delivered" as const,
       }));
+
+      if (outcome.status === "delivered") {
+        turnMail.addressed(outcome.to);
+      }
 
       pi.events.emit(SEND_RESULT_EVENT, outcome);
     };

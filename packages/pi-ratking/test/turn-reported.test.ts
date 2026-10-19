@@ -61,6 +61,7 @@ it.effect("a silent done turn still wakes, and mail counts once", () =>
     inbox.receive(turn("t1", "done", 1), false);
     inbox.heard("fleet/worker");
     inbox.receive(turn("t2", "done", 2), false);
+    inbox.addressed("fleet/worker");
     inbox.receive(turn("t3", "done", 3), false);
 
     expect(seen.taken).toEqual(["t1", "t3"]);
