@@ -68,6 +68,7 @@ export interface StoreProps extends InstanceProps, ServiceLimits {
   readonly name: string;
   readonly prepared?: readonly Output.Output<string>[];
   readonly purgeOnDelete?: boolean;
+  readonly restartGate?: false;
   readonly restartGateBundle?: string | undefined;
   readonly slice: Output.Output<string>;
   readonly volumeMax?: number;
@@ -118,12 +119,14 @@ export const Bucket = (id: string, props: StoreProps) =>
     });
 
     const restartGateBundle =
-      props.restartGateBundle ??
-      (layout.instance === "rat-king"
+      props.restartGate === false
         ? undefined
-        : yield* operatorBundle(
-            new URL("instance-restart-gate.ts", import.meta.url).pathname
-          ));
+        : (props.restartGateBundle ??
+          (layout.instance === "rat-king"
+            ? undefined
+            : yield* operatorBundle(
+                new URL("instance-restart-gate.ts", import.meta.url).pathname
+              )));
 
     const gate =
       restartGateBundle === undefined
