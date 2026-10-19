@@ -1,11 +1,13 @@
 import { NodeServices } from "@effect/platform-node";
 import { it } from "@effect/vitest";
 import * as Defs from "@rat-king/lexicon/defs";
-import { layer, RatKingMailbox } from "@rat-king/mailbox-client";
 import { Directory } from "@rat-king/ratking-client/directory";
 import { secretName } from "@rat-king/ratking-client/name";
-import { PayloadJson } from "@rat-king/ratking-client/payload";
-import { RatKing, ReaderState } from "@rat-king/ratking-client/ratking";
+import {
+  markVia,
+  RatKing,
+  ReaderState,
+} from "@rat-king/ratking-client/ratking";
 import {
   Arbitrary,
   ConfigProvider,
@@ -16,6 +18,8 @@ import {
   Match,
   Option,
   Predicate,
+  Result,
+  Schedule,
   Schema,
 } from "effect";
 import { HttpClient, HttpClientResponse } from "effect/http";
@@ -43,8 +47,6 @@ const Env = Schema.Struct({
   RATKING_NAME: Schema.optionalKey(Schema.Literal("alpha")),
   RATKING_PRINT_NAME: Schema.optionalKey(Schema.Literal("beta")),
 });
-
-const nobody = HttpClient.make(() => Effect.die("Unexpected HTTP"));
 
 it.effect.prop(
   "a Pi gets a name only from an explicit setting, whether interactive or headless",
@@ -91,74 +93,6 @@ it.effect.prop(
 
       expect(collected.nameless).toBe(false);
     }).pipe(Effect.provide(NodeServices.layer))
-);
-
-it.live.prop(
-  "a nameless Pi mints and registers nothing; it sends as its desk when this machine holds the desk key, else refuses in three parts",
-  [Arbitrary.schema(Schema.Boolean), Arbitrary.schema(Schema.Boolean)],
-  ([hasOwner, holdsKey]) =>
-    Effect.gen(function* proof() {
-      const fs = yield* FileSystem.FileSystem;
-      const state = yield* fs.makeTempDirectoryScoped();
-      const store = new Map<string, string>();
-
-      const deskIdentity = yield* identity(
-        "did:web:desk.agents.example.invalid"
-      );
-
-      if (holdsKey) {
-        store.set(DESK_KEY, JSON.stringify(deskIdentity));
-      }
-
-      const before = new Map(store);
-
-      yield* Effect.gen(function* run() {
-        const directory = yield* Directory;
-        const ratking = yield* RatKing;
-
-        yield* directory.record(DESK, yield* document(deskIdentity));
-
-        const registered = (yield* directory.list).length;
-
-        yield* ratking.run(
-          {
-            ...facts,
-            owner: hasOwner ? Option.some(DESK) : Option.none<string>(),
-          },
-          () => Effect.void
-        );
-
-        const sent = yield* ratking.send(DESK, "hello").pipe(
-          Effect.flip,
-          Effect.timeout(Duration.seconds(10)),
-          Effect.flatMap((failure) => Effect.succeed(failure.reason)),
-          Effect.catchTag("TimeoutError", () => Effect.succeed("timeout"))
-        );
-
-        const status = yield* ratking.status;
-
-        expect(new Map(store)).toEqual(before);
-        expect((yield* directory.list).length).toBe(registered);
-
-        if (hasOwner && holdsKey) {
-          expect(ReaderState.$is("SendOnly")(status.reader)).toBe(true);
-          expect(status.self.pipe(Option.map((self) => self.did))).toEqual(
-            Option.some(deskIdentity.did)
-          );
-          expect(sent).not.toContain("no Rat King name");
-        } else {
-          expect(ReaderState.$is("Refused")(status.reader)).toBe(true);
-          expect(Option.isNone(status.self)).toBe(true);
-          expect(sent).toContain("no Rat King name");
-          expect(sent).toContain("dead mailboxes");
-          expect(sent).toContain("RATKING_PRINT_NAME");
-        }
-      }).pipe(
-        Effect.provide(harness(state, nobody, [], { secrets: store })),
-        Effect.scoped
-      );
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
-  60_000
 );
 
 const SESSION = "0123456789abcdef";
@@ -214,144 +148,124 @@ const mailbox = (wire: Wire) =>
 
 const SUMMARY = Schema.String.check(Schema.isPattern(/^[a-z]{1,40}$/u));
 
+class CountingKeys extends Map<string, string> {
+  leases = 0;
+
+  override get(key: string) {
+    this.leases += 1;
+
+    return super.get(key);
+  }
+}
+
 it.live.prop(
-  "a nameless desk send arrives from the desk, marked in body and summary as sent via the headless Pi; a named Pi's send is unmarked",
+  "a nameless Pi mints and registers nothing and never leases a key; every send, record, ask, reply and handled refuses in three parts without touching the mailbox, whatever its owner and the keys on this machine",
   [
-    Arbitrary.schema(SUMMARY),
-    Arbitrary.schema(SUMMARY),
     Arbitrary.schema(Schema.Boolean),
-  ],
-  ([text, summary, named]) =>
-    Effect.gen(function* attribution() {
-      const fs = yield* FileSystem.FileSystem;
-      const state = yield* fs.makeTempDirectoryScoped();
-      const wire: Wire = { calls: [], envelopes: [] };
-
-      const deskIdentity = yield* identity(
-        "did:web:desk.agents.example.invalid"
-      );
-
-      const peer = yield* identity("did:web:peer.agents.example.invalid");
-
-      const documents = yield* Effect.gen(function* run() {
-        const directory = yield* Directory;
-        const ratking = yield* RatKing;
-
-        yield* directory.record(DESK, yield* document(deskIdentity));
-        yield* directory.record("peer", yield* document(peer));
-        yield* ratking.run(
-          named
-            ? { ...LABELLED, env: Option.some(DESK), nameless: false }
-            : { ...LABELLED, owner: Option.some(DESK) },
-          () => Effect.void
-        );
-        yield* ratking.send("peer", text, { summary });
-
-        return yield* directory.documents;
-      }).pipe(
-        Effect.provide(
-          harness(state, mailbox(wire), [], {
-            secrets: new Map([[DESK_KEY, JSON.stringify(deskIdentity)]]),
-          })
-        )
-      );
-
-      const [envelope] = wire.envelopes;
-
-      if (envelope === undefined) {
-        throw new Error("Missing envelope");
-      }
-
-      const opened = yield* RatKingMailbox.use((client) =>
-        client.open(envelope)
-      ).pipe(
-        Effect.provide(
-          layer({
-            documents: yield* Schema.decodeUnknownEffect(
-              Schema.Array(Schema.toType(Defs.DidDocument))
-            )(documents),
-            endpoint: "https://mailbox.example.invalid",
-            identity: peer,
-            serviceDid: "did:web:mailbox.example.invalid",
-          })
-        ),
-        Effect.provideService(HttpClient.HttpClient, mailbox(wire))
-      );
-
-      const payload = yield* Schema.decodeEffect(PayloadJson)(opened.body);
-
-      expect(envelope.aad.senderDid).toBe(deskIdentity.did);
-      expect(payload.from).toBe(DESK);
-      expect(payload.body).toBe(
-        named ? text : `↳ via headless Pi ${VIA}\n\n${text}`
-      );
-      expect(payload.summary).toBe(named ? summary : `via lane · ${summary}`);
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
-  { arbitrary: { runs: 10 }, timeout: 60_000 }
-);
-
-it.live.prop(
-  "a nameless desk send refuses ask, reply, handled and records in three parts, without touching the mailbox",
-  [
+    Arbitrary.schema(Schema.Boolean),
     Arbitrary.schema(
-      Schema.Literals(["ask", "ask-kind", "reply", "handled", "record"])
+      Schema.Literals(["send", "record", "ask", "ask-kind", "reply", "handled"])
     ),
   ],
-  ([action]) =>
-    Effect.gen(function* askRefusal() {
+  ([hasOwner, holdsKey, action]) =>
+    Effect.gen(function* proof() {
       const fs = yield* FileSystem.FileSystem;
       const state = yield* fs.makeTempDirectoryScoped();
+      const store = new CountingKeys();
       const wire: Wire = { calls: [], envelopes: [] };
 
       const deskIdentity = yield* identity(
         "did:web:desk.agents.example.invalid"
       );
 
-      const failure = yield* Effect.gen(function* run() {
+      if (holdsKey) {
+        store.set(DESK_KEY, JSON.stringify(deskIdentity));
+      }
+
+      const before = new Map(store);
+
+      yield* Effect.gen(function* run() {
         const directory = yield* Directory;
         const ratking = yield* RatKing;
 
         yield* directory.record(DESK, yield* document(deskIdentity));
+
+        const registered = (yield* directory.list).length;
+
         yield* ratking.run(
-          { ...LABELLED, owner: Option.some(DESK) },
+          {
+            ...LABELLED,
+            owner: hasOwner ? Option.some(DESK) : Option.none<string>(),
+          },
           () => Effect.void
         );
-        wire.calls.length = 0;
 
-        return yield* Match.value(action).pipe(
+        const failure = yield* Match.value(action).pipe(
+          Match.when("send", () => ratking.send(DESK, "hi")),
+          Match.when("record", () =>
+            ratking.send(DESK, { $type: "example.invalid#record" })
+          ),
           Match.when("ask", () => ratking.ask(DESK, "q")),
           Match.when("ask-kind", () =>
             ratking.send(DESK, "q", { kind: "ask" })
           ),
-          Match.when("record", () =>
-            ratking.send(DESK, { $type: "example.invalid#record" })
-          ),
           Match.when("reply", () => ratking.reply("some-id", "a")),
           Match.orElse(() => ratking.handled("some-id")),
-          Effect.flip
+          Effect.flip,
+          Effect.timeout(Duration.seconds(10))
         );
-      }).pipe(
-        Effect.provide(
-          harness(state, mailbox(wire), [], {
-            secrets: new Map([[DESK_KEY, JSON.stringify(deskIdentity)]]),
-          })
+
+        const reason = Schema.is(Schema.Struct({ reason: Schema.String }))(
+          failure
         )
-      );
+          ? failure.reason
+          : "";
 
-      const reason = Schema.is(Schema.Struct({ reason: Schema.String }))(
-        failure
-      )
-        ? failure.reason
-        : "";
+        const status = yield* ratking.status.pipe(
+          Effect.filterOrFail(({ reader }) =>
+            ReaderState.$is("Refused")(reader)
+          ),
+          Effect.retry(
+            Schedule.spaced("20 millis").pipe(
+              Schedule.while(({ attempt }) => attempt < 200)
+            )
+          )
+        );
 
-      expect(reason).toContain("no Rat King name");
-      expect(reason).toContain(
-        action === "record" ? "via marker" : "nobody waiting"
+        expect(reason).toContain("no Rat King name");
+        expect(reason).toContain("dead mailboxes");
+        expect(reason).toContain("never hold their desk's key");
+        expect(reason).toContain("RATKING_PRINT_NAME");
+        expect(ReaderState.$is("Refused")(status.reader)).toBe(true);
+        expect(Option.isNone(status.self)).toBe(true);
+        expect(wire.calls).toEqual([]);
+        expect(store.leases).toBe(0);
+        expect(new Map(store)).toEqual(before);
+        expect((yield* directory.list).length).toBe(registered);
+      }).pipe(
+        Effect.provide(harness(state, mailbox(wire), [], { secrets: store })),
+        Effect.scoped
       );
-      expect(reason).toContain("RATKING_PRINT_NAME");
-      expect(wire.calls).toEqual([]);
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
-  { arbitrary: { runs: 8 }, timeout: 60_000 }
+  { arbitrary: { runs: 24 }, timeout: 120_000 }
+);
+
+it.effect.prop(
+  "the via marker prefixes body and summary of text and refuses records",
+  [Arbitrary.schema(SUMMARY), Arbitrary.schema(SUMMARY)],
+  ([text, summary]) =>
+    Effect.sync(() => {
+      const marked = markVia(VIA, text, { summary });
+
+      expect(Result.isSuccess(marked)).toBe(true);
+      expect(Result.getOrUndefined(marked)).toEqual({
+        body: `↳ via headless Pi ${VIA}\n\n${text}`,
+        options: { summary: `via lane · ${summary}` },
+      });
+      expect(
+        Result.isFailure(markVia(VIA, { $type: "example.invalid#record" }))
+      ).toBe(true);
+    })
 );
 
 it.effect.prop(
