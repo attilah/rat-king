@@ -1,0 +1,23 @@
+{
+  "defs": {
+    "main": {
+      "key": "tid",
+      "record": {
+        "properties": {
+          "did": { "format": "did", "type": "string" },
+          "exp": { "minimum": 0, "type": "integer" },
+          "fingerprint": { "maxLength": 64, "minLength": 64, "type": "string", "x-pattern": "^[0-9a-f]{64}$" },
+          "iat": { "minimum": 0, "type": "integer" },
+          "issuer": { "maxLength": 512, "minLength": 1, "type": "string" },
+          "name": { "maxLength": 256, "minLength": 1, "type": "string" },
+          "namespace": { "maxLength": 256, "minLength": 1, "type": "string" }
+        },
+        "required": ["name", "did", "fingerprint", "namespace", "issuer", "iat", "exp"],
+        "type": "object"
+      },
+      "type": "record"
+    }
+  },
+  "id": "sh.ratking.ticket",
+  "lexicon": 1
+}

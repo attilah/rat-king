@@ -1,0 +1,25 @@
+{
+  "defs": {
+    "main": {
+      "key": "tid",
+      "record": {
+        "properties": {
+          "desk": { "maxLength": 256, "minLength": 1, "type": "string" },
+          "deskDid": { "format": "did", "type": "string" },
+          "exp": { "minimum": 0, "type": "integer" },
+          "iat": { "minimum": 0, "type": "integer" },
+          "nonce": { "maxLength": 256, "minLength": 1, "type": "string" },
+          "run": { "maxLength": 256, "minLength": 1, "type": "string" },
+          "scope": { "items": { "maxLength": 512, "minLength": 1, "type": "string" }, "maxLength": 64, "minLength": 1, "type": "array" },
+          "v": { "const": 1, "type": "integer" },
+          "worker": { "format": "did", "type": "string" }
+        },
+        "required": ["v", "worker", "desk", "deskDid", "run", "scope", "iat", "exp", "nonce"],
+        "type": "object"
+      },
+      "type": "record"
+    }
+  },
+  "id": "sh.ratking.pass",
+  "lexicon": 1
+}

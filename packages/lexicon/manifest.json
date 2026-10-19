@@ -1,7 +1,7 @@
 {
   "effect": "4.0.5",
   "generatorVersion": "0.1.0",
-  "sourceDigest": "de9f9032a494fbbe7334f3b8a1231a2c78f842e5a5624cea338df79ca9d1c50a",
+  "sourceDigest": "819690d2aa0c4f8a98da65ba2c95e5e35d4dab1aa2b5a0c9e814e6746780ae4c",
   "sources": [
     "lexicons/sh/mschf/agentgraph/checkin.json",
     "lexicons/sh/mschf/agentgraph/friction.json",
@@ -59,6 +59,8 @@
     "lexicons/sh/mschf/rulegarden/finding.json",
     "lexicons/sh/ratking/identity.json",
     "lexicons/sh/ratking/invite.json",
-    "lexicons/sh/ratking/revocation.json"
+    "lexicons/sh/ratking/pass.json",
+    "lexicons/sh/ratking/revocation.json",
+    "lexicons/sh/ratking/ticket.json"
   ]
 }
