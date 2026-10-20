@@ -258,3 +258,52 @@ it.live.prop(
     }),
   { timeout: 30_000 }
 );
+
+it.effect.prop(
+  "fetch errors never reach failed, never mark a sha failed and back off between retries",
+  [
+    Schema.Array(
+      Schema.Int.check(Schema.isBetween({ maximum: 4000, minimum: 0 }))
+    ),
+  ],
+  ([gaps]) =>
+    Effect.gen(function* fetchErrors() {
+      const [initial] = initialTransition(shipMachine, {
+        failed: "",
+        successful: "",
+      });
+
+      let snapshot: ShipSnapshot = initial;
+      let fetches = 0;
+      let reachedFailed = false;
+
+      const ports: ShipPorts = {
+        checkpoint: () => Effect.void,
+        ci: () => Effect.succeed(true),
+        deploy: () => Effect.die("no deploy"),
+        fetch: Effect.suspend(() => {
+          fetches += 1;
+
+          return Effect.fail(new FleetError({ reason: "network" }));
+        }),
+        notify: () => Effect.void,
+        record: () => Effect.void,
+        recover: Effect.succeed("running"),
+      };
+
+      for (const gap of gaps) {
+        yield* TestClock.adjust(Duration.seconds(gap));
+        const before = fetches;
+        const wasWaiting = snapshot.matches("fetch-error");
+        const now = (yield* Clock.currentTimeMillis) / 1000;
+        const due = !wasWaiting || now >= snapshot.context.fetchRetryAt;
+        snapshot = yield* shipCycle(snapshot, ports);
+        reachedFailed ||= snapshot.matches("failed");
+        expect(fetches - before).toBe(due ? 1 : 0);
+        expect(snapshot.matches("fetch-error")).toBe(true);
+        expect(snapshot.context.failed).toBe("");
+      }
+
+      expect(reachedFailed).toBe(false);
+    })
+);
