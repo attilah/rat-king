@@ -51,6 +51,13 @@ export class RetirementRegistry extends Context.Service<
     readonly current: (
       did: string
     ) => Effect.Effect<RetirementValue | undefined, XrpcFailure>;
+    readonly presence: (did: string) => Effect.Effect<
+      {
+        readonly exists: boolean;
+        readonly retirement?: RetirementValue;
+      },
+      XrpcFailure
+    >;
   }
 >()("mailbox/RetirementRegistry") {}
 
@@ -148,14 +155,6 @@ const retiredOutput = (retired: RetiredName) => {
   return encoded;
 };
 
-const sameState = (
-  seen: number | undefined,
-  tx: IssuerTransaction,
-  successor: string
-) =>
-  tx.binding(successor) !== undefined &&
-  tx.retiredEntry(successor)?.retiredAt === seen;
-
 export const issuerHandlers = (policy: IssuerPolicy) =>
   Layer.effect(
     IssuerHandlers,
@@ -214,40 +213,56 @@ export const issuerHandlers = (policy: IssuerPolicy) =>
         return did;
       });
 
-      const successorState = Effect.fn("Issuer.successorState")(
-        function* successorState(name: string, successor: string) {
-          const seen = yield* store.transaction((tx) => ({
-            bound: tx.binding(successor) !== undefined,
-            row: tx.retiredEntry(successor),
-          }));
+      const successorDid = Effect.fn("Issuer.successorDid")(
+        function* successorDid(successor: string) {
+          const binding = yield* store.transaction((tx) =>
+            tx.binding(successor)
+          );
 
-          if (!seen.bound) {
-            return yield* Effect.fail(
-              failure(
-                "NameNotFound",
-                404,
-                `Successor ${successor} is not a registered name, so senders would be sent to a name nobody holds. Retire ${name} without a successor, or name a live one.`
-              )
-            );
+          if (binding !== undefined) {
+            return binding.did;
           }
 
-          if (seen.row !== undefined) {
-            const current = yield* retirements.current(seen.row.did);
-
-            if (current?.retiredAt === seen.row.retiredAt) {
-              return yield* Effect.fail(
-                failure(
-                  "NameNotFound",
-                  404,
-                  `Successor ${successor} is itself retired, so senders would be sent to a name that refuses mail. Retire ${name} without a successor, or name a live one.`
-                )
-              );
-            }
-          }
-
-          return seen.row?.retiredAt;
+          return yield* Option.match(policy.config, {
+            onNone: () =>
+              Effect.fail(
+                failure("MailboxUnavailable", 503, "Issuer is not configured")
+              ),
+            onSome: (config) =>
+              Effect.succeed(nameDid(config.didTemplate, successor)),
+          });
         }
       );
+
+      const requireLive = Effect.fn("Issuer.requireLive")(function* requireLive(
+        name: string,
+        successor: string,
+        did: string
+      ) {
+        const standing = yield* retirements.presence(did);
+
+        if (!standing.exists) {
+          return yield* Effect.fail(
+            failure(
+              "NameNotFound",
+              404,
+              `Successor ${successor} is not a registered name, so senders would be sent to a name nobody holds. Retire ${name} without a successor, or name a live one.`
+            )
+          );
+        }
+
+        if (standing.retirement !== undefined) {
+          return yield* Effect.fail(
+            failure(
+              "NameNotFound",
+              404,
+              `Successor ${successor} is itself retired, so senders would be sent to a name that refuses mail. Retire ${name} without a successor, or name a live one.`
+            )
+          );
+        }
+
+        return yield* Effect.void;
+      });
 
       return IssuerHandlers.of({
         enrollHost: Effect.fn("Issuer.enrollHost")(function* enrollHost(input) {
@@ -414,10 +429,16 @@ export const issuerHandlers = (policy: IssuerPolicy) =>
             );
           }
 
-          const seen =
+          const successorAt =
             input.successor === undefined
               ? undefined
-              : yield* successorState(input.name, input.successor);
+              : yield* successorDid(input.successor);
+
+          if (input.successor !== undefined && successorAt !== undefined) {
+            yield* requireLive(input.name, input.successor, successorAt);
+          }
+
+          const previous = yield* retirements.current(did);
 
           const retirement: RetirementValue = {
             by: caller.did,
@@ -431,30 +452,31 @@ export const issuerHandlers = (policy: IssuerPolicy) =>
 
           yield* retirements.retire(did, retirement);
 
-          const settled = yield* store.transaction((tx) => {
-            if (
-              input.successor !== undefined &&
-              !sameState(seen, tx, input.successor)
-            ) {
-              return false;
+          if (input.successor !== undefined && successorAt !== undefined) {
+            const rechecked = yield* requireLive(
+              input.name,
+              input.successor,
+              successorAt
+            ).pipe(Effect.result);
+
+            if (Result.isFailure(rechecked)) {
+              yield* previous === undefined
+                ? Effect.asVoid(retirements.clear(did))
+                : retirements.retire(did, previous);
+
+              return yield* Effect.fail(
+                failure(
+                  "NameNotFound",
+                  404,
+                  `Successor ${input.successor} changed during retirement; ${input.name} was not retired. Retire it without a successor, or name a live one.`
+                )
+              );
             }
-
-            tx.retire({ ...retirement, did });
-
-            return true;
-          });
-
-          if (!settled) {
-            yield* retirements.clear(did);
-
-            return yield* Effect.fail(
-              failure(
-                "NameNotFound",
-                404,
-                `Successor ${input.successor} changed during retirement; ${input.name} was not retired. Retire it without a successor, or name a live one.`
-              )
-            );
           }
+
+          yield* store.transaction((tx) => {
+            tx.retire({ ...retirement, did });
+          });
 
           return yield* output(
             Retire.Output,

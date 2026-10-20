@@ -62,7 +62,7 @@ import {
 import { nameHealthRequest } from "./name-health-http.ts";
 import { nameHealth } from "./name-health.ts";
 import { replayLayer } from "./replay.ts";
-import { isoTime, markRetired, presenceOf } from "./retirement.ts";
+import { isoTime, markRetired, presenceOf, standingOf } from "./retirement.ts";
 import { SenderFence } from "./sender-fence.ts";
 import { SocketAttachment, socketStep, socketCodes } from "./socket.ts";
 import { sqliteStore } from "./sqlite.ts";
@@ -667,6 +667,29 @@ export class Mailbox extends DurableObject<Bindings> {
           return current === undefined
             ? undefined
             : Schema.encodeSync(Schema.fromJsonString(Retirement))(current);
+        })
+      ).pipe(Effect.provide(this.store))
+    );
+  }
+  standing() {
+    const staticDocuments = Schema.decodeSync(
+      Schema.fromJsonString(Schema.Array(Defs.DidDocument))
+    )(this.env.DID_DOCUMENTS);
+
+    return Effect.runPromise(
+      MailboxStore.use((store) =>
+        store.transaction((tx) => {
+          const { exists, retirement } = standingOf(tx, staticDocuments);
+
+          return {
+            exists,
+            retirement:
+              retirement === undefined
+                ? undefined
+                : Schema.encodeSync(Schema.fromJsonString(Retirement))(
+                    retirement
+                  ),
+          };
         })
       ).pipe(Effect.provide(this.store))
     );

@@ -103,6 +103,24 @@ export class Issuer extends DurableObject<Bindings> {
                 Effect.mapError(() => failure("MailboxUnavailable", 503))
               );
         }),
+        presence: Effect.fn("RetirementRegistry.presence")(function* presence(
+          did: string
+        ) {
+          const standing = yield* mailboxCall(() =>
+            env.MAILBOX.getByName(did).standing()
+          );
+
+          return standing.retirement === undefined
+            ? { exists: standing.exists }
+            : {
+                exists: standing.exists,
+                retirement: yield* Schema.decodeUnknownEffect(
+                  Schema.fromJsonString(Retirement)
+                )(standing.retirement).pipe(
+                  Effect.mapError(() => failure("MailboxUnavailable", 503))
+                ),
+              };
+        }),
         retire: Effect.fn("RetirementRegistry.retire")(
           function* retire(did, retirement) {
             if (did === trafficDid) {

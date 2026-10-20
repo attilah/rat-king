@@ -22,17 +22,26 @@ export const refuseRetired = (tx: Transaction) => {
   }
 };
 
+export const standingOf = (
+  tx: Transaction,
+  staticDocuments: readonly Defs.DidDocumentValue[]
+) => {
+  const recipient = tx.recipient();
+
+  return {
+    exists:
+      tx.document() !== undefined ||
+      staticDocuments.some((document) => document.id === recipient),
+    retirement: tx.retirement(),
+  };
+};
+
 export const markRetired = (
   tx: Transaction,
   staticDocuments: readonly Defs.DidDocumentValue[],
   retirement: RetirementValue
 ) => {
-  const recipient = tx.recipient();
-
-  if (
-    tx.document() === undefined &&
-    !staticDocuments.some((document) => document.id === recipient)
-  ) {
+  if (!standingOf(tx, staticDocuments).exists) {
     throw failure("NameNotFound", 404);
   }
 
