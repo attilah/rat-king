@@ -65,12 +65,17 @@ const stranger = "did:web:stranger.example.invalid";
 
 const callers = [operator, recipientDid, host, stranger];
 
-const successors = [undefined, "proj/row-2"];
+const other = "proj/row-2";
+
+const otherDid = "did:web:proj.row-2.pi.example.invalid";
+
+const successors = [undefined, other, "proj/ghost"];
 
 const iso = (millis: number) => DateTime.formatIso(DateTime.makeUnsafe(millis));
 
 interface Model {
   now: number;
+  otherRetired: boolean;
   retired?: { readonly successor?: string; readonly at: number };
   holder?: RuntimeLease.MainValue;
   lastHeldAt?: number;
@@ -145,11 +150,12 @@ const checkModel = async (model: Model, real: Real) => {
     Schema.decodeUnknownSync(Schema.fromJsonString(ListRetired.Output))(
       listed.body
     ).retired.map((entry) => [entry.name, entry.did, entry.successor])
-  ).toEqual(
-    model.retired === undefined
+  ).toEqual([
+    ...(model.retired === undefined
       ? []
-      : [[name, recipientDid, model.retired.successor]]
-  );
+      : [[name, recipientDid, model.retired.successor]]),
+    ...(model.otherRetired ? [[other, otherDid, undefined]] : []),
+  ]);
 
   expect(await real.presence()).toEqual(expectedPresence(model));
 };
@@ -158,8 +164,9 @@ const Spec = Schema.Union([
   Schema.Struct({
     caller: Schema.Int.check(Schema.isBetween({ maximum: 3, minimum: 0 })),
     kind: Schema.Literal("retire"),
-    successor: Schema.Int.check(Schema.isBetween({ maximum: 1, minimum: 0 })),
+    successor: Schema.Int.check(Schema.isBetween({ maximum: 2, minimum: 0 })),
   }),
+  Schema.Struct({ kind: Schema.Literals(["retireOther", "unretireOther"]) }),
   Schema.Struct({
     caller: Schema.Int.check(Schema.isBetween({ maximum: 3, minimum: 0 })),
     kind: Schema.Literal("unretire"),
@@ -175,41 +182,98 @@ const Spec = Schema.Union([
 
 type SpecValue = typeof Spec.Type;
 
+const refusesSuccessor = (model: Model, successor: string | undefined) =>
+  successor === "proj/ghost" || (successor === other && model.otherRetired);
+
+const expectSuccessorRefused = (
+  response: { readonly status: number; readonly body: string },
+  successor: string | undefined
+) => {
+  const refusal = Schema.decodeUnknownSync(ErrorBody)(response.body);
+
+  expect([response.status, refusal.error]).toEqual([404, "NameNotFound"]);
+  expect(refusal.message).toContain(`Successor ${successor}`);
+  expect(refusal.message).toContain(
+    successor === other ? "is itself retired" : "is not a registered name"
+  );
+  expect(refusal.message).toContain("without a successor");
+};
+
+const retireCommand = async (
+  model: Model,
+  real: Real,
+  callerIndex: number,
+  successorIndex: number
+) => {
+  const caller = callers[callerIndex] ?? stranger;
+  const successor = successors[successorIndex];
+
+  const response = await real.issuer(caller, {
+    input: successor === undefined ? { name } : { name, successor },
+    method: "POST",
+    nsid: Retire.Method.nsid,
+    params: undefined,
+  });
+
+  if (caller === stranger) {
+    expect(Schema.decodeUnknownSync(ErrorBody)(response.body).error).toBe(
+      "Forbidden"
+    );
+
+    return;
+  }
+
+  if (refusesSuccessor(model, successor)) {
+    expectSuccessorRefused(response, successor);
+
+    return;
+  }
+
+  const output = Schema.decodeUnknownSync(Schema.fromJsonString(Retire.Output))(
+    response.body
+  );
+
+  expect([output.did, output.by, output.successor]).toEqual([
+    recipientDid,
+    caller,
+    successor,
+  ]);
+  model.retired =
+    successor === undefined ? { at: model.now } : { at: model.now, successor };
+};
+
 const command = (spec: SpecValue): fc.AsyncCommand<Model, Real> => ({
   check: () => true,
   run: async (model, real) => {
     switch (spec.kind) {
       case "retire": {
-        const caller = callers[spec.caller] ?? stranger;
-        const successor = successors[spec.successor];
+        await retireCommand(model, real, spec.caller, spec.successor);
+        break;
+      }
 
-        const response = await real.issuer(caller, {
-          input: successor === undefined ? { name } : { name, successor },
+      case "retireOther": {
+        const response = await real.issuer(operator, {
+          input: { name: other },
           method: "POST",
           nsid: Retire.Method.nsid,
           params: undefined,
         });
 
-        if (caller === stranger) {
-          expect(Schema.decodeUnknownSync(ErrorBody)(response.body).error).toBe(
-            "Forbidden"
-          );
-          break;
-        }
+        expect(response.status).toBe(200);
+        model.otherRetired = true;
+        break;
+      }
 
-        const output = Schema.decodeUnknownSync(
-          Schema.fromJsonString(Retire.Output)
-        )(response.body);
+      case "unretireOther": {
+        const response = await real.issuer(operator, {
+          input: { name: other },
+          method: "POST",
+          nsid: Unretire.Method.nsid,
+          params: undefined,
+        });
 
-        expect([output.did, output.by, output.successor]).toEqual([
-          recipientDid,
-          caller,
-          successor,
-        ]);
-        model.retired =
-          successor === undefined
-            ? { at: model.now }
-            : { at: model.now, successor };
+        expect(response.status).toBe(200);
+        model.otherRetired = false;
         break;
       }
 
@@ -329,6 +393,22 @@ it.effect.prop(
         });
       }
 
+      const otherStorage = yield* testStoreFor(otherDid);
+
+      const otherStore = yield* MailboxStore.pipe(
+        Effect.provide(otherStorage.layer)
+      );
+
+      if (recipientDocument !== undefined) {
+        const decoded = yield* Schema.decodeUnknownEffect(Defs.DidDocument)(
+          recipientDocument
+        );
+
+        yield* otherStore.transaction((tx) => {
+          tx.setDocument(decoded);
+        });
+      }
+
       const issuerLayer = issuerStore(issuerStorage.sql);
 
       yield* Effect.gen(function* seed() {
@@ -339,6 +419,11 @@ it.effect.prop(
             tx.bind(
               name,
               { did: recipientDid, fingerprint: "seed", host },
+              recipientDocument
+            );
+            tx.bind(
+              other,
+              { did: otherDid, fingerprint: "seed", host },
               recipientDocument
             );
           });
@@ -410,7 +495,11 @@ it.effect.prop(
                 }).pipe(
                   Layer.provide(issuerLayer),
                   Layer.provide(unusedDocuments),
-                  Layer.provide(storeRetirements(() => Effect.succeed(store))),
+                  Layer.provide(
+                    storeRetirements((did) =>
+                      Effect.succeed(did === otherDid ? otherStore : store)
+                    )
+                  ),
                   Layer.provide(Layer.succeed(Caller, { did: caller }))
                 )
               )
@@ -470,11 +559,17 @@ it.effect.prop(
       };
 
       const required: SpecValue[] = [
+        { caller: 0, kind: "retire", successor: 2 },
+        { caller: 0, kind: "retire", successor: 1 },
+        { kind: "retireOther" },
         { caller: 0, kind: "retire", successor: 1 },
         { kind: "acquire" },
       ];
 
-      const model: Model = { now: yield* Clock.currentTimeMillis };
+      const model: Model = {
+        now: yield* Clock.currentTimeMillis,
+        otherRetired: false,
+      };
 
       yield* Effect.promise(async () => {
         await fc.asyncModelRun(
