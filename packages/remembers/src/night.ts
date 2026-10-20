@@ -1,5 +1,5 @@
 import { watchActor } from "@rat-king/capability/actor-watch";
-import { createEffectActor, fromEffect, waitFor } from "@xstate/effect";
+import { createEffectActor, createEffectLogic, waitFor } from "@xstate/effect";
 import { Effect, Exit, Ref, Schema } from "effect";
 import { setup } from "xstate";
 
@@ -290,11 +290,11 @@ export const runNight = Effect.fn("Remembers.runNight")(
 
     const machine = setup({
       actors: {
-        books: fromEffect({ effect: () => booksEffect, schemas }),
-        cursor: fromEffect({ effect: () => cursorEffect, schemas }),
-        pipeline: fromEffect({ effect: () => pipelineEffect, schemas }),
-        report: fromEffect({ effect: () => reportEffect, schemas }),
-        slices: fromEffect({ effect: () => slicesEffect, schemas }),
+        books: createEffectLogic({ effect: () => booksEffect, schemas }),
+        cursor: createEffectLogic({ effect: () => cursorEffect, schemas }),
+        pipeline: createEffectLogic({ effect: () => pipelineEffect, schemas }),
+        report: createEffectLogic({ effect: () => reportEffect, schemas }),
+        slices: createEffectLogic({ effect: () => slicesEffect, schemas }),
       },
     }).createMachine({
       initial: "cursor",

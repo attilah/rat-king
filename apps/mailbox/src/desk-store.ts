@@ -75,6 +75,13 @@ const SeqRow = Schema.Struct({ seq: Seq });
 
 const encodeItem = Schema.encodeSync(Schema.fromJsonString(DeskDefs.OwnerItem));
 
+const queued = (rows: Iterable<unknown>) =>
+  Array.from(rows, (row) => {
+    const { seq, value } = Schema.decodeUnknownSync(ItemRow)(row);
+
+    return { item: value, seq };
+  });
+
 export const deskStore = (sql: Sql) => {
   sql.exec(
     "CREATE TABLE IF NOT EXISTS desk_items (seq INTEGER PRIMARY KEY CHECK(seq > 0 AND seq <= 9007199254740991), uri TEXT NOT NULL UNIQUE, cid TEXT NOT NULL, created_at INTEGER NOT NULL, value TEXT NOT NULL)"
@@ -109,13 +116,6 @@ export const deskStore = (sql: Sql) => {
 
   const counter = (key: string) =>
     Schema.decodeUnknownSync(Seq)(Number(metadata(key) ?? "0"));
-
-  const queued = (rows: Iterable<unknown>) =>
-    Array.from(rows, (row) => {
-      const { seq, value } = Schema.decodeUnknownSync(ItemRow)(row);
-
-      return { item: value, seq };
-    });
 
   const deliveredThrough = () => counter("deliveredThrough");
 

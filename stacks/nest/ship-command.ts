@@ -187,14 +187,14 @@ const escapeXml = (text: string) =>
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&apos;");
 
+const string = (text: string) => `<string>${escapeXml(text)}</string>`;
+
 export const launchdPlist = (config: StageConfigValue, configPath: string) => {
   const { ship } = config;
 
   if (ship === undefined) {
     return "";
   }
-
-  const string = (text: string) => `<string>${escapeXml(text)}</string>`;
 
   return `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict><key>Label</key>${string(ship.launchd.label)}<key>ProgramArguments</key><array>${[ship.launchd.node, `${ship.source}/stacks/nest/cli.ts`, "ship"].map(string).join("")}</array><key>EnvironmentVariables</key><dict><key>RAT_KING_STAGE_CONFIG</key>${string(configPath)}<key>PATH</key>${string(ship.launchd.path)}</dict><key>WorkingDirectory</key>${string(ship.source)}<key>RunAtLoad</key><true/><key>KeepAlive</key><true/><key>ThrottleInterval</key><integer>30</integer><key>StandardOutPath</key>${string(ship.launchd.outputLog)}<key>StandardErrorPath</key>${string(ship.launchd.errorLog)}</dict></plist>\n`;
 };

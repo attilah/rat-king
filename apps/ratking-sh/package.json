@@ -12,14 +12,14 @@
     "@rat-king/lexicon": "workspace:*",
     "alchemy": "2.0.0-beta.83",
     "effect": "4.0.5",
-    "foldkit": "0.167.0",
-    "xstate": "6.0.0-alpha.65"
+    "foldkit": "0.168.0",
+    "xstate": "6.0.0-alpha.69"
   },
   "devDependencies": {
     "@effect/vitest": "4.0.5",
-    "@types/node": "24.13.6",
+    "@types/node": "24.19.2",
     "fast-check": "4.10.2",
     "typescript": "7.0.2",
-    "vitest": "5.0.1"
+    "vitest": "5.0.5"
   }
 }

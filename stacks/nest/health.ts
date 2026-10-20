@@ -383,6 +383,12 @@ export interface HealthInput {
 const unreadable = (reason: string) =>
   new HostError({ operation: "health", reason });
 
+const run = (props: ReadonlyMap<string, string>) => ({
+  endedAt: unixInstant(props.get("ExecMainExitTimestamp")),
+  result: props.get("Result") ?? "unknown",
+  startedAt: unixInstant(props.get("ExecMainStartTimestamp")),
+});
+
 export const collectHealth = Effect.fn("Nest.health")(function* collectHealth(
   shell: Pick<Interface, "exec">,
   input: HealthInput
@@ -461,12 +467,6 @@ export const collectHealth = Effect.fn("Nest.health")(function* collectHealth(
             });
       })
     );
-
-  const run = (props: ReadonlyMap<string, string>) => ({
-    endedAt: unixInstant(props.get("ExecMainExitTimestamp")),
-    result: props.get("Result") ?? "unknown",
-    startedAt: unixInstant(props.get("ExecMainStartTimestamp")),
-  });
 
   const health = Effect.gen(function* tailnetHealth() {
     const client = yield* HttpClient.HttpClient;

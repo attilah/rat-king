@@ -12,6 +12,7 @@ export interface DelegationArrival extends Arrival {
   readonly operator?: boolean;
 }
 
+/* oxlint-disable typescript/no-generated-empty-object-type -- Effect TaggedEnum requires an intentionally empty payload for tag-only variants. */
 export type DelegationReason = Data.TaggedEnum<{
   ask: Readonly<Record<never, never>>;
   cc: Readonly<Record<never, never>>;
@@ -27,6 +28,7 @@ export type DelegationReason = Data.TaggedEnum<{
   quietDesk: Readonly<Record<never, never>>;
   reply: Readonly<Record<never, never>>;
 }>;
+/* oxlint-enable typescript/no-generated-empty-object-type */
 
 export const DelegationReasons = Data.taggedEnum<DelegationReason>();
 

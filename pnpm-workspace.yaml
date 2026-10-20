@@ -4,11 +4,14 @@ packages:
 
 overrides:
   "@mischief/worker>effect": "4.0.5"
+  "foldkit>effect": "4.0.5"
   "@effect/platform-browser": "4.0.5"
   "@effect/platform-node-shared": "4.0.5"
   "@effect/sql-d1": "4.0.5"
   "@effect/sql-sqlite-do": "4.0.5"
   "@effect/vitest": "4.0.5"
+  vite: "8.3.4"
+  yaml: "2.9.1"
 
 allowBuilds:
   "@google/genai": true
@@ -22,8 +25,8 @@ allowBuilds:
 # One entry per version; a bump replaces its entry rather than adding one.
 minimumReleaseAgeExclude:
   - alchemy@2.0.0-beta.81
-  - xstate@6.0.0-alpha.59
-  - "@xstate/effect@0.1.0-alpha.2"
+  - xstate@6.0.0-alpha.69
+  - "@xstate/effect@1.0.0-alpha.8"
   - "@distilled.cloud/aws@1.0.0-rc.13"
   - "@distilled.cloud/axiom@1.0.0-rc.13"
   - "@distilled.cloud/cloudflare@1.0.0-rc.13"
@@ -43,12 +46,19 @@ minimumReleaseAgeExclude:
   - "@earendil-works/pi-tui@0.86.1"
   - better-auth@1.6.2
   - satori@0.33.5
-  - "@cloudflare/workers-types@5.20261004.1"
+  - "@cloudflare/workers-types@5.20261019.1"
   - "@effect/platform-browser@4.0.5"
   - "@effect/platform-node@4.0.5"
   - "@effect/platform-node-shared@4.0.5"
   - "@effect/sql-d1@4.0.5"
   - "@effect/sql-sqlite-do@4.0.5"
   - "@effect/vitest@4.0.5"
-  - "@effect/tsgo@0.53.4"
+  - "@effect/tsgo@0.54.0"
   - effect@4.0.5
+  - "@effect/tsgo-darwin-arm64@0.54.0"
+  - "@effect/tsgo-darwin-x64@0.54.0"
+  - "@effect/tsgo-linux-arm64@0.54.0"
+  - "@effect/tsgo-linux-arm@0.54.0"
+  - "@effect/tsgo-linux-x64@0.54.0"
+  - "@effect/tsgo-win32-arm64@0.54.0"
+  - "@effect/tsgo-win32-x64@0.54.0"

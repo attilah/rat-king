@@ -544,6 +544,12 @@ const custodyOf = (message: OpenedMessage) => {
   return custody;
 };
 
+const persistenceError = (error: { readonly _tag: string }) =>
+  new NotDelivered({
+    code: "NotAttempted",
+    reason: `Relay journal: ${reasonOf(error)}`,
+  });
+
 export const makeRatKing = Effect.gen(function* makeRatKing() {
   const settings = yield* Settings;
   const lifetime = yield* Effect.scope;
@@ -1766,12 +1772,6 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
         "relay",
         `${provisionLabel(own.name)}.json`
       );
-
-      const persistenceError = (error: { readonly _tag: string }) =>
-        new NotDelivered({
-          code: "NotAttempted",
-          reason: `Relay journal: ${reasonOf(error)}`,
-        });
 
       const relay = yield* openRelay(config, {
         inject: deliver,

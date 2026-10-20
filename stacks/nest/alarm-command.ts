@@ -26,13 +26,14 @@ const xml = (text: string) =>
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
 
+const string = (value: string) => `<string>${xml(value)}</string>`;
+
 export const alarmPlist = (config: StageConfigValue, configPath: string) => {
   if (config.alarm === undefined) {
     return "";
   }
 
   const launch = config.alarm.launchd;
-  const string = (value: string) => `<string>${xml(value)}</string>`;
 
   return `<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>Label</key>${string(launch.label)}<key>ProgramArguments</key><array>${[launch.node, `${launch.source}/stacks/nest/cli.ts`, "alarm"].map(string).join("")}</array><key>EnvironmentVariables</key><dict><key>RAT_KING_STAGE_CONFIG</key>${string(configPath)}<key>PATH</key>${string(launch.path)}</dict><key>WorkingDirectory</key>${string(launch.source)}<key>RunAtLoad</key><true/><key>KeepAlive</key><true/><key>ThrottleInterval</key><integer>60</integer><key>StandardOutPath</key>${string(launch.outputLog)}<key>StandardErrorPath</key>${string(launch.errorLog)}</dict></plist>\n`;
 };

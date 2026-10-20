@@ -17,15 +17,15 @@
     "@rat-king/mailbox-client": "workspace:*",
     "@rat-king/ratking-client": "workspace:*",
     "effect": "4.0.5",
-    "xstate": "6.0.0-alpha.65"
+    "xstate": "6.0.0-alpha.69"
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "1.0.2",
-    "@earendil-works/pi-tui": "1.0.2",
+    "@earendil-works/pi-coding-agent": "1.3.0",
+    "@earendil-works/pi-tui": "1.3.0",
     "@effect/vitest": "4.0.5",
     "fast-check": "4.10.2",
     "typebox": "1.3.27",
-    "vitest": "5.0.1"
+    "vitest": "5.0.5"
   },
   "peerDependencies": {
     "@earendil-works/pi-tui": "*"

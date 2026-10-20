@@ -207,6 +207,60 @@ const arrayExpression = (
 ) =>
   `Schema.Array(${item}).check(Schema.isMinLength(${number(field.minLength ?? 0)}), Schema.isMaxLength(${number(field.maxLength ?? Number.MAX_SAFE_INTEGER)}))`;
 
+const objectExpression = (
+  field: Extract<Field, { type: "object" }>,
+  tag: string | undefined,
+  contextId: string,
+  render: (field: Field, tag: string | undefined, contextId: string) => string
+): string => {
+  const fields = Object.entries(field.properties)
+    .toSorted(([a], [b]) => a.localeCompare(b))
+    .map(([key, value]) => {
+      let schema = render(value, undefined, contextId);
+
+      if (field.nullable?.includes(key) === true) {
+        schema = `Schema.NullOr(${schema})`;
+      }
+
+      if (field.required?.includes(key) !== true) {
+        schema = `Schema.optionalKey(${schema})`;
+      }
+
+      return `${quote(key)}: ${schema}`;
+    });
+
+  if (tag !== undefined) {
+    fields.unshift(`"$type": Schema.Literal(${quote(tag)})`);
+  }
+
+  const extra = Schema.decodeUnknownSync(Extensions)(field);
+
+  const keys = [
+    ...Object.keys(field.properties),
+    ...(tag === undefined ? [] : ["$type"]),
+  ].toSorted();
+
+  let result = `Schema.StructWithRest(Schema.Struct({${extra["x-strict"] === true ? fields.toSorted().join(",\n") : fields.join(",\n")}}), [Schema.Record(Schema.String, Runtime.Data)])`;
+
+  if (extra["x-strict"] === true) {
+    result += `.check(Schema.makeFilter((value) => Object.keys(value).every((key) => ${JSON.stringify(keys)}.includes(key)), { expected: ${quote(`only allowed keys: ${keys.join(", ")}`)} }))`;
+  }
+
+  const requiredWhen = extra["x-requiredWhen"];
+
+  if (requiredWhen !== undefined) {
+    result += `.check(Schema.makeFilter((value) => value${member(requiredWhen.field)} !== ${quote(requiredWhen.value)} || value${member(requiredWhen.required)} !== undefined, { expected: ${quote(`${requiredWhen.required}: required when ${requiredWhen.field} is ${requiredWhen.value}`)} }))`;
+  }
+
+  const allowedWhen = extra["x-allowedWhen"];
+
+  if (allowedWhen !== undefined) {
+    result += `.check(Schema.makeFilter((value) => !(${quote(allowedWhen.property)} in value) || value${member(allowedWhen.field)} === ${quote(allowedWhen.value)}, { expected: ${quote(`${allowedWhen.property}: allowed only when ${allowedWhen.field} is ${allowedWhen.value}`)} }))`;
+  }
+
+  return result;
+};
+
 const renderer = (docs: readonly LexiconDoc[], doc: LexiconDoc) => {
   const imports = new Set<string>();
   const dependencies = new Set<string>();
@@ -234,60 +288,6 @@ const renderer = (docs: readonly LexiconDoc[], doc: LexiconDoc) => {
     imports.add(target.document);
 
     return `${moduleName(target.document)}.${symbol(target.name)}`;
-  };
-
-  const objectExpression = (
-    field: Extract<Field, { type: "object" }>,
-    tag: string | undefined,
-    contextId: string,
-    render: (field: Field, tag: string | undefined, contextId: string) => string
-  ): string => {
-    const fields = Object.entries(field.properties)
-      .toSorted(([a], [b]) => a.localeCompare(b))
-      .map(([key, value]) => {
-        let schema = render(value, undefined, contextId);
-
-        if (field.nullable?.includes(key) === true) {
-          schema = `Schema.NullOr(${schema})`;
-        }
-
-        if (field.required?.includes(key) !== true) {
-          schema = `Schema.optionalKey(${schema})`;
-        }
-
-        return `${quote(key)}: ${schema}`;
-      });
-
-    if (tag !== undefined) {
-      fields.unshift(`"$type": Schema.Literal(${quote(tag)})`);
-    }
-
-    const extra = Schema.decodeUnknownSync(Extensions)(field);
-
-    const keys = [
-      ...Object.keys(field.properties),
-      ...(tag === undefined ? [] : ["$type"]),
-    ].toSorted();
-
-    let result = `Schema.StructWithRest(Schema.Struct({${extra["x-strict"] === true ? fields.toSorted().join(",\n") : fields.join(",\n")}}), [Schema.Record(Schema.String, Runtime.Data)])`;
-
-    if (extra["x-strict"] === true) {
-      result += `.check(Schema.makeFilter((value) => Object.keys(value).every((key) => ${JSON.stringify(keys)}.includes(key)), { expected: ${quote(`only allowed keys: ${keys.join(", ")}`)} }))`;
-    }
-
-    const requiredWhen = extra["x-requiredWhen"];
-
-    if (requiredWhen !== undefined) {
-      result += `.check(Schema.makeFilter((value) => value${member(requiredWhen.field)} !== ${quote(requiredWhen.value)} || value${member(requiredWhen.required)} !== undefined, { expected: ${quote(`${requiredWhen.required}: required when ${requiredWhen.field} is ${requiredWhen.value}`)} }))`;
-    }
-
-    const allowedWhen = extra["x-allowedWhen"];
-
-    if (allowedWhen !== undefined) {
-      result += `.check(Schema.makeFilter((value) => !(${quote(allowedWhen.property)} in value) || value${member(allowedWhen.field)} === ${quote(allowedWhen.value)}, { expected: ${quote(`${allowedWhen.property}: allowed only when ${allowedWhen.field} is ${allowedWhen.value}`)} }))`;
-    }
-
-    return result;
   };
 
   const unionExpression = (

@@ -105,6 +105,8 @@ export const billingCommand = Effect.fn("Nest.billing-relay")(
 
       yield* fs.chmod(canonical, 0o700);
 
+      const journalPath = (id: string) => path.join(canonical, `${id}.json`);
+
       return yield* Effect.gen(function* serializedPass() {
         const client = (yield* HttpClient.HttpClient).pipe(
           HttpClient.filterStatusOk
@@ -129,8 +131,6 @@ export const billingCommand = Effect.fn("Nest.billing-relay")(
           | Path.Path
           | ChildProcessSpawner.ChildProcessSpawner
         >();
-
-        const journalPath = (id: string) => path.join(canonical, `${id}.json`);
 
         const relay = BillingRelay.of({
           ack: (id) =>
