@@ -36,6 +36,7 @@ import {
   DocumentRegistry,
   issuerHandlers,
   issuerRoute,
+  RetirementRegistry,
 } from "../src/issuer.ts";
 import {
   Caller,
@@ -69,7 +70,11 @@ const other = "proj/row-2";
 
 const otherDid = "did:web:proj.row-2.pi.example.invalid";
 
-const successors = [undefined, other, "proj/ghost"];
+const templated = "proj/templated";
+
+const templatedDid = "did:web:proj.templated.pi.example.invalid";
+
+const successors = [undefined, other, "proj/ghost", templated];
 
 const iso = (millis: number) => DateTime.formatIso(DateTime.makeUnsafe(millis));
 
@@ -164,7 +169,7 @@ const Spec = Schema.Union([
   Schema.Struct({
     caller: Schema.Int.check(Schema.isBetween({ maximum: 3, minimum: 0 })),
     kind: Schema.Literal("retire"),
-    successor: Schema.Int.check(Schema.isBetween({ maximum: 2, minimum: 0 })),
+    successor: Schema.Int.check(Schema.isBetween({ maximum: 3, minimum: 0 })),
   }),
   Schema.Struct({ kind: Schema.Literals(["retireOther", "unretireOther"]) }),
   Schema.Struct({
@@ -409,6 +414,30 @@ it.effect.prop(
         });
       }
 
+      const templatedStorage = yield* testStoreFor(templatedDid);
+
+      const templatedStore = yield* MailboxStore.pipe(
+        Effect.provide(templatedStorage.layer)
+      );
+
+      const ghostStorage = yield* testStoreFor(
+        "did:web:proj.ghost.pi.example.invalid"
+      );
+
+      const ghostStore = yield* MailboxStore.pipe(
+        Effect.provide(ghostStorage.layer)
+      );
+
+      if (recipientDocument !== undefined) {
+        const decoded = yield* Schema.decodeUnknownEffect(Defs.DidDocument)(
+          recipientDocument
+        );
+
+        yield* templatedStore.transaction((tx) => {
+          tx.setDocument(decoded);
+        });
+      }
+
       const issuerLayer = issuerStore(issuerStorage.sql);
 
       yield* Effect.gen(function* seed() {
@@ -497,7 +526,13 @@ it.effect.prop(
                   Layer.provide(unusedDocuments),
                   Layer.provide(
                     storeRetirements((did) =>
-                      Effect.succeed(did === otherDid ? otherStore : store)
+                      Effect.succeed(
+                        {
+                          [otherDid]: otherStore,
+                          [templatedDid]: templatedStore,
+                          "did:web:proj.ghost.pi.example.invalid": ghostStore,
+                        }[did] ?? store
+                      )
                     )
                   ),
                   Layer.provide(Layer.succeed(Caller, { did: caller }))
@@ -577,5 +612,217 @@ it.effect.prop(
           [...required, ...specs].map(command)
         );
       });
+    }).pipe(Effect.scoped)
+);
+
+const deskDocument = (id: string) =>
+  Schema.decodeUnknownEffect(Defs.DidDocument)({
+    authentication: [`${id}#atproto`],
+    id,
+    keyAgreement: [`${id}#encryption`],
+    verificationMethod: [
+      {
+        controller: id,
+        id: `${id}#atproto`,
+        publicKeyJwk: { crv: "P-256", kty: "EC", x: "x", y: "y" },
+      },
+    ],
+  });
+
+it.effect.prop(
+  "a successor is live only through its mailbox, a retirement it cannot outlive is restored not cleared, and a lost race leaves the original retirement",
+  [
+    Arbitrary.schema(Schema.Boolean),
+    Arbitrary.schema(Schema.Boolean),
+    Arbitrary.schema(Schema.Boolean),
+  ],
+  ([hasDocument, retiredBefore, raceLoses]) =>
+    Effect.gen(function* successorLiveness() {
+      const subjectStorage = yield* testStoreFor(recipientDid);
+      const successorStorage = yield* testStoreFor(templatedDid);
+
+      const issuerStorage = yield* testStoreFor(
+        "did:web:issuer.example.invalid"
+      );
+
+      const subjectStore = yield* MailboxStore.pipe(
+        Effect.provide(subjectStorage.layer)
+      );
+
+      const successorStore = yield* MailboxStore.pipe(
+        Effect.provide(successorStorage.layer)
+      );
+
+      yield* subjectStore.transaction((tx) => {
+        tx.setDocument(
+          Schema.decodeUnknownSync(Defs.DidDocument)({
+            authentication: [`${recipientDid}#atproto`],
+            id: recipientDid,
+            keyAgreement: [`${recipientDid}#encryption`],
+            verificationMethod: [
+              {
+                controller: recipientDid,
+                id: `${recipientDid}#atproto`,
+                publicKeyJwk: { crv: "P-256", kty: "EC", x: "x", y: "y" },
+              },
+            ],
+          })
+        );
+      });
+
+      if (hasDocument) {
+        const decoded = yield* deskDocument(templatedDid);
+
+        yield* successorStore.transaction((tx) => {
+          tx.setDocument(decoded);
+        });
+      }
+
+      const original = {
+        by: operator,
+        name,
+        retiredAt: 1,
+        successor: "proj/original",
+      };
+
+      if (retiredBefore) {
+        yield* subjectStore.transaction((tx) => {
+          tx.setRetirement(original);
+        });
+      }
+
+      let calls = 0;
+
+      const base = storeRetirements((did) =>
+        Effect.succeed(did === templatedDid ? successorStore : subjectStore)
+      );
+
+      const racing = Layer.effect(
+        RetirementRegistry,
+        Effect.gen(function* racingRegistry() {
+          const registry = yield* RetirementRegistry;
+
+          return RetirementRegistry.of({
+            ...registry,
+            presence: (did) => {
+              calls += 1;
+
+              return raceLoses && calls > 1
+                ? Effect.succeed({ exists: false })
+                : registry.presence(did);
+            },
+          });
+        })
+      ).pipe(Layer.provide(base));
+
+      const response = yield* issuerRoute({
+        input: { name, successor: templated },
+        method: "POST",
+        nsid: Retire.Method.nsid,
+        params: undefined,
+      }).pipe(
+        Effect.provide(
+          issuerHandlers({
+            config: Option.some({
+              didTemplate: "did:web:{agent}.pi.example.invalid",
+              reserved: [],
+            }),
+            operators: [operator],
+          }).pipe(
+            Layer.provide(issuerStore(issuerStorage.sql)),
+            Layer.provide(
+              Layer.mock(DocumentRegistry, { put: () => Effect.void })
+            ),
+            Layer.provide(racing),
+            Layer.provide(Layer.succeed(Caller, { did: operator }))
+          )
+        )
+      );
+
+      const current = yield* subjectStore.transaction((tx) => tx.retirement());
+      const accepted = hasDocument && !raceLoses;
+
+      expect(response.status).toBe(accepted ? 200 : 404);
+
+      if (accepted) {
+        expect(current?.successor).toBe(templated);
+      } else {
+        expect(current).toEqual(retiredBefore ? original : undefined);
+      }
+    }).pipe(Effect.scoped)
+);
+
+it.effect(
+  "a successor whose retirement was cleared by a lease reacquire is accepted again",
+  () =>
+    Effect.gen(function* reacquired() {
+      const subjectStorage = yield* testStoreFor(recipientDid);
+      const successorStorage = yield* testStoreFor(templatedDid);
+
+      const issuerStorage = yield* testStoreFor(
+        "did:web:issuer.example.invalid"
+      );
+
+      const subjectStore = yield* MailboxStore.pipe(
+        Effect.provide(subjectStorage.layer)
+      );
+
+      const successorStore = yield* MailboxStore.pipe(
+        Effect.provide(successorStorage.layer)
+      );
+
+      const subjectDocument = yield* deskDocument(recipientDid);
+      const successorDocument = yield* deskDocument(templatedDid);
+
+      yield* subjectStore.transaction((tx) => {
+        tx.setDocument(subjectDocument);
+      });
+      yield* successorStore.transaction((tx) => {
+        tx.setDocument(successorDocument);
+        tx.setRetirement({ by: operator, name: templated, retiredAt: 1 });
+      });
+
+      const retire = issuerRoute({
+        input: { name, successor: templated },
+        method: "POST",
+        nsid: Retire.Method.nsid,
+        params: undefined,
+      }).pipe(
+        Effect.provide(
+          issuerHandlers({
+            config: Option.some({
+              didTemplate: "did:web:{agent}.pi.example.invalid",
+              reserved: [],
+            }),
+            operators: [operator],
+          }).pipe(
+            Layer.provide(issuerStore(issuerStorage.sql)),
+            Layer.provide(
+              Layer.mock(DocumentRegistry, { put: () => Effect.void })
+            ),
+            Layer.provide(
+              storeRetirements((did) =>
+                Effect.succeed(
+                  did === templatedDid ? successorStore : subjectStore
+                )
+              )
+            ),
+            Layer.provide(Layer.succeed(Caller, { did: operator }))
+          )
+        )
+      );
+
+      const refused = yield* retire;
+
+      expect(refused.status).toBe(404);
+      expect(refused.body).toContain("is itself retired");
+
+      yield* successorStore.transaction((tx) => {
+        tx.setRetirement(undefined);
+      });
+
+      const accepted = yield* retire;
+
+      expect(accepted.status).toBe(200);
     }).pipe(Effect.scoped)
 );

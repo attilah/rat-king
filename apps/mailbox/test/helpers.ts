@@ -119,6 +119,18 @@ export const storeRetirements = (
         mailbox(did).pipe(
           Effect.flatMap((store) => store.transaction((tx) => tx.retirement()))
         ),
+      presence: (did) =>
+        mailbox(did).pipe(
+          Effect.flatMap((store) =>
+            store.transaction((tx) => {
+              const retirement = tx.retirement();
+
+              return retirement === undefined
+                ? { exists: tx.document() !== undefined }
+                : { exists: tx.document() !== undefined, retirement };
+            })
+          )
+        ),
       retire: (did, retirement) =>
         mailbox(did).pipe(
           Effect.flatMap((store) =>
