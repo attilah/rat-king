@@ -64,14 +64,14 @@ class Store:
         return Reply(data)
 urllib.request.build_opener = lambda *args: Store()
 cases = [
-    ('fresh', 32, 32, 0, 0, False, False),
-    ('empty-layout', 32, 32, 0, 0, True, False),
-    ('foreign-only', 32, 64, 0, 0, True, False),
-    ('cliff', 0, 32, 0, 0, False, True),
-    ('low-free-writable', 7, 32, 1, 1, True, True),
-    ('threshold', 8, 32, 0, 0, True, False),
+    ('fresh', 100, 128, 0, 0, False, False),
+    ('empty-layout', 100, 128, 0, 0, True, False),
+    ('foreign-only', 100, 128, 0, 0, True, False),
+    ('cliff', 0, 128, 0, 0, False, True),
+    ('low-free-writable', 64, 128, 1, 1, True, True),
+    ('threshold', 65, 128, 0, 0, True, False),
     ('mature', free, 256, 8, 4, True, False),
-    ('blocked', free, 256, 8, 0, True, True),
+    ('blocked', free, 256, 8, 0, True, False),
     ('mailbox', 153, 256, 32, 4, True, False)]
 for failure in ('http', 'transport', 'timeout', 'shape', 'centers', 'racks', 'nodes', 'entries', 'collection', 'replication', 'ttl', 'id'):
     cases.append((failure, 32, 32, 1, 0, True, True))
@@ -118,7 +118,7 @@ it.effect.prop(
   "actual retain/diagnose distinguish fresh, blocked and healthy stores and fail closed on volume-status errors",
   {
     free: Arbitrary.schema(
-      Schema.Int.check(Schema.isBetween({ maximum: 256, minimum: 8 }))
+      Schema.Int.check(Schema.isBetween({ maximum: 256, minimum: 65 }))
     ),
   },
   ({ free }) =>

@@ -17,6 +17,8 @@ export const instanceDeleteCustody = (home: string, layout: InstanceLayout) => {
     layout.storeUnit,
     layout.retentionUnit,
     layout.retentionTimer,
+    layout.growUnit,
+    layout.growTimer,
     layout.slice,
   ];
 

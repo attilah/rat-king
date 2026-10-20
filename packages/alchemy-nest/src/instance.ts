@@ -70,6 +70,8 @@ export const instanceLayout = (
     binaryRoot: `${host.home}/.local/share/${instance}`,
     configuration: `${host.home}/.config/${instance}`,
     dataRoot: props.dataRoot ?? host.dataRoot,
+    growTimer: `${instance}-storage-grow.timer`,
+    growUnit: `${instance}-storage-grow.service`,
     instance,
     nodeUnit: `${instance}-celld.service`,
     portBase: base,

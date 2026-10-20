@@ -96,3 +96,84 @@ export const storageRetentionTimer = (
     { lines: [["WantedBy", "default.target"]], name: "Install" },
   ],
 });
+
+export const storageGrowUnit = (
+  home: string,
+  script: string,
+  ready: readonly string[],
+  layout?: InstanceLayout
+): UnitProps => ({
+  enabled: false,
+  home,
+  name: layout?.growUnit ?? "rat-king-storage-grow.service",
+  restartOn: ready,
+  scope: "user",
+  sections: [
+    {
+      lines: [
+        [
+          "Description",
+          layout === undefined || layout.instance === "rat-king"
+            ? "Rat King default-collection volume pre-grow"
+            : `${layout.instance} default-collection volume pre-grow`,
+        ],
+        ["Requires", layout?.storeUnit ?? "rat-king-seaweedfs.service"],
+        ["After", layout?.storeUnit ?? "rat-king-seaweedfs.service"],
+      ],
+      name: "Unit",
+    },
+    {
+      lines: [
+        ["Type", "oneshot"],
+        [
+          "ExecStart",
+          `/usr/bin/python3 ${quote(script)} grow${maintenanceArguments(layout)}`,
+        ],
+        ["Slice", layout?.slice ?? "rat-king.slice"],
+        ["MemoryMax", "128M"],
+        ["MemorySwapMax", "0"],
+        ["CPUQuota", "10%"],
+        ["TasksMax", "32"],
+        ["Nice", "10"],
+        ["UMask", "0077"],
+        ["TimeoutStartSec", "2min"],
+        ["Restart", "no"],
+      ],
+      name: "Service",
+    },
+  ],
+  started: false,
+});
+
+export const storageGrowTimer = (
+  home: string,
+  ready: readonly string[],
+  layout?: InstanceLayout
+): UnitProps => ({
+  home,
+  name: layout?.growTimer ?? "rat-king-storage-grow.timer",
+  restartOn: ready,
+  scope: "user",
+  sections: [
+    {
+      lines: [
+        [
+          "Description",
+          layout === undefined || layout.instance === "rat-king"
+            ? "Rat King ten-minute default-collection volume pre-grow"
+            : `${layout.instance} ten-minute default-collection volume pre-grow`,
+        ],
+      ],
+      name: "Unit",
+    },
+    {
+      lines: [
+        ["OnCalendar", "*:0/10"],
+        ["Persistent", "true"],
+        ["Unit", layout?.growUnit ?? "rat-king-storage-grow.service"],
+      ],
+      name: "Timer",
+    },
+    { lines: [["WantedBy", "default.target"]], name: "Install" },
+  ],
+});

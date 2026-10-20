@@ -6,6 +6,8 @@ import { assertMaintenanceIsolation } from "./maintenance-targets.ts";
 import { nodeUnit, sliceUnit, storeUnit } from "./service-units.ts";
 import type { ServiceLimits } from "./service-units.ts";
 import {
+  storageGrowTimer,
+  storageGrowUnit,
   storageRetentionTimer,
   storageRetentionUnit,
 } from "./storage-maintenance.ts";
@@ -102,6 +104,13 @@ export const renderUnits = (
       layout
     ),
     storageRetentionTimer(host.home, [], layout),
+    storageGrowUnit(
+      host.home,
+      `${layout.bin}/storage-maintenance.py`,
+      [],
+      layout
+    ),
+    storageGrowTimer(host.home, [], layout),
   ];
 
   return units.map((unit) => {

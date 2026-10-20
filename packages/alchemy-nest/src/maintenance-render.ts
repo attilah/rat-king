@@ -14,7 +14,7 @@ import {
 const configuration = String.raw`import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument("action", choices=("retain", "diagnose"))
+parser.add_argument("action", choices=("retain", "diagnose", "grow"))
 parser.add_argument("--instance", required=True)
 parser.add_argument("--master", required=True)
 parser.add_argument("--filer", required=True)
