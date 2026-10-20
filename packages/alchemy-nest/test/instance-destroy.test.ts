@@ -473,7 +473,7 @@ test.provider(
         probeUnitLimits
       );
 
-      expect(units).toHaveLength(5);
+      expect(units).toHaveLength(7);
 
       for (const unit of units) {
         const bytes = yield* fake.shell.read(unit.path);
@@ -766,7 +766,7 @@ test.provider(
                     stage: scratch.stage,
                   }).pipe(Effect.provide(scratch.state));
 
-                  expect(Object.keys(teardown.deletions).length).toBe(24);
+                  expect(Object.keys(teardown.deletions).length).toBe(26);
                 }
               }
 
@@ -898,7 +898,7 @@ test.provider(
               }).pipe(Effect.provide(scratch.state));
 
               expect(Object.keys(plan.deletions).length).toBe(
-                reduced ? 22 : 24
+                reduced ? 24 : 26
               );
               yield* stack.destroy();
 
@@ -1137,6 +1137,8 @@ test.provider(
                 "mischiefrb-deployment-stage-configuration",
                 "mischiefrb-deployment-stage-directory",
                 "mischiefrb-deployment-stage-worker",
+                "store/storage-grow",
+                "store/storage-grow-timer",
                 "store/storage-maintenance",
                 "store/storage-retention",
                 "store/storage-retention-timer",
@@ -1232,7 +1234,7 @@ test.provider(
 );
 
 test.provider(
-  "destroy from a bootstrap-serving creating worker clears both 24-resource and 22-resource retained plans",
+  "destroy from a bootstrap-serving creating worker clears both 26-resource and 24-resource retained plans",
   (scratch) =>
     Effect.gen(function* bootstrapDestroy() {
       const fake = yield* Fake;
@@ -1315,7 +1317,7 @@ test.provider(
               }).pipe(Effect.provide(scratch.state));
 
               expect(Object.keys(plan.deletions)).toHaveLength(
-                reduced ? 22 : 24
+                reduced ? 24 : 26
               );
               yield* stack.destroy();
 

@@ -22,6 +22,8 @@ import {
 import { sliceUnit } from "./service-units.ts";
 import type { ServiceLimits } from "./service-units.ts";
 import {
+  storageGrowTimer,
+  storageGrowUnit,
   storageRetentionTimer,
   storageRetentionUnit,
 } from "./storage-maintenance.ts";
@@ -200,6 +202,32 @@ export const Bucket = (id: string, props: StoreProps) =>
       "storage-retention-timer",
       Output.all(retention.sha256, maintenance.sha256).pipe(
         Output.map((ready) => storageRetentionTimer(host.home, ready, layout))
+      )
+    );
+
+    const grow = yield* SystemdUnit(
+      "storage-grow",
+      Output.all(
+        maintenance.path,
+        maintenance.sha256,
+        unit.sha256,
+        props.slice
+      ).pipe(
+        Output.map(([path, scriptHash, unitHash, sliceHash]) =>
+          storageGrowUnit(
+            host.home,
+            path,
+            [scriptHash, unitHash, sliceHash],
+            layout
+          )
+        )
+      )
+    );
+
+    yield* SystemdUnit(
+      "storage-grow-timer",
+      Output.all(grow.sha256, maintenance.sha256).pipe(
+        Output.map((ready) => storageGrowTimer(host.home, ready, layout))
       )
     );
 

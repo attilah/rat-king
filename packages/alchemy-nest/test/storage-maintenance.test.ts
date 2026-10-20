@@ -3,10 +3,13 @@ import { it } from "@effect/vitest";
 import { Arbitrary, Effect, Schema } from "effect";
 import { expect } from "vitest";
 
+import type { Interface } from "../src/host-shell.ts";
 import { localExec } from "../src/local-exec.ts";
 import { nodeUnit } from "../src/service-units.ts";
 import { storageMaintenanceScript } from "../src/storage-maintenance-script.ts";
 import {
+  storageGrowTimer,
+  storageGrowUnit,
   storageRetentionTimer,
   storageRetentionUnit,
 } from "../src/storage-maintenance.ts";
@@ -54,8 +57,8 @@ def topology(url, method='GET'):
     reads.append((url, method))
     if url.endswith('/vol/status'):
         volumes = [dict(Id=i, Collection='', ReplicaPlacement={}, Ttl=dict(Count=0, Unit=0), ReadOnly=False, Size=100) for i in range(1, max(1, payload['writable']) + 1)]
-        return {'Version': '4.48', 'Volumes': {'Max': 64, 'Free': payload['free'], 'DataCenters': {'dc1': {'rack1': {'node1': volumes}}}}}
-    return {'Topology': {'Free': payload['free'], 'Max': 64, 'Layouts': [
+        return {'Version': '4.48', 'Volumes': {'Max': 2048, 'Free': payload['free'], 'DataCenters': {'dc1': {'rack1': {'node1': volumes}}}}}
+    return {'Topology': {'Free': payload['free'], 'Max': 2048, 'Layouts': [
         dict(collection='', replication='000', ttl='', writables=list(range(1, payload['writable'] + 1))),
         dict(collection='example', replication='000', ttl='', writables=[99]),
         dict(collection='', replication='000', ttl='7d', writables=[100])]}}
@@ -63,7 +66,7 @@ signal = namespace['diagnostic'](topology)
 assert reads == [('http://127.0.0.1:19333/dir/status', 'GET'), ('http://127.0.0.1:19333/vol/status', 'GET')]
 assert signal['defaultCollectionWritableVolumes'] == payload['writable']
 assert signal['freeVolumeSlots'] == payload['free']
-assert signal['alarm'] == (payload['free'] < 8 or payload['writable'] == 0)
+assert signal['alarm'] == (payload['free'] <= 64 or (payload['writable'] == 0 and payload['free'] < 16))
 namespace['diagnostic'] = lambda: signal
 sys.argv = ['maintenance', 'diagnose']
 out, err = io.StringIO(), io.StringIO()
@@ -71,8 +74,7 @@ with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
     result = namespace['main']()
 assert result == int(signal['alarm'])
 assert json.loads(out.getvalue()) == signal
-assert ('storage has no writable volume' in err.getvalue()) == (payload['writable'] == 0 and payload['free'] >= 8)
-assert ('storage free-volume slots below threshold' in err.getvalue()) == (payload['free'] < 8)
+assert ('storage free-volume slots at or below threshold 64' in err.getvalue()) == (payload['free'] <= 64)
 print('RETENTION_BOUNDARY_AND_READ_ONLY_ALARM_PASSED')
 `;
 
@@ -85,7 +87,7 @@ it.effect.prop(
       )
     ),
     free: Arbitrary.schema(
-      Schema.Int.check(Schema.isBetween({ maximum: 64, minimum: 0 }))
+      Schema.Int.check(Schema.isBetween({ maximum: 2048, minimum: 0 }))
     ),
     writable: Arbitrary.schema(
       Schema.Int.check(Schema.isBetween({ maximum: 4, minimum: 0 }))
@@ -146,4 +148,201 @@ it.effect.prop(
         "Environment=CELLD_SHUTDOWN_TOTAL_MS=8000"
       );
     }).pipe(Effect.provide(NodeServices.layer))
+);
+
+const growFixture = String.raw`import contextlib, io, json, sys
+namespace = {'__name__': 'fixture'}
+exec(sys.argv[1], namespace)
+case = json.loads(sys.argv[2])
+master = 'http://127.0.0.1:19333'
+
+def build(free, writable, grown):
+    def call(url, method='GET'):
+        calls.append((url, method))
+        if url.endswith('/vol/grow?count=8&replication=000'):
+            if case.get('error'): raise RuntimeError('storage request failed: boom')
+            if case.get('response') is not None: return case['response']
+            state['writable'] += 8
+            state['free'] -= 8
+            return {'count': 8}
+        if url.endswith('/vol/status'):
+            volumes = [dict(Id=i, Collection='', ReplicaPlacement={}, Ttl=dict(Count=0, Unit=0), ReadOnly=False, Size=100) for i in range(1, max(1, state['writable']) + 1)]
+            return {'Version': '4.48', 'Volumes': {'Max': 2048, 'Free': state['free'], 'DataCenters': {'dc1': {'rack1': {'node1': volumes}}}}}
+        return {'Topology': {'Free': state['free'], 'Max': 2048, 'Layouts': [
+            dict(collection='', replication='000', ttl='', writables=list(range(1, state['writable'] + 1)))]}}
+    calls = []
+    state = {'free': free, 'writable': writable}
+    return call, calls
+
+def run(mode):
+    sys.argv = ['maintenance', mode]
+    out, err = io.StringIO(), io.StringIO()
+    code = None
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        try:
+            code = namespace['main']()
+        except Exception as error:
+            code = 1
+    return code, out.getvalue(), err.getvalue()
+
+call, calls = build(case['free'], case['writable'], False)
+namespace['request'] = call
+namespace['diagnostic'] = (lambda original: lambda c=call: original(c))(namespace['diagnostic'])
+namespace['grow'] = (lambda original: lambda c=call: original(c))(namespace['grow'])
+code, out, err = run(case['mode'])
+posts = [url for url, method in calls if method == 'POST']
+lines = out.splitlines()
+print(json.dumps({'code': code, 'err': err, 'first': json.loads(lines[0]) if lines else {}, 'posts': posts}))
+`;
+
+const Signal = Schema.Struct({
+  defaultCollectionWritableVolumes: Schema.Finite,
+  freeVolumeSlots: Schema.Finite,
+});
+
+const GrowResult = Schema.Struct({
+  code: Schema.Finite,
+  err: Schema.String,
+  first: Schema.Struct({
+    after: Schema.optionalKey(Signal),
+    alarm: Schema.optionalKey(Schema.Boolean),
+    before: Schema.optionalKey(Signal),
+    grew: Schema.optionalKey(Schema.Finite),
+  }),
+  posts: Schema.Array(Schema.String),
+});
+
+const runGrow = (
+  shell: Pick<Interface, "exec">,
+  input: {
+    readonly error?: boolean;
+    readonly free: number;
+    readonly mode: string;
+    readonly response?: unknown;
+    readonly writable: number;
+  }
+) =>
+  shell
+    .exec([
+      "python3",
+      "-c",
+      growFixture,
+      storageMaintenanceScript,
+      JSON.stringify(input),
+    ])
+    .pipe(
+      Effect.flatMap((result) => {
+        expect(result.code).toBe(0);
+
+        return Schema.decodeEffect(Schema.fromJsonString(GrowResult))(
+          result.stdout
+        );
+      })
+    );
+
+const growUrl = "http://127.0.0.1:19333/vol/grow?count=8&replication=000";
+
+it.effect(
+  "grow fires only below 4 writable volumes with more than 64 free slots",
+  () =>
+    Effect.gen(function* growEdges() {
+      const shell = yield* localExec;
+
+      for (const [writable, free, grows] of [
+        [3, 65, true],
+        [4, 65, false],
+        [3, 64, false],
+        [3, 2048, true],
+        [0, 65, true],
+      ] as const) {
+        const result = yield* runGrow(shell, { free, mode: "grow", writable });
+
+        expect(result.posts).toEqual(grows ? [growUrl] : []);
+
+        const { after, before, grew } = result.first;
+
+        expect(grew).toBe(grows ? 8 : 0);
+        expect(result.code).toBe(!grows && free <= 64 ? 1 : 0);
+        expect(result.err.includes("shortfall")).toBe(!grows && free <= 64);
+        expect(before?.defaultCollectionWritableVolumes).toBe(writable);
+
+        if (grows) {
+          expect(after?.defaultCollectionWritableVolumes).toBe(writable + 8);
+          expect(after?.freeVolumeSlots).toBe(free - 8);
+        }
+      }
+    }).pipe(Effect.provide(NodeServices.layer))
+);
+
+it.effect(
+  "grow fails on a request error or a response that is not a positive count",
+  () =>
+    Effect.gen(function* growFailures() {
+      const shell = yield* localExec;
+
+      const failed = [
+        { error: true },
+        { response: {} },
+        { response: { count: 0 } },
+        { response: { count: "8" } },
+        { response: { count: 8, extra: 1 } },
+        { response: [] },
+      ];
+
+      for (const failure of failed) {
+        const result = yield* runGrow(shell, {
+          ...failure,
+          free: 100,
+          mode: "grow",
+          writable: 1,
+        });
+
+        expect(result.posts).toEqual([growUrl]);
+        expect(result.code).toBe(1);
+      }
+    }).pipe(Effect.provide(NodeServices.layer))
+);
+
+it.effect(
+  "diagnose and retain-free reads never POST, and the alarm edges hold",
+  () =>
+    Effect.gen(function* alarmEdges() {
+      const shell = yield* localExec;
+
+      for (const [free, writable, alarm] of [
+        [15, 0, true],
+        [16, 0, true],
+        [64, 0, true],
+        [65, 0, false],
+        [64, 5, true],
+        [65, 5, false],
+      ] as const) {
+        const result = yield* runGrow(shell, {
+          free,
+          mode: "diagnose",
+          writable,
+        });
+
+        expect(result.posts).toEqual([]);
+        expect(result.code).toBe(alarm ? 1 : 0);
+        expect(result.first.alarm).toBe(alarm);
+      }
+    }).pipe(Effect.provide(NodeServices.layer))
+);
+
+it.effect(
+  "the grow timer runs every ten minutes without touching celld or weed",
+  () =>
+    Effect.gen(function* growUnits() {
+      const unit = storageGrowUnit("/home/example", "/opt/example/m.py", ["a"]);
+      const timer = storageGrowTimer("/home/example", ["a"]);
+
+      yield* validateUnit(unit);
+      yield* validateUnit(timer);
+      expect(renderUnit(timer)).toContain("OnCalendar=*:0/10");
+      expect(renderUnit(unit)).toContain(
+        'ExecStart=/usr/bin/python3 "/opt/example/m.py" grow'
+      );
+      expect(renderUnit(unit)).toContain("Restart=no");
+    })
 );

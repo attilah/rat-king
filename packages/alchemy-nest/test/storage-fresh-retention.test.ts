@@ -34,12 +34,12 @@ class Store:
                 return Reply({'Path': '/topics/.system/log', 'Entries': [{'FullPath': '/topics/.system/log/2020-01-01', 'Mode': 1 << 31}], 'ShouldDisplayLoadMore': scenario == 'page404', 'LastFileName': '2020-01-01'})
             raise urllib.error.HTTPError(url, 404, 'missing root', {}, None)
         if parsed.path == '/vol/status':
-            return Reply({'Version': '4.48', 'Volumes': {'Max': 64, 'Free': free, 'DataCenters': {'dc1': {'rack1': {'node1': [{'Id': 1, 'Collection': '', 'ReplicaPlacement': {}, 'Ttl': {'Count': 0, 'Unit': 0}}]}}}}})
+            return Reply({'Version': '4.48', 'Volumes': {'Max': 2048, 'Free': free, 'DataCenters': {'dc1': {'rack1': {'node1': [{'Id': 1, 'Collection': '', 'ReplicaPlacement': {}, 'Ttl': {'Count': 0, 'Unit': 0}}]}}}}})
         if parsed.path == '/dir/status':
             if scenario == 'masterTransport': raise urllib.error.URLError('connection refused')
             if scenario in ('master404', 'master503'):
                 raise urllib.error.HTTPError(url, 404 if scenario == 'master404' else 503, 'unavailable', {}, None)
-            return Reply({'Topology': {'Free': free, 'Max': 64, 'Layouts': [{'collection': '', 'replication': '000', 'ttl': '', 'writables': [1]}]}})
+            return Reply({'Topology': {'Free': free, 'Max': 2048, 'Layouts': [{'collection': '', 'replication': '000', 'ttl': '', 'writables': [1]}]}})
         raise AssertionError('unexpected request')
 urllib.request.build_opener = lambda *args: Store()
 named = sys.argv[4] == 'named'
@@ -71,7 +71,7 @@ it.effect.prop(
   "fresh and existing ROOT emit integer deletion counts while outages and interrupted listings still alarm",
   {
     free: Arbitrary.schema(
-      Schema.Int.check(Schema.isBetween({ maximum: 64, minimum: 8 }))
+      Schema.Int.check(Schema.isBetween({ maximum: 2048, minimum: 65 }))
     ),
   },
   ({ free }) =>

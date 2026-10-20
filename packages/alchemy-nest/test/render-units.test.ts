@@ -10,6 +10,8 @@ import { localExec } from "../src/local-exec.ts";
 import type { ServiceLimits } from "../src/service-units.ts";
 import { nodeUnit, sliceUnit, storeUnit } from "../src/service-units.ts";
 import {
+  storageGrowTimer,
+  storageGrowUnit,
   storageRetentionTimer,
   storageRetentionUnit,
 } from "../src/storage-maintenance.ts";
@@ -23,7 +25,7 @@ const host = {
 };
 
 it.prop(
-  "pure rendering preserves all five default unit byte strings, including gated and customized units",
+  "pure rendering preserves all seven default unit byte strings, including gated and customized units",
   {
     cpu: Arbitrary.schema(Schema.Literals(["50%", "100%", "300%"])),
     gate: Arbitrary.schema(Schema.Boolean),
@@ -73,6 +75,8 @@ it.prop(
         []
       ),
       storageRetentionTimer(host.home, []),
+      storageGrowUnit(host.home, `${layout.bin}/storage-maintenance.py`, []),
+      storageGrowTimer(host.home, []),
     ].map((unit) => ({ path: unitPath(unit), text: renderUnit(unit) }));
 
     expect(
@@ -86,7 +90,7 @@ it.prop(
         }
       )
     ).toEqual(legacy);
-    expect(renderUnits(host)).toHaveLength(5);
+    expect(renderUnits(host)).toHaveLength(7);
   }
 );
 

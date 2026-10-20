@@ -9,7 +9,10 @@ import urllib.request
 `;
 
 export const maintenanceImplementation = String.raw`DAYS = 7
-THRESHOLD = 8
+SLOT_FLOOR = 64
+SLOT_CRITICAL = 16
+WRITABLE_MINIMUM = 4
+GROW_COUNT = 8
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
@@ -123,23 +126,39 @@ def diagnostic(call=request):
                 if type(volume) is not int or volume <= 0:
                     raise RuntimeError('invalid writable volume id')
                 writable.add(volume)
-    default_volumes = default_volume_count(call)
+    default_volume_count(call)
     return {'freeVolumeSlots': free, 'maxVolumeSlots': maximum,
             'defaultCollectionWritableVolumes': len(writable),
-            'alarm': free < THRESHOLD or (default_volumes > 0 and not writable),
+            'alarm': free <= SLOT_FLOOR or (not writable and free < SLOT_CRITICAL),
             'observedAt': datetime.datetime.now(datetime.timezone.utc).isoformat()}
 
+def grow(call=request):
+    before = diagnostic(call)
+    if before['freeVolumeSlots'] <= SLOT_FLOOR or before['defaultCollectionWritableVolumes'] >= WRITABLE_MINIMUM:
+        return {'grew': 0, 'before': before, 'after': before}
+    result = call(MASTER + '/vol/grow?count=' + str(GROW_COUNT) + '&replication=000', 'POST')
+    count = result.get('count') if isinstance(result, dict) and set(result) == {'count'} else None
+    if type(count) is not int or count < 1:
+        raise RuntimeError('unexpected volume grow response')
+    return {'grew': count, 'before': before, 'after': diagnostic(call)}
+
 def main():
-    if sys.argv[1:] not in (['retain'], ['diagnose']):
-        raise RuntimeError('expected retain or diagnose')
+    if sys.argv[1:] not in (['retain'], ['diagnose'], ['grow']):
+        raise RuntimeError('expected retain, diagnose or grow')
+    if sys.argv[1] == 'grow':
+        receipt = grow()
+        print(json.dumps(receipt), flush=True)
+        free = receipt['before']['freeVolumeSlots']
+        if free <= SLOT_FLOOR:
+            print('storage free-volume slots ' + str(free) + ' at or below ' + str(SLOT_FLOOR) + '; refusing to grow, shortfall ' + str(SLOT_FLOOR + 1 - free), file=sys.stderr, flush=True)
+            return 1
+        return 0
     if sys.argv[1] == 'retain':
         print(json.dumps({'deletedLogDays': retention(), 'retentionDays': DAYS}), flush=True)
     signal = diagnostic()
     print(json.dumps(signal), flush=True)
-    if signal['freeVolumeSlots'] < THRESHOLD:
-        print('storage free-volume slots below threshold 8', file=sys.stderr, flush=True)
-    elif signal['alarm']:
-        print('storage has no writable volume in the default collection; node authority writes may fail', file=sys.stderr, flush=True)
+    if signal['freeVolumeSlots'] <= SLOT_FLOOR:
+        print('storage free-volume slots at or below threshold 64', file=sys.stderr, flush=True)
     elif not signal['defaultCollectionWritableVolumes']:
         print('no writable default-collection volume yet; will grow on first write', file=sys.stderr, flush=True)
     return 1 if signal['alarm'] else 0

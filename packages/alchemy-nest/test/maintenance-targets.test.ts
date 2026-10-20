@@ -76,9 +76,9 @@ class Store:
             assert url.startswith(expected['filer'] + root + '/?'), url
             raise urllib.error.HTTPError(url, 404, 'missing root', {}, None)
         if url == expected['master'] + '/vol/status':
-            return Reply({'Version': '4.48', 'Volumes': {'Max': 64, 'Free': 16, 'DataCenters': {'dc1': {'rack1': {'node1': [{'Id': 1, 'Collection': '', 'ReplicaPlacement': {}, 'Ttl': {'Count': 0, 'Unit': 0}}]}}}}})
+            return Reply({'Version': '4.48', 'Volumes': {'Max': 2048, 'Free': 100, 'DataCenters': {'dc1': {'rack1': {'node1': [{'Id': 1, 'Collection': '', 'ReplicaPlacement': {}, 'Ttl': {'Count': 0, 'Unit': 0}}]}}}}})
         assert url == expected['master'] + '/dir/status', url
-        return Reply({'Topology': {'Free': 16, 'Max': 64, 'Layouts': [{'collection': '', 'replication': '000', 'ttl': '', 'writables': [1]}]}})
+        return Reply({'Topology': {'Free': 100, 'Max': 2048, 'Layouts': [{'collection': '', 'replication': '000', 'ttl': '', 'writables': [1]}]}})
 urllib.request.build_opener = lambda *args: Store()
 def run(action, instance, master, filer, missing=None):
     global expected
