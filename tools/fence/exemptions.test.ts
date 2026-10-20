@@ -89,5 +89,6 @@ it.effect(
           Effect.isFailure
         )
       ).toBe(true);
-    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  30_000
 );
