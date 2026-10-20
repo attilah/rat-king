@@ -27,153 +27,156 @@ const Output = Schema.fromJsonString(
   Schema.Struct({ id: Schema.String, seq: Schema.Int })
 );
 
+const harness = Effect.gen(function* cliHarness() {
+  const fs = yield* FileSystem.FileSystem;
+  const temp = yield* fs.makeTempDirectoryScoped();
+  const sender = yield* identity(SENDER);
+  const recipient = yield* identity(RECIPIENT);
+  const peer = yield* document(recipient);
+
+  const admitted = new Map<
+    string,
+    { readonly bytes: string; readonly receipt: Send.OutputValue }
+  >();
+
+  const posted: string[] = [];
+
+  const server = createServer((request, response) => {
+    let text = "";
+    request.setEncoding("utf-8");
+    request.on("data", (chunk: string) => {
+      text += chunk;
+    });
+    request.on("end", () => {
+      expect(request.method).toBe("POST");
+      expect(request.url).toBe(`/xrpc/${Send.Method.nsid}`);
+
+      const { envelope } = Schema.decodeUnknownSync(
+        Schema.fromJsonString(Send.Input)
+      )(text);
+
+      const raw = Schema.decodeUnknownSync(
+        Schema.fromJsonString(Schema.Struct({ envelope: Schema.Json }))
+      )(text);
+
+      posted.push(JSON.stringify(raw.envelope));
+      const bytes = base64url(canonical(envelope));
+      const id = envelope.aad.messageId;
+      const existing = admitted.get(id);
+      response.setHeader("content-type", "application/json");
+
+      if (existing !== undefined && existing.bytes !== bytes) {
+        response.statusCode = 409;
+        response.end(JSON.stringify({ error: "Conflict" }));
+
+        return;
+      }
+
+      const receipt =
+        existing?.receipt ??
+        Schema.decodeUnknownSync(Schema.toType(Send.Output))({
+          receipt: {
+            message: { messageId: id, senderDid: envelope.aad.senderDid },
+            recipientDid: envelope.aad.recipientDid,
+            seq: admitted.size + 1,
+            state: "accepted",
+          },
+        });
+
+      admitted.set(id, { bytes, receipt });
+      response.end(JSON.stringify(Schema.encodeSync(Send.Output)(receipt)));
+    });
+  });
+
+  yield* Effect.acquireRelease(
+    Effect.callback<null>((resume) => {
+      server.once("error", (error) => {
+        resume(Effect.die(error));
+      });
+      server.listen(0, "127.0.0.1", () => {
+        resume(Effect.succeed(null));
+      });
+    }),
+    () =>
+      Effect.callback<null>((resume) => {
+        server.close(() => {
+          resume(Effect.succeed(null));
+        });
+        server.closeAllConnections();
+      })
+  );
+
+  const address = yield* Schema.decodeUnknownEffect(
+    Schema.Struct({ port: Schema.Int })
+  )(server.address());
+
+  const fixtureCommand = `${temp}/identity-reader.mjs`;
+  yield* fs.writeFileString(`${temp}/identity.json`, JSON.stringify(sender), {
+    mode: 0o600,
+  });
+  yield* fs.writeFileString(
+    fixtureCommand,
+    `#!${process.execPath}\nimport { readFileSync } from "node:fs";\nif (process.argv[3] !== "lease" || process.argv[4] !== "${SECRET_ENTRY}") process.exit(2);\nprocess.stdout.write(readFileSync(new URL("./identity.json", import.meta.url), "utf8"));\n`,
+    { mode: 0o700 }
+  );
+  yield* fs.writeFileString(
+    `${temp}/directory.json`,
+    yield* Schema.encodeEffect(Schema.fromJsonString(Entries))({
+      [NAME]: { did: peer.id, document: peer },
+    })
+  );
+  const settings = `${temp}/settings.json`;
+  yield* fs.writeFileString(
+    settings,
+    JSON.stringify({
+      didTemplate: "did:web:{agent}.agents.example.invalid",
+      directory: `${temp}/directory.json`,
+      endpoint: `http://127.0.0.1:${address.port}`,
+      secretsCommand: fixtureCommand,
+      serviceDid: "did:web:mailbox.example.invalid",
+      state: `${temp}/state`,
+    })
+  );
+  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+
+  const cli = (args: readonly string[], stdin: string) =>
+    Effect.gen(function* spawnCli() {
+      const handle = yield* spawner.spawn(
+        ChildProcess.make(
+          process.execPath,
+          [
+            new URL("../../../stacks/nest/cli.ts", import.meta.url).pathname,
+            ...args,
+          ],
+          {
+            env: { HOME: temp, RATKING_CONFIG: settings },
+            stderr: "pipe",
+            stdin: Stream.succeed(new TextEncoder().encode(stdin)),
+          }
+        )
+      );
+
+      const [code, stdout, stderr] = yield* Effect.all(
+        [
+          handle.exitCode,
+          Stream.mkString(Stream.decodeText(handle.stdout)),
+          Stream.mkString(Stream.decodeText(handle.stderr)),
+        ],
+        { concurrency: "unbounded" }
+      );
+
+      return { code, stderr, stdout };
+    }).pipe(Effect.scoped);
+
+  return { admitted, cli, posted };
+});
+
 it.live.prop(
   "Mischief can run the real CLI seal then send the bare envelope twice and read messageId, envelope, id and seq",
   [Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(40))],
   ([body]) =>
     Effect.gen(function* cliReplay() {
-      const fs = yield* FileSystem.FileSystem;
-      const temp = yield* fs.makeTempDirectoryScoped();
-      const sender = yield* identity(SENDER);
-      const recipient = yield* identity(RECIPIENT);
-      const peer = yield* document(recipient);
-
-      const admitted = new Map<
-        string,
-        { readonly bytes: string; readonly receipt: Send.OutputValue }
-      >();
-
-      const posted: string[] = [];
-
-      const server = createServer((request, response) => {
-        let text = "";
-        request.setEncoding("utf-8");
-        request.on("data", (chunk: string) => {
-          text += chunk;
-        });
-        request.on("end", () => {
-          expect(request.method).toBe("POST");
-          expect(request.url).toBe(`/xrpc/${Send.Method.nsid}`);
-
-          const { envelope } = Schema.decodeUnknownSync(
-            Schema.fromJsonString(Send.Input)
-          )(text);
-
-          const raw = Schema.decodeUnknownSync(
-            Schema.fromJsonString(Schema.Struct({ envelope: Schema.Json }))
-          )(text);
-
-          posted.push(JSON.stringify(raw.envelope));
-          const bytes = base64url(canonical(envelope));
-          const id = envelope.aad.messageId;
-          const existing = admitted.get(id);
-          response.setHeader("content-type", "application/json");
-
-          if (existing !== undefined && existing.bytes !== bytes) {
-            response.statusCode = 409;
-            response.end(JSON.stringify({ error: "Conflict" }));
-
-            return;
-          }
-
-          const receipt =
-            existing?.receipt ??
-            Schema.decodeUnknownSync(Schema.toType(Send.Output))({
-              receipt: {
-                message: { messageId: id, senderDid: envelope.aad.senderDid },
-                recipientDid: envelope.aad.recipientDid,
-                seq: admitted.size + 1,
-                state: "accepted",
-              },
-            });
-
-          admitted.set(id, { bytes, receipt });
-          response.end(JSON.stringify(Schema.encodeSync(Send.Output)(receipt)));
-        });
-      });
-
-      yield* Effect.acquireRelease(
-        Effect.callback<null>((resume) => {
-          server.once("error", (error) => {
-            resume(Effect.die(error));
-          });
-          server.listen(0, "127.0.0.1", () => {
-            resume(Effect.succeed(null));
-          });
-        }),
-        () =>
-          Effect.callback<null>((resume) => {
-            server.close(() => {
-              resume(Effect.succeed(null));
-            });
-            server.closeAllConnections();
-          })
-      );
-
-      const address = yield* Schema.decodeUnknownEffect(
-        Schema.Struct({ port: Schema.Int })
-      )(server.address());
-
-      const fixtureCommand = `${temp}/identity-reader.mjs`;
-      yield* fs.writeFileString(
-        `${temp}/identity.json`,
-        JSON.stringify(sender),
-        { mode: 0o600 }
-      );
-      yield* fs.writeFileString(
-        fixtureCommand,
-        `#!${process.execPath}\nimport { readFileSync } from "node:fs";\nif (process.argv[3] !== "lease" || process.argv[4] !== "${SECRET_ENTRY}") process.exit(2);\nprocess.stdout.write(readFileSync(new URL("./identity.json", import.meta.url), "utf8"));\n`,
-        { mode: 0o700 }
-      );
-      yield* fs.writeFileString(
-        `${temp}/directory.json`,
-        yield* Schema.encodeEffect(Schema.fromJsonString(Entries))({
-          [NAME]: { did: peer.id, document: peer },
-        })
-      );
-      const settings = `${temp}/settings.json`;
-      yield* fs.writeFileString(
-        settings,
-        JSON.stringify({
-          didTemplate: "did:web:{agent}.agents.example.invalid",
-          directory: `${temp}/directory.json`,
-          endpoint: `http://127.0.0.1:${address.port}`,
-          secretsCommand: fixtureCommand,
-          serviceDid: "did:web:mailbox.example.invalid",
-          state: `${temp}/state`,
-        })
-      );
-      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-
-      const cli = (args: readonly string[], stdin: string) =>
-        Effect.gen(function* spawnCli() {
-          const handle = yield* spawner.spawn(
-            ChildProcess.make(
-              process.execPath,
-              [
-                new URL("../../../stacks/nest/cli.ts", import.meta.url)
-                  .pathname,
-                ...args,
-              ],
-              {
-                env: { HOME: temp, RATKING_CONFIG: settings },
-                stderr: "pipe",
-                stdin: Stream.succeed(new TextEncoder().encode(stdin)),
-              }
-            )
-          );
-
-          const [code, stdout, stderr] = yield* Effect.all(
-            [
-              handle.exitCode,
-              Stream.mkString(Stream.decodeText(handle.stdout)),
-              Stream.mkString(Stream.decodeText(handle.stderr)),
-            ],
-            { concurrency: "unbounded" }
-          );
-
-          return { code, stderr, stdout };
-        }).pipe(Effect.scoped);
+      const { admitted, cli, posted } = yield* harness;
 
       const sealed = yield* cli(
         ["seal", "--as", SECRET_ENTRY, "--to", NAME, "--body", "-"],
@@ -213,6 +216,22 @@ it.live.prop(
       expect(sent.stdout).toBe(resent.stdout);
       expect(admitted.size).toBe(1);
       expect(posted).toEqual([bytes, bytes]);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  { arbitrary: { runs: 3 }, timeout: 45_000 }
+);
+
+it.live(
+  "Mischief's CLI refuses an unsupported seal flag and a wrapped journal sent as the envelope",
+  () =>
+    Effect.gen(function* cliRefusals() {
+      const { cli, posted } = yield* harness;
+
+      const sealed = yield* cli(
+        ["seal", "--as", SECRET_ENTRY, "--to", NAME, "--body", "Refusals"],
+        ""
+      );
+
+      expect(sealed.code).toBe(0);
 
       const unsupported = yield* cli(
         [
@@ -238,7 +257,7 @@ it.live.prop(
       );
 
       expect(wrapped.code).toBe(2);
-      expect(posted).toHaveLength(2);
+      expect(posted).toHaveLength(0);
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
-  { arbitrary: { runs: 3 }, timeout: 30_000 }
+  { timeout: 30_000 }
 );
