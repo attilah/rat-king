@@ -19,6 +19,7 @@ export type Hold = DeliverAs | "digest";
 
 export type Disposition = Data.TaggedEnum<{
   Inject: { readonly hold: Hold };
+  // oxlint-disable-next-line typescript/no-generated-empty-object-type -- Effect TaggedEnum requires an intentionally empty payload for this tag-only variant.
   Settle: Record<never, never>;
 }>;
 

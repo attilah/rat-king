@@ -73,11 +73,11 @@ export const phase = <A, E, R>(name: string, effect: Effect.Effect<A, E, R>) =>
     )
   );
 
-export const startMailbox = (shell: Pick<Interface, "exec">) =>
-  Effect.gen(function* startUnits() {
-    const ctl = (action: string, unit: string) =>
-      must(shell, ["systemctl", "--user", action, unit]);
+export const startMailbox = (shell: Pick<Interface, "exec">) => {
+  const ctl = (action: string, unit: string) =>
+    must(shell, ["systemctl", "--user", action, unit]);
 
+  return Effect.gen(function* startUnits() {
     yield* phase(
       "start-store",
       ctl("start", storeService).pipe(
@@ -91,6 +91,7 @@ export const startMailbox = (shell: Pick<Interface, "exec">) =>
       )
     );
   });
+};
 
 export const runBackup = Effect.fn("Nest.backup")(function* runBackup(
   shell: Pick<Interface, "exec">,

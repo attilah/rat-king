@@ -103,18 +103,18 @@ const vacant = (empty: boolean) => {
   }
 };
 
-export const deskHandlers = (desk: string) =>
-  Layer.effect(
+export const deskHandlers = (desk: string) => {
+  const addressed = (did: string) =>
+    did === desk
+      ? Effect.void
+      : Effect.fail(failure("InvalidRequest", 400, "Wrong desk"));
+
+  return Layer.effect(
     DeskHandlers,
     Effect.gen(function* makeDeskHandlers() {
       const store = yield* DeskStore;
       const registry = yield* DeskRegistry;
       const caller = yield* Caller;
-
-      const addressed = (did: string) =>
-        did === desk
-          ? Effect.void
-          : Effect.fail(failure("InvalidRequest", 400, "Wrong desk"));
 
       const owner = (did: string) =>
         addressed(did).pipe(
@@ -325,6 +325,7 @@ export const deskHandlers = (desk: string) =>
       });
     })
   );
+};
 
 export const deskRoute = Effect.fn("Desk.route")(function* deskRoute(
   request: XrpcRequest

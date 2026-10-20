@@ -9,10 +9,10 @@
     "@rat-king/lexicon": "workspace:*",
     "@rat-king/mailbox-client": "workspace:*",
     "effect": "4.0.5",
-    "xstate": "6.0.0-alpha.65"
+    "xstate": "6.0.0-alpha.69"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "5.20261004.1",
+    "@cloudflare/workers-types": "5.20261019.1",
     "esbuild": "0.28.2",
     "fast-check": "4.10.2"
   }

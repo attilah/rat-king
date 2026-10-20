@@ -40,6 +40,23 @@ export default defineConfig({
   overrides: [
     {
       files: [
+        "apps/mailbox/test/issuer.test.ts",
+        "packages/alchemy-nest/test/health-digest.test.ts",
+        "packages/alchemy-nest/test/instance-properties.test.ts",
+        "packages/alchemy-nest/test/ship-judge-prior.test.ts",
+        "packages/pi-ratking/test/pending.test.ts",
+        "packages/pi-ratking/test/reader-health-model.test.ts",
+        "packages/pi-ratking/test/relay-model.test.ts",
+      ],
+      rules: {
+        "unicorn/consistent-function-scoping": [
+          "error",
+          { checkArrowFunctions: false },
+        ],
+      },
+    },
+    {
+      files: [
         "apps/*/src/features/**",
         "apps/*/src/client/**",
         "apps/*/src/dev/features/**",
