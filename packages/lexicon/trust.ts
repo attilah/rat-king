@@ -96,10 +96,13 @@ export const tiers = [
   },
 ] as const;
 
-export const signingBytes = (record: Runtime.LexValue, signingKeyId: string) =>
+export const signingBytes = (
+  record: Runtime.LexValue,
+  signingKeyId: string
+): Uint8Array =>
   encode({ domain: "sh.ratking.record.v1", keyId: signingKeyId, record });
 
-export const fingerprintBytes = (key: PublicKeyValue) =>
+export const fingerprintBytes = (key: PublicKeyValue): Uint8Array =>
   encode({ crv: key.crv, kty: key.kty, x: key.x, y: key.y });
 
 const epoch = (value: string) =>
