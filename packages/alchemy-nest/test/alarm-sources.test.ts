@@ -308,3 +308,53 @@ it.effect.prop(
       );
     })
 );
+
+it.effect.prop(
+  "ship.churn alarms, without blocking, exactly when ship restarts in the last 24h exceed the limit",
+  [
+    Schema.Struct({
+      limit: Schema.Int.check(Schema.isBetween({ maximum: 6, minimum: 1 })),
+      old: Schema.Int.check(Schema.isBetween({ maximum: 4, minimum: 0 })),
+      recent: Schema.Int.check(Schema.isBetween({ maximum: 8, minimum: 0 })),
+    }),
+  ],
+  ([input]) =>
+    Effect.sync(() => {
+      const now = 200_000_000;
+
+      const receipt = (hoursAgo: number) => ({
+        celldRestarted: true,
+        end: now / 1000 - hoursAgo * 3600,
+        restartSeconds: 10,
+        result: "success" as const,
+        sha: "a".repeat(40),
+        start: now / 1000 - hoursAgo * 3600 - 20,
+      });
+
+      const facts: typeof AlarmFacts.Type = {
+        cacheBreaches: null,
+        churnLimit: input.limit,
+        deploy: null,
+        deployKnown: true,
+        digest: "ok",
+        doctor: true,
+        entered: now,
+        health: 200,
+        measurementFailed: false,
+        quarantinedHour: 0,
+        readers: null,
+        receipts: [
+          ...Array.from({ length: input.old }, () => receipt(30)),
+          ...Array.from({ length: input.recent }, () => receipt(2)),
+        ],
+        receiptsKnown: true,
+        slots: { free: 100, max: 100 },
+      };
+
+      const { readings } = observeAlarms(emptySources, facts, now);
+
+      expect(readings["ship.churn"].status).toBe(
+        input.recent > input.limit ? "firing" : "ok"
+      );
+    })
+);

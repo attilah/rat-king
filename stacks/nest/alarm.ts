@@ -77,6 +77,7 @@ const summaries: Record<AlarmKeyValue, string> = {
   "quarantine.growth": "Quarantine is growing",
   "readers.stuck": "Desk readers are stuck",
   "recall.flowing-canary": "Flowing recall canary failed",
+  "ship.churn": "Ship restarts exceed the 24 hour churn limit",
   "ship.failed": "Candidate deployment failed",
   "wake.unacked": "Agents are not acknowledging delivered wake mail",
 };

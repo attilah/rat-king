@@ -113,6 +113,7 @@ export const WindowReceipt = Schema.Struct({
 export const AlarmFacts = Schema.Struct({
   backup: Schema.optionalKey(Schema.NullOr(BackupWindow)),
   cacheBreaches: Schema.NullOr(Schema.Array(CacheBreach)),
+  churnLimit: Schema.optionalKey(Schema.Int),
   deploy: Schema.NullOr(DeployMarker),
   deployKnown: Schema.Boolean,
   digest: Schema.NullOr(Schema.Literals(["ok", "warn", "fail"])),
@@ -274,6 +275,33 @@ const shipReading = (facts: typeof AlarmFacts.Type): AlarmReadingValue => {
     "warn",
     `sha ${receipt.sha}; ${sanitizeCandidateStderr(receipt.stderrTail ?? "")}`
   );
+};
+
+export const DEFAULT_CHURN_LIMIT = 3;
+
+const shipChurnReading = (
+  facts: typeof AlarmFacts.Type,
+  now: number
+): AlarmReadingValue => {
+  if (!facts.receiptsKnown) {
+    return unknown;
+  }
+
+  const limit = facts.churnLimit ?? DEFAULT_CHURN_LIMIT;
+
+  const restarts = facts.receipts.filter(
+    (receipt) =>
+      receipt.celldRestarted === true &&
+      now - receipt.end * 1000 < 86_400_000 &&
+      receipt.end * 1000 <= now
+  ).length;
+
+  return restarts > limit
+    ? firing(
+        "warn",
+        `${restarts} ship restarts in 24h, limit ${limit}; restarts are not blocked`
+      )
+    : ok;
 };
 
 const slotReading = (facts: typeof AlarmFacts.Type): AlarmReadingValue => {
@@ -542,6 +570,7 @@ export const observeAlarms = (
     "quarantine.growth": quarantineReading(facts),
     "readers.stuck": readerReading(facts),
     "recall.flowing-canary": recallCanaryReading(facts.recallCanary),
+    "ship.churn": shipChurnReading(facts, now),
     "ship.failed": shipReading(facts),
     "wake.unacked": wake,
   };

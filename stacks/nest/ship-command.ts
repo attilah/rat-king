@@ -1,5 +1,13 @@
 import type { Path } from "effect";
-import { Effect, FileSystem, Option, Ref, Schema, Stream } from "effect";
+import {
+  Config,
+  Effect,
+  FileSystem,
+  Option,
+  Ref,
+  Schema,
+  Stream,
+} from "effect";
 import { FetchHttpClient, HttpClient } from "effect/http";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
@@ -9,6 +17,7 @@ import {
 } from "../../apps/mailbox/cli/secrets.ts";
 import { writePrivateJson } from "../../packages/ratking-client/src/directory.ts";
 import { RestartEvent, Sha, ShipCheckpoint } from "./ship-config.ts";
+import type { ShipAttempt } from "./ship-config.ts";
 import { sanitizeCandidateStderr } from "./ship-diagnostics.ts";
 import { sendShipNotification } from "./ship-notify.ts";
 import { deployOutcome } from "./ship-observation.ts";
@@ -386,7 +395,20 @@ export const shipCommand = Effect.fn("Ship.command")(
             ),
             sha,
           });
+
+          const override = yield* Config.option(
+            Config.schema(
+              Schema.NonEmptyString,
+              "RAT_KING_SHIP_RESTART_OVERRIDE"
+            )
+          );
+
           const events = `${attemptDirectory}/restart-events.jsonl`;
+
+          const shipAttempt: typeof ShipAttempt.Type = Option.isSome(override)
+            ? { events, override: override.value, restart: ship.restart, sha }
+            : { events, restart: ship.restart, sha };
+
           const configPath = `${attemptDirectory}/stage.json`;
           yield* fs.writeFileString(events, "", { flag: "wx", mode: 0o600 });
           yield* writePrivateJson(
@@ -394,7 +416,7 @@ export const shipCommand = Effect.fn("Ship.command")(
             JSON.stringify({
               ...config,
               runtime: { ...config.runtime, RAT_KING_COMMIT: sha },
-              shipAttempt: { events, restart: ship.restart, sha },
+              shipAttempt,
             })
           );
 

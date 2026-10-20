@@ -360,6 +360,7 @@ export const collectAlarmFacts = Effect.fn("Alarm.collect")(
     return yield* Schema.decodeUnknownEffect(AlarmFacts)({
       backup: backupWindowOf(healthy),
       cacheBreaches: Option.getOrNull(observations.cache),
+      churnLimit: ship.restart?.churnLimit,
       deploy: Option.getOrNull(observations.deploy),
       deployKnown: Option.isSome(observations.deploy),
       digest: Option.getOrNull(observations.digest)?.status ?? null,

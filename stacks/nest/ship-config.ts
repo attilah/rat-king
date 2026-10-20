@@ -7,12 +7,13 @@ const Text = Schema.NonEmptyString;
 export const Sha = Schema.String.check(Schema.isPattern(/^[a-f0-9]{40}$/u));
 
 export const RestartSettings = Schema.Struct({
+  backupUnit: Schema.optionalKey(Text),
+  churnLimit: Schema.optionalKey(
+    Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))
+  ),
   dependencies: Schema.optionalKey(Schema.Array(Text)),
   lock: Text,
   marker: Text,
-  minIntervalHours: Schema.optionalKey(
-    Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))
-  ),
   noticeSeconds: Schema.optionalKey(
     Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))
   ),
@@ -60,6 +61,7 @@ export const ShipSettings = Schema.Struct({
 
 export const ShipAttempt = Schema.Struct({
   events: Text,
+  override: Schema.optionalKey(Text),
   restart: RestartSettings,
   sha: Sha,
 });
@@ -74,7 +76,9 @@ export const RestartObservation = Schema.Struct({
 export const RestartEvent = Schema.Struct({
   durationSeconds: Schema.Number,
   observation: Schema.optionalKey(RestartObservation),
+  override: Schema.optionalKey(Text),
   phase: Schema.Literals(["requested", "completed", "deferred"]),
+  reason: Schema.optionalKey(Text),
   restarted: Schema.NullOr(Schema.Boolean),
   retryAt: Schema.optionalKey(Schema.Number),
 });
@@ -82,6 +86,7 @@ export const RestartEvent = Schema.Struct({
 export const ShipReceipt = Schema.Struct({
   celldRestarted: Schema.NullOr(Schema.Boolean),
   end: Schema.Number,
+  override: Schema.optionalKey(Text),
   recovered: Schema.optionalKey(Schema.Boolean),
   restartSeconds: Schema.NullOr(Schema.Number),
   result: Schema.Literals(["success", "failed", "deferred"]),

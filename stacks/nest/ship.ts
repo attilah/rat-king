@@ -18,7 +18,12 @@ export interface ShipPorts<R = never> {
   ) => Effect.Effect<
     Pick<
       typeof ShipReceipt.Type,
-      "result" | "celldRestarted" | "restartSeconds" | "retryAt" | "stderrTail"
+      | "result"
+      | "celldRestarted"
+      | "restartSeconds"
+      | "retryAt"
+      | "stderrTail"
+      | "override"
     >,
     FleetError,
     R
