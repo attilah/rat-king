@@ -1,7 +1,8 @@
 /* oxlint-disable typescript/promise-function-async -- Static auth is a pi-ai Promise callback. */
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { createModels, createProvider } from "@earendil-works/pi-ai/models";
-import type { HarnessOptions, ModelRef } from "@earendil-works/pi-durable";
+import type { Models } from "@earendil-works/pi-ai/models";
+import type { ModelRef } from "@earendil-works/pi-durable";
 import { Config, Context, Effect, Layer, Redacted, Schema } from "effect";
 
 import { ModelRefused } from "./model-refused.ts";
@@ -17,7 +18,7 @@ export const AllowedModel = Schema.Literals([
 export class ModelAccess extends Context.Service<
   ModelAccess,
   {
-    readonly models: HarnessOptions["models"];
+    readonly models: Models;
     readonly model: ModelRef;
   }
 >()("@rat-king/ModelAccess") {}

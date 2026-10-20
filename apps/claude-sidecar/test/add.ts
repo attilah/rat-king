@@ -10,7 +10,7 @@ export const add = defineTool({
     )(input);
 
     return Promise.resolve({
-      content: [{ text: String(args.a + args.b), type: "text" }],
+      output: [{ text: String(args.a + args.b), type: "text" }],
     });
   },
   name: "add",

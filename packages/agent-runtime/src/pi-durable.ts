@@ -25,10 +25,12 @@ const UpstreamSubmissionId = Schema.declare<PiSubmissionId>(
 const operation = <A>(name: string, run: () => Promise<A>) =>
   Effect.tryPromise({
     catch: (cause) =>
-      new HarnessFailure({
-        operation: name,
-        reason: cause instanceof Error ? cause.message : String(cause),
-      }),
+      Schema.is(HarnessFailure)(cause)
+        ? cause
+        : new HarnessFailure({
+            operation: name,
+            reason: cause instanceof Error ? cause.message : String(cause),
+          }),
     try: run,
   });
 
@@ -87,30 +89,42 @@ export const piDurableLayer = (
         }
       }
 
+      const requireProgress = async () => {
+        const inspection = await harness.inspect(BACKGROUND_CONTEXT);
+
+        const parked = inspection.tasks.filter(
+          ({ state }) =>
+            state.kind === "blocked" && state.reason === "restart_limit"
+        );
+
+        if (parked.length > 0) {
+          throw new HarnessFailure({
+            operation: "restart_limit",
+            reason: `Parked tasks ${parked.map(({ record }) => record.id).join(", ")}; explicit retryTask() required`,
+          });
+        }
+      };
+
       return AgentHarness.of({
         resume: Effect.fn("AgentHarness.resume")(() =>
-          Effect.try({
-            catch: (cause) =>
-              new HarnessFailure({
-                operation: "resume",
-                reason: String(cause),
-              }),
-            try: () => {
-              harness.resume();
-            },
+          operation("resume", async () => {
+            await requireProgress();
+            harness.resume();
           })
         ),
         submit: Effect.fn("AgentHarness.submit")(function* submit(input) {
-          const submission = yield* operation("submit", () =>
-            root.submit(
+          const submission = yield* operation("submit", async () => {
+            await requireProgress();
+
+            return await root.submit(
               {
                 content: input.content,
                 requestId: input.requestId,
                 type: "input",
               },
               BACKGROUND_CONTEXT
-            )
-          );
+            );
+          });
 
           return yield* Schema.decodeUnknownEffect(SubmissionId)(
             submission.id
@@ -126,6 +140,8 @@ export const piDurableLayer = (
         }),
         wait: Effect.fn("AgentHarness.wait")(function* wait(id) {
           const result = yield* operation("wait", async () => {
+            await requireProgress();
+
             const submission = await harness.submission(
               Schema.decodeUnknownSync(UpstreamSubmissionId)(id),
               BACKGROUND_CONTEXT

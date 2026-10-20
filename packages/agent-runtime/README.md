@@ -14,7 +14,7 @@ Sources: [pi-durable's facade contract](https://github.com/earendil-works/pi/blo
 
 ## Checks
 
-`pnpm test` runs the retained local suites. The SQLite facade tests check rollback, queue ordering, expired handles and close.
+`pnpm test` runs the retained local suites. The SQLite facade tests check rollback, queue ordering, expired handles and close. Properties also migrate a real 1.0.2 SQLite fixture, retain its records and settled answer across reopen, and page entries in both orders. A fast-check command model checks crash counts across reopens, parking at five crashes, and loud adapter failures without queuing another submission.
 
 The celld crash-recovery suite and its test Worker were retired. No current runner reproduces that proof.
 
@@ -107,6 +107,10 @@ Minified test Worker bundle: **651,979 bytes**. Loading the DO added 12,240 KiB 
 
 ## Upstream and limits
 
-Experimental upstream API, pinned exactly: `@earendil-works/pi-durable`, `@earendil-works/chord` and `@earendil-works/pi-ai` are all **1.0.2**. Each installed package manifest declares **MIT**. Installation needed no release-age exclusions. The stale 0.86.1 exclusions remain untouched.
+Experimental upstream API: this adapter and the sidecar use the vendored **1.3.1-main.73f8de8** artifacts in `vendor/pi-main-73f8de8/`. The installed Pi extensions, `pi-ratking` and `remembers`, retain their 1.0.2 dependency graph. Each package manifest declares **MIT**. The stale 0.86.1 release-age exclusions remain untouched.
 
-Not tested: Cloudflare, deployment, multiple production DOs, sustained load, cancellation, unsafe tools, schema upgrades, all SQLite conformance cases, rollback failure, or crash at every instruction boundary. A crash during an uncommitted faux stream may reissue the model request; faux deferred handles are process-local. This proof covers recovery after a committed tool-call response, not durable provider-side streaming or exactly-once external model requests.
+Opening a journal with this version migrates its SQLite schema to v2. **1.3.0 and earlier cannot reopen it.** Snapshot the backing Durable Object storage before deploying. A code rollback alone cannot undo this migration. The sidecar HTTP service does not open a pi-durable journal; its proof Worker and hosted agent-runtime use their Durable Object's SQLite.
+
+The adapter refuses `resume`, `submit` and `wait` if any task is parked with `restart_limit`. It returns `HarnessFailure` with operation `restart_limit`, task IDs and an explicit `retryTask()` requirement. The hosted failure diagnostic retains that operation instead of waiting forever. This is a harness-wide refusal, not an automatic retry or a per-submission recovery policy. No task is unparked implicitly.
+
+Not tested: Cloudflare, deployment, multiple production DOs, sustained load, cancellation, unsafe tools, schema upgrades beyond the retained v1 fixture, all SQLite conformance cases, rollback failure, or crash at every instruction boundary. A crash during an uncommitted faux stream may reissue the model request; faux deferred handles are process-local. This proof covers recovery after a committed tool-call response, not durable provider-side streaming or exactly-once external model requests.
