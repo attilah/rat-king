@@ -14,7 +14,7 @@ import { Signatures } from "./trust-signatures.ts";
 import { fingerprintBytes, PublicKey } from "./trust.ts";
 import type { PublicKeyValue } from "./trust.ts";
 
-export { decodeDidKey } from "./did-key.ts";
+export { decodeDidKey, encodeDidKey } from "./did-key.ts";
 
 export {
   makeMemoryNonceBinding,

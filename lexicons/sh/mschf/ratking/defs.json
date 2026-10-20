@@ -354,7 +354,65 @@
         },
         "wakeReason": {
           "type": "string"
+        },
+        "via": {
+          "type": "ref",
+          "ref": "#via",
+          "description": "Mailbox attestation for a desk-pass send: the verified desk, run and worker key, with the signed pass as evidence. Absent for ordinary sends."
         }
+      }
+    },
+    "passRun": {
+      "type": "string",
+      "description": "Launcher-minted run handle '<label>:<id>'. The label is a lowercase agent label; the id is the worker's session UUID or 32 lowercase hex characters.",
+      "maxLength": 69,
+      "x-pattern": "^[a-z][a-z0-9_-]{0,31}:(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$"
+    },
+    "signedPass": {
+      "type": "object",
+      "description": "A desk-signed worker pass: base64url ES256 over DAG-CBOR {domain: 'sh.ratking.delegation.v1', record}.",
+      "required": ["record", "signature"],
+      "properties": {
+        "record": { "type": "ref", "ref": "sh.ratking.pass" },
+        "signature": { "type": "string", "x-pattern": "^[A-Za-z0-9_-]{86}$" }
+      }
+    },
+    "passIntent": {
+      "type": "object",
+      "description": "Worker-declared wake intent, signed inside the pass request.",
+      "x-strict": true,
+      "required": ["woke", "wakeReason"],
+      "properties": {
+        "woke": { "type": "boolean" },
+        "wakeReason": { "type": "string", "enum": ["to", "quiet"] }
+      }
+    },
+    "passRequest": {
+      "type": "object",
+      "description": "Worker-signed request. Signing bytes are DAG-CBOR {domain: 'sh.ratking.pass.request.v1', request}. Times are Unix seconds. Digests are base64url SHA-256.",
+      "x-strict": true,
+      "required": ["aud", "lxm", "iat", "exp", "jti", "envelopeDigest", "passDigest", "intent"],
+      "properties": {
+        "aud": { "type": "string", "description": "The mailbox service DID URL, such as <SERVICE_DID>#mailbox. ASCII only, so no two audiences share signing bytes.", "maxLength": 512, "x-pattern": "^did:[a-z]+:[A-Za-z0-9._:%-]+#[A-Za-z0-9._~-]+$" },
+        "lxm": { "type": "string", "format": "nsid" },
+        "iat": { "type": "integer", "minimum": 0 },
+        "exp": { "type": "integer", "minimum": 0 },
+        "jti": { "type": "string", "x-pattern": "^[A-Za-z0-9_-]{16,128}$" },
+        "envelopeDigest": { "type": "string", "x-pattern": "^[A-Za-z0-9_-]{43}$" },
+        "passDigest": { "type": "string", "x-pattern": "^[A-Za-z0-9_-]{43}$" },
+        "intent": { "type": "ref", "ref": "#passIntent" }
+      }
+    },
+    "via": {
+      "type": "object",
+      "description": "The mailbox verified this pass chain at admission: desk vouched for worker on run.",
+      "required": ["desk", "deskDid", "run", "worker", "pass"],
+      "properties": {
+        "desk": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "deskDid": { "type": "string", "format": "did" },
+        "run": { "type": "ref", "ref": "#passRun" },
+        "worker": { "type": "string", "format": "did" },
+        "pass": { "type": "ref", "ref": "#signedPass" }
       }
     },
     "messageEvent": {

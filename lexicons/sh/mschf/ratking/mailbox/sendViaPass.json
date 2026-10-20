@@ -1,0 +1,66 @@
+{
+  "lexicon": 1,
+  "id": "sh.mschf.ratking.mailbox.sendViaPass",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Plain send by a nameless worker under its desk's pass. No bearer token: the worker signs the request and the plaintext envelope with its did:key. The mailbox verifies the pass against the known desk, binds the pass nonce, consumes the request jti and stores the message with a receipt carrying via. Idempotent on worker DID plus TID.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": [
+            "pass",
+            "envelope",
+            "request",
+            "signature"
+          ],
+          "properties": {
+            "pass": {
+              "type": "ref",
+              "ref": "sh.mschf.ratking.defs#signedPass"
+            },
+            "envelope": {
+              "type": "ref",
+              "ref": "sh.mschf.ratking.defs#encryptedEnvelope"
+            },
+            "request": {
+              "type": "ref",
+              "ref": "sh.mschf.ratking.defs#passRequest"
+            },
+            "signature": {
+              "type": "string",
+              "description": "Base64url ES256 by the pass's worker key over the request signing bytes.",
+              "x-pattern": "^[A-Za-z0-9_-]{86}$"
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "description": "Durable receipt, with via.",
+          "required": [
+            "receipt"
+          ],
+          "properties": {
+            "receipt": {
+              "type": "ref",
+              "ref": "sh.mschf.ratking.defs#receipt"
+            }
+          }
+        }
+      },
+      "errors": [
+        { "name": "Retired", "description": "The recipient name is retired. Nothing was admitted." },
+        { "name": "InvalidRequest", "description": "Input, envelope or sender does not match the pass." },
+        { "name": "AuthRequired", "description": "Request audience, method, lifetime, jti or signature refused." },
+        { "name": "Forbidden", "description": "Desk, pass, scope or run refused." },
+        { "name": "Conflict", "description": "The same worker DID plus TID exists with a different envelope or recipient." },
+        { "name": "UnsupportedEnvelope", "description": "Pass sends are plaintext only." },
+        { "name": "MailboxUnavailable", "description": "Durable admission not confirmed; retry the same envelope with a freshly signed request." }
+      ]
+    }
+  }
+}

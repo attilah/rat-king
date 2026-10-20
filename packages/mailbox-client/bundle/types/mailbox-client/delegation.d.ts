@@ -42,6 +42,30 @@ export declare const openDelegated: (envelope: {
     readonly recordedAt?: string & import("effect/Brand").Brand<"Lexicon:datetime">;
     readonly seq: number;
     readonly state: string;
+    readonly via?: {
+        readonly [x: string]: import("../lexicon/runtime.js").LexValue;
+        readonly desk: string;
+        readonly deskDid: string & import("effect/Brand").Brand<"Lexicon:did">;
+        readonly pass: {
+            readonly [x: string]: import("../lexicon/runtime.js").LexValue;
+            readonly record: {
+                readonly [x: string]: import("../lexicon/runtime.js").LexValue;
+                readonly $type: "sh.ratking.pass";
+                readonly desk: string;
+                readonly deskDid: string & import("effect/Brand").Brand<"Lexicon:did">;
+                readonly exp: number;
+                readonly iat: number;
+                readonly nonce: string;
+                readonly run: string;
+                readonly scope: readonly string[];
+                readonly v: 1;
+                readonly worker: string & import("effect/Brand").Brand<"Lexicon:did">;
+            };
+            readonly signature: string;
+        };
+        readonly run: string;
+        readonly worker: string & import("effect/Brand").Brand<"Lexicon:did">;
+    };
     readonly wakeReason?: string;
     readonly woke?: boolean;
 }, recipientDid: string, resolveSigningKey: ResolveSigningKey) => Effect.Effect<{

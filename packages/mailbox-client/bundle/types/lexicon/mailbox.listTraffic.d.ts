@@ -6,6 +6,12 @@ export declare const CriticalCount: Schema.StructWithRest<Schema.Struct<{
     readonly senderDid: Schema.brand<Schema.String, "Lexicon:did">;
 }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
 export type CriticalCountValue = typeof CriticalCount.Type;
+export declare const Via: Schema.StructWithRest<Schema.Struct<{
+    readonly desk: Schema.String;
+    readonly deskDid: Schema.brand<Schema.String, "Lexicon:did">;
+    readonly run: Schema.String;
+}>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
+export type ViaValue = typeof Via.Type;
 export declare const Entry: Schema.StructWithRest<Schema.Struct<{
     readonly body: Schema.optionalKey<Schema.String>;
     readonly ciphertextSize: Schema.Int;
@@ -16,6 +22,11 @@ export declare const Entry: Schema.StructWithRest<Schema.Struct<{
     readonly seq: Schema.Int;
     readonly state: Schema.String;
     readonly time: Schema.brand<Schema.String, "Lexicon:datetime">;
+    readonly via: Schema.optionalKey<Schema.StructWithRest<Schema.Struct<{
+        readonly desk: Schema.String;
+        readonly deskDid: Schema.brand<Schema.String, "Lexicon:did">;
+        readonly run: Schema.String;
+    }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>>;
 }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
 export type EntryValue = typeof Entry.Type;
 export declare const Params: Schema.StructWithRest<Schema.Struct<{
@@ -42,6 +53,11 @@ export declare const Output: Schema.StructWithRest<Schema.Struct<{
         readonly seq: Schema.Int;
         readonly state: Schema.String;
         readonly time: Schema.brand<Schema.String, "Lexicon:datetime">;
+        readonly via: Schema.optionalKey<Schema.StructWithRest<Schema.Struct<{
+            readonly desk: Schema.String;
+            readonly deskDid: Schema.brand<Schema.String, "Lexicon:did">;
+            readonly run: Schema.String;
+        }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>>;
     }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>>;
 }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
 export type OutputValue = typeof Output.Type;
@@ -99,6 +115,11 @@ export declare const Method: {
             readonly seq: Schema.Int;
             readonly state: Schema.String;
             readonly time: Schema.brand<Schema.String, "Lexicon:datetime">;
+            readonly via: Schema.optionalKey<Schema.StructWithRest<Schema.Struct<{
+                readonly desk: Schema.String;
+                readonly deskDid: Schema.brand<Schema.String, "Lexicon:did">;
+                readonly run: Schema.String;
+            }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>>;
         }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>>;
     }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
     readonly outputEncoding: "application/json";

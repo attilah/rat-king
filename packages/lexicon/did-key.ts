@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Result } from "effect";
 import * as Base64Url from "effect/encoding/Base64Url";
 
 import { refusal } from "./pass-failure.ts";
@@ -76,6 +76,51 @@ const decode = (did: string): PublicKeyValue => {
 
   return { crv: "P-256", kty: "EC", x: coordinate(x), y: coordinate(y) };
 };
+
+const encode = (key: PublicKeyValue) => {
+  const x = Result.getOrThrow(Base64Url.decode(key.x));
+  const y = Result.getOrThrow(Base64Url.decode(key.y));
+
+  if (
+    key.kty !== "EC" ||
+    key.crv !== "P-256" ||
+    x.length !== 32 ||
+    y.length !== 32
+  ) {
+    throw new Error("not a P-256 public key");
+  }
+
+  let value = BigInt(
+    `0x8024${(2 + ((y.at(-1) ?? 0) % 2)).toString(16).padStart(2, "0")}${Array.from(x, (byte) => byte.toString(16).padStart(2, "0")).join("")}`
+  );
+
+  let text = "";
+
+  while (value > 0n) {
+    text = `${alphabet[Number(value % 58n)]}${text}`;
+    value /= 58n;
+  }
+
+  const did = `did:key:z${text}`;
+  const decoded = decode(did);
+
+  if (decoded.x !== key.x || decoded.y !== key.y) {
+    throw new Error("point is not a canonical P-256 public key");
+  }
+
+  return did;
+};
+
+export const encodeDidKey = (key: PublicKeyValue) =>
+  Effect.try({
+    catch: () =>
+      refusal(
+        "Key refused",
+        "expected a canonical P-256 public key on the curve",
+        "export the worker's P-256 public JWK unchanged"
+      ),
+    try: () => encode(key),
+  });
 
 export const decodeDidKey = (did: string) =>
   Effect.try({

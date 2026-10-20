@@ -11,7 +11,7 @@ import { keypair } from "../../lexicon/test/pass-helpers.ts";
 import { nonceModel, runModel } from "./desk-pass-binding-model.ts";
 
 const runAction = Schema.Struct({
-  kind: Schema.Literals(["open", "close", "claim", "expire"]),
+  kind: Schema.Literals(["open", "close", "claim", "expire", "renew"]),
   run: Schema.Int.check(Schema.isBetween({ maximum: 3, minimum: 0 })),
   worker: Schema.Int.check(Schema.isBetween({ maximum: 1, minimum: 0 })),
 });
@@ -23,7 +23,7 @@ const nonceAction = Schema.Struct({
 });
 
 it.effect.prop(
-  "run claims match the lifecycle model, including reuse, expiry and closed-run plants",
+  "run claims and renewals match the lifecycle model, including reuse, expiry, closed-run and other-worker renewal plants",
   [Arbitrary.schema(Schema.Array(runAction).check(Schema.isMaxLength(50)))],
   ([actions]) =>
     Effect.gen(function* runLifecycleProperty() {

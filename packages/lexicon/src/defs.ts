@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 
+import * as EdgePass from "./edge.pass.ts";
 import * as Runtime from "./runtime.ts";
 
 export const Aad = Schema.StructWithRest(
@@ -259,6 +260,48 @@ export const MessageRef = Schema.StructWithRest(
 
 export type MessageRefValue = typeof MessageRef.Type;
 
+export const SignedPass = Schema.StructWithRest(
+  Schema.Struct({
+    record: EdgePass.Main,
+    signature: Runtime.lexString({ type: "string" }).check(
+      Schema.isPattern(/^[A-Za-z0-9_-]{86}$/u)
+    ),
+  }),
+  [Schema.Record(Schema.String, Runtime.Data)]
+);
+
+export type SignedPassValue = typeof SignedPass.Type;
+
+export const PassRun = Runtime.lexString({
+  description:
+    "Launcher-minted run handle '<label>:<id>'. The label is a lowercase agent label; the id is the worker's session UUID or 32 lowercase hex characters.",
+  maxLength: 69,
+  type: "string",
+}).check(
+  Schema.isPattern(
+    /^[a-z][a-z0-9_-]{0,31}:(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/u
+  )
+);
+
+export type PassRunValue = typeof PassRun.Type;
+
+export const Via = Schema.StructWithRest(
+  Schema.Struct({
+    desk: Runtime.lexString({ maxLength: 256, minLength: 1, type: "string" }),
+    deskDid: Runtime.lexString({ format: "did", type: "string" }).pipe(
+      Schema.brand("Lexicon:did")
+    ),
+    pass: SignedPass,
+    run: PassRun,
+    worker: Runtime.lexString({ format: "did", type: "string" }).pipe(
+      Schema.brand("Lexicon:did")
+    ),
+  }),
+  [Schema.Record(Schema.String, Runtime.Data)]
+);
+
+export type ViaValue = typeof Via.Type;
+
 export const Receipt = Schema.StructWithRest(
   Schema.Struct({
     delegated: Schema.optionalKey(DelegationReceipt),
@@ -289,6 +332,7 @@ export const Receipt = Schema.StructWithRest(
       Schema.isLessThanOrEqualTo(9_007_199_254_740_991)
     ),
     state: DeliveryState,
+    via: Schema.optionalKey(Via),
     wakeReason: Schema.optionalKey(Runtime.lexString({ type: "string" })),
     woke: Schema.optionalKey(Schema.Boolean),
   }),
@@ -310,6 +354,82 @@ export const MessageEvent = Schema.StructWithRest(
 );
 
 export type MessageEventValue = typeof MessageEvent.Type;
+
+export const PassIntent = Schema.StructWithRest(
+  Schema.Struct({
+    wakeReason: Runtime.lexString({
+      enum: ["to", "quiet"],
+      type: "string",
+    }).pipe(Schema.decodeTo(Schema.Literals(["to", "quiet"]))),
+    woke: Schema.Boolean,
+  }),
+  [Schema.Record(Schema.String, Runtime.Data)]
+).check(
+  Schema.makeFilter(
+    (value) =>
+      Object.keys(value).every((key) => ["wakeReason", "woke"].includes(key)),
+    { expected: "only allowed keys: wakeReason, woke" }
+  )
+);
+
+export type PassIntentValue = typeof PassIntent.Type;
+
+export const PassRequest = Schema.StructWithRest(
+  Schema.Struct({
+    aud: Runtime.lexString({
+      description:
+        "The mailbox service DID URL, such as <SERVICE_DID>#mailbox. ASCII only, so no two audiences share signing bytes.",
+      maxLength: 512,
+      type: "string",
+    }).check(
+      Schema.isPattern(/^did:[a-z]+:[A-Za-z0-9._:%-]+#[A-Za-z0-9._~-]+$/u)
+    ),
+    envelopeDigest: Runtime.lexString({ type: "string" }).check(
+      Schema.isPattern(/^[A-Za-z0-9_-]{43}$/u)
+    ),
+    exp: Schema.Int.check(
+      Schema.isGreaterThanOrEqualTo(0),
+      Schema.isLessThanOrEqualTo(9_007_199_254_740_991)
+    ),
+    iat: Schema.Int.check(
+      Schema.isGreaterThanOrEqualTo(0),
+      Schema.isLessThanOrEqualTo(9_007_199_254_740_991)
+    ),
+    intent: PassIntent,
+    jti: Runtime.lexString({ type: "string" }).check(
+      Schema.isPattern(/^[A-Za-z0-9_-]{16,128}$/u)
+    ),
+    lxm: Runtime.lexString({ format: "nsid", type: "string" }).pipe(
+      Schema.brand("Lexicon:nsid")
+    ),
+    passDigest: Runtime.lexString({ type: "string" }).check(
+      Schema.isPattern(/^[A-Za-z0-9_-]{43}$/u)
+    ),
+  }),
+  [Schema.Record(Schema.String, Runtime.Data)]
+).check(
+  Schema.makeFilter(
+    (value) =>
+      Object.keys(value).every((key) =>
+        [
+          "aud",
+          "envelopeDigest",
+          "exp",
+          "iat",
+          "intent",
+          "jti",
+          "lxm",
+          "passDigest",
+        ].includes(key)
+      ),
+    {
+      expected:
+        "only allowed keys: aud, envelopeDigest, exp, iat, intent, jti, lxm, passDigest",
+    }
+  )
+);
+
+export type PassRequestValue = typeof PassRequest.Type;
 
 export const ReceiptEvent = Schema.StructWithRest(
   Schema.Struct({

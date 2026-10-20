@@ -1,5 +1,6 @@
 import { Effect, Schema } from "effect";
 
+import * as Defs from "./defs.ts";
 import * as Query from "./query.ts";
 import * as Runtime from "./runtime.ts";
 
@@ -18,6 +19,19 @@ export const CriticalCount = Schema.StructWithRest(
 );
 
 export type CriticalCountValue = typeof CriticalCount.Type;
+
+export const Via = Schema.StructWithRest(
+  Schema.Struct({
+    desk: Runtime.lexString({ maxLength: 256, minLength: 1, type: "string" }),
+    deskDid: Runtime.lexString({ format: "did", type: "string" }).pipe(
+      Schema.brand("Lexicon:did")
+    ),
+    run: Defs.PassRun,
+  }),
+  [Schema.Record(Schema.String, Runtime.Data)]
+);
+
+export type ViaValue = typeof Via.Type;
 
 export const Entry = Schema.StructWithRest(
   Schema.Struct({
@@ -63,6 +77,7 @@ export const Entry = Schema.StructWithRest(
     time: Runtime.lexString({ format: "datetime", type: "string" }).pipe(
       Schema.brand("Lexicon:datetime")
     ),
+    via: Schema.optionalKey(Via),
   }),
   [Schema.Record(Schema.String, Runtime.Data)]
 );
