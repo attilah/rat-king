@@ -10,6 +10,8 @@ import {
 import {
   COPY_NOTE,
   Kind,
+  PassSource,
+  passMarker,
   RelaySource,
   replyHint,
 } from "@rat-king/ratking-client/payload";
@@ -49,6 +51,7 @@ const Details = Schema.Struct({
   thread: Schema.optional(Schema.String),
   to: Schema.optional(Schema.String),
   verified: Schema.Boolean,
+  via: Schema.optional(PassSource),
 });
 
 export type InboundView = typeof Details.Type;
@@ -259,9 +262,12 @@ export const inboundLines = (input: InboundInput): readonly string[] => {
 
   const bodyText = previewBody(value, expanded);
 
-  const body = paragraphs(bodyText, room).map((line) =>
-    theme.fg("customMessageText", line)
-  );
+  const body = paragraphs(
+    value.via === undefined
+      ? bodyText
+      : `${passMarker(value.via)}\n\n${bodyText}`,
+    room
+  ).map((line) => theme.fg("customMessageText", line));
 
   const status = statusGlyph(value);
 

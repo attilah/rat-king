@@ -1,3 +1,4 @@
+import * as Defs from "@rat-king/lexicon/defs";
 import { Effect, Option, Schema } from "effect";
 
 import { PayloadJson } from "../../mailbox-client/src/payload.ts";
@@ -70,7 +71,20 @@ export const RelaySource = Schema.Struct({
   name: AgentName,
 });
 
+export const PassSource = Schema.Struct({
+  desk: Schema.String,
+  deskDid: Schema.String,
+  run: Defs.PassRun,
+});
+
+export const passMarker = (via: typeof PassSource.Type): string => {
+  const [label, id = ""] = via.run.split(":");
+
+  return `↳ via headless Pi ${label} (${id.slice(0, 8)})`;
+};
+
 export interface Inbound {
+  readonly via?: typeof PassSource.Type;
   readonly delegatedFor?: string;
   readonly delegatedTo?: string;
   readonly originalId?: string;
@@ -174,6 +188,7 @@ export const renderInbound = (tool: string, inbound: Inbound) => {
 
   return [
     `**${heading} from ${sender}** · id ${inbound.id}${thread}${inbound.relay === undefined ? "" : ` · via ${inbound.relay.name}`} · ${formatReason(deliveryReason(inbound))}`,
+    ...(inbound.via === undefined ? [] : [passMarker(inbound.via)]),
     ...(inbound.delegatedFor === undefined
       ? []
       : [`for ${inbound.delegatedFor}`]),

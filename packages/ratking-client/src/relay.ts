@@ -2,7 +2,7 @@ import { Effect, Option, Schema, Semaphore } from "effect";
 import { createMachine, transition } from "xstate";
 
 import type { RelaySettingValue } from "./config.ts";
-import { Kind } from "./payload.ts";
+import { Kind, PassSource } from "./payload.ts";
 import type { Inbound, InboundRecord, LexiconRecordValue } from "./payload.ts";
 
 export const RelayRecord = Schema.Struct({
@@ -21,6 +21,7 @@ export const RelayRecord = Schema.Struct({
   thread: Schema.optionalKey(Schema.String),
   to: Schema.optionalKey(Schema.String),
   verified: Schema.Boolean,
+  via: Schema.optionalKey(PassSource),
 });
 
 export const RelayOutbound = Schema.Struct({
@@ -71,6 +72,10 @@ export const relayRecord = (
     verified: inbound.verified,
   };
 
+  if (inbound.via !== undefined) {
+    Object.assign(record, { via: inbound.via });
+  }
+
   if (inbound.ccNames !== undefined) {
     Object.assign(record, { ccNames: inbound.ccNames });
   }
@@ -99,6 +104,10 @@ export const relayedInbound = (record: typeof RelayRecord.Type): Inbound => {
     summary: Option.fromNullishOr(record.summary),
     verified: record.verified,
   };
+
+  if (record.via !== undefined) {
+    Object.assign(inbound, { via: record.via });
+  }
 
   if (record.ccNames !== undefined) {
     Object.assign(inbound, { ccNames: record.ccNames });

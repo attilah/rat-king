@@ -433,6 +433,7 @@ export const inboundDetails = (inbound: Inbound, settled: boolean) => ({
   thread: inbound.thread,
   to: inbound.to,
   verified: inbound.verified,
+  via: inbound.via,
 });
 
 const toolResult = (result: ToolText) => {

@@ -6,6 +6,8 @@ import {
   suite,
   EnvelopeFailure,
 } from "@rat-king/envelope";
+import { openPlaintext } from "@rat-king/envelope/signed";
+import { cryptoOperation } from "@rat-king/envelope/webcrypto";
 import * as Put from "@rat-king/lexicon/admin.putDidDocument";
 import * as Defs from "@rat-king/lexicon/defs";
 import { MailboxClient, clientLayer } from "@rat-king/lexicon/mailbox-client";
@@ -13,12 +15,20 @@ import * as Ack from "@rat-king/lexicon/mailbox.ack";
 import * as Deliver from "@rat-king/lexicon/mailbox.deliver";
 import * as List from "@rat-king/lexicon/mailbox.list";
 import * as Send from "@rat-king/lexicon/mailbox.send";
+import {
+  decodeDidKey,
+  makeMemoryNonceBinding,
+  NonceBinding,
+  verifyPass,
+} from "@rat-king/lexicon/passes";
 import * as Acquire from "@rat-king/lexicon/runtime.acquireLease";
 import type * as Lease from "@rat-king/lexicon/runtime.lease";
 import * as Release from "@rat-king/lexicon/runtime.releaseLease";
 import * as Renew from "@rat-king/lexicon/runtime.renewLease";
 import * as Resolve from "@rat-king/lexicon/runtime.resolveLease";
 import { Transport } from "@rat-king/lexicon/transport";
+import { PublicKey } from "@rat-king/lexicon/trust";
+import { signatures } from "@rat-king/lexicon/webcrypto";
 import { Clock, Context, Effect, Layer, Option, Schema } from "effect";
 import type { Stream } from "effect";
 import type { HttpClient } from "effect/http";
@@ -30,6 +40,7 @@ import { openDelegated } from "./delegation.ts";
 import { clientError, MailboxClientError } from "./error.ts";
 import { importSigning, importAgreement } from "./identity.ts";
 import type { IdentityValue } from "./identity.ts";
+import { PayloadJson } from "./payload.ts";
 import { lookupPresence, readerCannotRender } from "./record-visibility.ts";
 import { randomTid } from "./tid.ts";
 import { transportLayer } from "./transport.ts";
@@ -115,6 +126,7 @@ export interface Batch {
 }
 
 export interface OpenedMessage {
+  readonly via?: Pick<Defs.ViaValue, "desk" | "deskDid" | "run">;
   readonly delegatedFor?: string;
   readonly delegatedTo?: string;
   readonly originalId?: string;
@@ -143,6 +155,168 @@ export interface SendOptions {
   readonly urgent?: true;
   readonly encrypt?: boolean;
 }
+
+const decodeBody = (body: Uint8Array) =>
+  Effect.try({
+    catch: () => new MailboxClientError({ reason: "Invalid UTF-8 body" }),
+    try: () =>
+      new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(body),
+  });
+
+const openPass = Effect.fn("RatKingMailbox.openPass")(function* openPass(
+  envelope: Defs.EncryptedEnvelopeValue,
+  receipt: Defs.ReceiptValue,
+  recipientDid: string,
+  resolver: typeof DidResolver.Service
+) {
+  const via = yield* Schema.decodeUnknownEffect(Defs.Via)(receipt.via);
+
+  if (
+    via.worker !== envelope.aad.senderDid ||
+    via.worker !== receipt.message.senderDid
+  ) {
+    return yield* new MailboxClientError({
+      reason: "Invalid pass sender binding",
+    });
+  }
+
+  const workerPublicKey = yield* decodeDidKey(via.worker);
+
+  const importPublicKey: (
+    format: "jwk",
+    key: typeof PublicKey.Type,
+    algorithm: { readonly name: "ECDSA"; readonly namedCurve: "P-256" },
+    extractable: boolean,
+    usages: ["verify"]
+  ) => Promise<CryptoKey> = crypto.subtle.importKey.bind(crypto.subtle);
+
+  const workerKey = yield* cryptoOperation(
+    importPublicKey.bind(
+      crypto.subtle,
+      "jwk",
+      workerPublicKey,
+      { name: "ECDSA", namedCurve: "P-256" },
+      false,
+      ["verify"]
+    )
+  );
+
+  const resolveSigningKey = (did: string, keyId: string) =>
+    did === via.worker &&
+    keyId === `${via.worker}#${via.worker.slice("did:key:".length)}`
+      ? Effect.succeed(workerKey)
+      : Effect.fail(
+          new EnvelopeFailure({ reason: "Unauthorized pass signing key" })
+        );
+
+  if (
+    receipt.delegatedFor === undefined &&
+    (envelope.aad.recipientDid !== recipientDid ||
+      envelope.aad.recipientKeyId !== `${recipientDid}#encryption` ||
+      receipt.recipientDid !== recipientDid ||
+      receipt.message.messageId !== envelope.aad.messageId)
+  ) {
+    return yield* new MailboxClientError({
+      reason: "Invalid pass recipient binding",
+    });
+  }
+
+  const payload = yield* receipt.delegatedFor === undefined
+    ? openPlaintext(envelope, resolveSigningKey)
+    : openDelegated(envelope, receipt, recipientDid, resolveSigningKey);
+
+  const content = yield* Schema.decodeUnknownEffect(PayloadJson)(
+    yield* decodeBody(payload.body)
+  );
+
+  if (content.from !== via.desk) {
+    return yield* new MailboxClientError({
+      reason: "Invalid pass desk payload",
+    });
+  }
+
+  const deskKey = yield* resolver.resolve(
+    via.deskDid,
+    `${via.deskDid}#atproto`,
+    "authentication"
+  );
+
+  const key = yield* Schema.decodeUnknownEffect(PublicKey)(
+    yield* cryptoOperation(
+      crypto.subtle.exportKey.bind(crypto.subtle, "jwk", deskKey)
+    )
+  );
+
+  const recordedAt = Date.parse(receipt.recordedAt ?? "") / 1000;
+
+  const pass = yield* verifyPass(
+    {
+      grantable: new Set(["rk.send.plain"]),
+      issuerScope: ["rk.send.plain"],
+      knownDesk: { did: via.deskDid, key, name: via.desk },
+    },
+    via.pass,
+    recordedAt
+  ).pipe(
+    Effect.provide(signatures),
+    Effect.provideService(
+      NonceBinding,
+      yield* makeMemoryNonceBinding(Effect.succeed(recordedAt))
+    )
+  );
+
+  if (
+    pass.record.worker !== via.worker ||
+    pass.record.run !== via.run ||
+    !pass.record.scope.includes("rk.send.plain")
+  ) {
+    return yield* new MailboxClientError({
+      reason: "Invalid pass run or scope binding",
+    });
+  }
+
+  return payload;
+});
+
+const openReceived = Effect.fn("RatKingMailbox.openReceived")(
+  function* openReceived(
+    envelope: Defs.EncryptedEnvelopeValue,
+    receipt: Defs.ReceiptValue | undefined,
+    identity: IdentityValue,
+    resolver: typeof DidResolver.Service
+  ) {
+    if (receipt?.via !== undefined) {
+      return yield* openPass(envelope, receipt, identity.did, resolver);
+    }
+
+    const resolveSigningKey = (did: string, keyId: string) =>
+      resolver
+        .resolve(did, keyId, "authentication")
+        .pipe(
+          Effect.mapError(
+            () =>
+              new EnvelopeFailure({ reason: "Unauthorized sender signing key" })
+          )
+        );
+
+    if (receipt?.delegatedFor !== undefined) {
+      return yield* openDelegated(
+        envelope,
+        receipt,
+        identity.did,
+        resolveSigningKey
+      );
+    }
+
+    return yield* openEnvelope({
+      envelope,
+      recipientDid: identity.did,
+      recipientKey: yield* importAgreement(identity),
+      recipientKeyId: `${identity.did}#encryption`,
+      resolveSigningKey,
+    });
+  }
+);
 
 const sendIntent = (opts: SendOptions | undefined) => {
   const intent: Pick<SealedSendInput, "critical" | "wakeReason" | "woke"> = {
@@ -331,35 +505,15 @@ export const layer = (
             Schema.toType(Defs.EncryptedEnvelope)
           )(input);
 
-          const resolveSigningKey = (did: string, keyId: string) =>
-            resolver.resolve(did, keyId, "authentication").pipe(
-              Effect.mapError(
-                () =>
-                  new EnvelopeFailure({
-                    reason: "Unauthorized sender signing key",
-                  })
-              )
-            );
+          const payload = yield* openReceived(
+            envelope,
+            receipt,
+            identity,
+            resolver
+          );
 
-          const payload = yield* receipt?.delegatedFor === undefined
-            ? openEnvelope({
-                envelope,
-                recipientDid: identity.did,
-                recipientKey: yield* importAgreement(identity),
-                recipientKeyId: `${identity.did}#encryption`,
-                resolveSigningKey,
-              })
-            : openDelegated(envelope, receipt, identity.did, resolveSigningKey);
-
-          const body = yield* Effect.try({
-            catch: () =>
-              new MailboxClientError({ reason: "Invalid UTF-8 body" }),
-            try: () =>
-              new TextDecoder("utf-8", {
-                fatal: true,
-                ignoreBOM: false,
-              }).decode(payload.body),
-          });
+          const body = yield* decodeBody(payload.body);
+          const via = receipt?.via;
 
           const carbonCopy = yield* Schema.decodeUnknownEffect(
             Schema.fromJsonString(
@@ -382,6 +536,10 @@ export const layer = (
             tid: payload.aad.messageId,
             verified: true,
           };
+
+          if (via !== undefined) {
+            result.via = { desk: via.desk, deskDid: via.deskDid, run: via.run };
+          }
 
           if (receipt?.delegatedTo !== undefined) {
             result.delegatedTo = receipt.delegatedTo;
