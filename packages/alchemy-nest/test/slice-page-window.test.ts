@@ -100,7 +100,7 @@ it.effect.prop(
 );
 
 it.effect.prop(
-  "a 2000 chunk page stays below one second on a generated store with at least 200000 chunks",
+  "the fastest of five 2000 chunk pages stays under 100 ms on a generated store with at least 200000 chunks",
   {
     extra: Arbitrary.schema(
       Schema.Int.check(Schema.isBetween({ maximum: 10_000, minimum: 0 }))
@@ -112,12 +112,17 @@ it.effect.prop(
       yield* TestClock.setTime(fixtureNow);
       yield* Effect.gen(function* measure() {
         const source = yield* SliceSource;
-        const start = performance.now();
-        const result = yield* source.chunks(0, 2000, 1000);
-        const elapsed = performance.now() - start;
-        expect(result.items).toHaveLength(2000);
-        expect(elapsed).toBeLessThan(1000);
+        const elapsed: number[] = [];
+
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          const start = performance.now();
+          const result = yield* source.chunks(0, 2000, 1000);
+          elapsed.push(performance.now() - start);
+          expect(result.items).toHaveLength(2000);
+        }
+
+        expect(Math.min(...elapsed)).toBeLessThan(100);
       }).pipe(Effect.provide(sqliteSliceSource(path, 30)));
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
-  { arbitrary: { runs: 3 }, timeout: 15_000 }
+  { arbitrary: { runs: 3 }, timeout: 60_000 }
 );
