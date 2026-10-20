@@ -36,6 +36,7 @@ export interface Batch {
     readonly throughSeq: number;
 }
 export interface OpenedMessage {
+    readonly via?: Pick<Defs.ViaValue, "desk" | "deskDid" | "run">;
     readonly delegatedFor?: string;
     readonly delegatedTo?: string;
     readonly originalId?: string;

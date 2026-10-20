@@ -520,6 +520,30 @@ const unsettled = (event: Defs.MessageEventValue) =>
   event.receipt.state !== "expired" &&
   event.receipt.state !== "failed";
 
+const custodyOf = (message: OpenedMessage) => {
+  const custody: Pick<
+    Inbound,
+    "delegatedFor" | "delegatedTo" | "originalId" | "via"
+  > = {};
+
+  if (message.via !== undefined) {
+    Object.assign(custody, { via: message.via });
+  }
+
+  if (message.delegatedTo !== undefined) {
+    Object.assign(custody, { delegatedTo: message.delegatedTo });
+  }
+
+  if (message.delegatedFor !== undefined) {
+    Object.assign(custody, {
+      delegatedFor: message.delegatedFor,
+      originalId: message.originalId,
+    });
+  }
+
+  return custody;
+};
+
 export const makeRatKing = Effect.gen(function* makeRatKing() {
   const settings = yield* Settings;
   const lifetime = yield* Effect.scope;
@@ -829,25 +853,48 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       return yield* supervise(name, effect);
     });
 
+  const senderOf = Effect.fn("RatKing.replySender")(function* senderOf(
+    record: Received
+  ) {
+    if (record.via !== undefined) {
+      return Option.some(record.via.desk);
+    }
+
+    const claimed = Option.liftPredicate(
+      record.from,
+      (from) =>
+        Schema.is(AgentName)(from) &&
+        didFor(settings.didTemplate, settings.reserved, from) === record.did
+    );
+
+    return Option.orElse(yield* directory.nameOf(record.did), () => claimed);
+  });
+
   const inboundOf = (own: Self, message: OpenedMessage) =>
     Effect.gen(function* decodeInbound() {
       const payload = yield* decodePayload(message.body);
-      const known = yield* directory.nameOf(message.senderDid);
 
-      const claimed = Option.match(payload, {
-        onNone: () => Option.getOrElse(known, () => message.senderDid),
-        onSome: (value) => canonicalName(settings.reserved, value.from),
-      });
+      const known = yield* directory.nameOf(
+        message.via?.deskDid ?? message.senderDid
+      );
+
+      const claimed =
+        message.via?.desk ??
+        Option.match(payload, {
+          onNone: () => Option.getOrElse(known, () => message.senderDid),
+          onSome: (value) => canonicalName(settings.reserved, value.from),
+        });
 
       const verified = verifiedSender({
         claimed,
-        did: message.senderDid,
+        did: message.via?.deskDid ?? message.senderDid,
         known,
         reserved: settings.reserved,
         template: settings.didTemplate,
       });
 
       const inbound: Inbound = {
+        ...custodyOf(message),
         body: Option.match(payload, {
           onNone: () => message.body,
           onSome: (value) => value.body,
@@ -873,17 +920,6 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
         summary: Option.flatMapNullishOr(payload, (value) => value.summary),
         verified,
       };
-
-      if (message.delegatedTo !== undefined) {
-        Object.assign(inbound, { delegatedTo: message.delegatedTo });
-      }
-
-      if (message.delegatedFor !== undefined) {
-        Object.assign(inbound, {
-          delegatedFor: message.delegatedFor,
-          originalId: message.originalId,
-        });
-      }
 
       if (settings.attentionLevers === true) {
         Object.assign(inbound, {
@@ -2929,18 +2965,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
         });
       }
 
-      const claimed = Option.liftPredicate(
-        record.value.from,
-        (from) =>
-          Schema.is(AgentName)(from) &&
-          didFor(settings.didTemplate, settings.reserved, from) ===
-            record.value.did
-      );
-
-      const sender = Option.orElse(
-        yield* directory.nameOf(record.value.did),
-        () => claimed
-      );
+      const sender = yield* senderOf(record.value);
 
       if (Option.isNone(sender)) {
         return yield* refused("UnknownName")(
