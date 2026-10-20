@@ -16,7 +16,7 @@ import { prepareReleases, recordReceipt } from "./ship-prune.ts";
 import type { ReleaseCurrent } from "./ship-prune.ts";
 import { shipLoop } from "./ship.ts";
 import type { ShipPorts } from "./ship.ts";
-import { FleetError } from "./stage-config.ts";
+import { FleetError, causeDetail } from "./stage-config.ts";
 import type { StageConfigValue } from "./stage-config.ts";
 
 const Checks = Schema.Struct({
@@ -230,6 +230,13 @@ export const shipCommand = Effect.fn("Ship.command")(
     const saved = (yield* fs.exists(ship.checkpoint))
       ? yield* Schema.decodeEffect(Schema.fromJsonString(ShipCheckpoint))(
           yield* fs.readFileString(ship.checkpoint)
+        ).pipe(
+          Effect.mapError(
+            (cause) =>
+              new FleetError({
+                reason: `Ship checkpoint invalid: ${causeDetail(cause)}`,
+              })
+          )
         )
       : { failed: "", successful: "" };
 
@@ -250,7 +257,10 @@ export const shipCommand = Effect.fn("Ship.command")(
           })
         ).pipe(
           Effect.mapError(
-            () => new FleetError({ reason: "Ship checkpoint write failed" })
+            (cause) =>
+              new FleetError({
+                reason: `Ship checkpoint write failed: ${causeDetail(cause)}`,
+              })
           )
         ),
       ci: Effect.fn("Ship.fence")(
@@ -317,9 +327,9 @@ export const shipCommand = Effect.fn("Ship.command")(
           effect.pipe(
             Effect.timeout("30 seconds"),
             Effect.mapError(
-              () =>
+              (cause) =>
                 new FleetError({
-                  reason: "Fence workflow evidence unavailable",
+                  reason: `Fence workflow evidence unavailable: ${causeDetail(cause)}`,
                 })
             )
           )
@@ -426,10 +436,9 @@ export const shipCommand = Effect.fn("Ship.command")(
           effect.pipe(
             Effect.timeout("20 minutes"),
             Effect.mapError(
-              () =>
+              (cause) =>
                 new FleetError({
-                  reason:
-                    "Candidate deploy failed; receipt must mark restart outcome unknown",
+                  reason: `Candidate deploy failed; receipt must mark restart outcome unknown: ${causeDetail(cause)}`,
                 })
             )
           )
@@ -446,7 +455,12 @@ export const shipCommand = Effect.fn("Ship.command")(
         );
       }).pipe(
         Effect.timeout("60 seconds"),
-        Effect.mapError(() => new FleetError({ reason: "Main fetch failed" }))
+        Effect.mapError(
+          (cause) =>
+            new FleetError({
+              reason: `Main fetch failed: ${causeDetail(cause)}`,
+            })
+        )
       ),
       notify: (receipt) =>
         sendShipNotification(
@@ -469,12 +483,12 @@ export const shipCommand = Effect.fn("Ship.command")(
   (effect) =>
     effect.pipe(
       Effect.provide([FetchHttpClient.layer, secretStoreLayer({})]),
-      Effect.mapError(
-        () =>
-          new FleetError({
-            reason:
-              "Ship stopped; check checkpoint and receipts before restarting",
-          })
+      Effect.mapError((cause) =>
+        Schema.is(FleetError)(cause)
+          ? cause
+          : new FleetError({
+              reason: `Ship stopped; check checkpoint and receipts before restarting: ${causeDetail(cause)}`,
+            })
       )
     )
 );
