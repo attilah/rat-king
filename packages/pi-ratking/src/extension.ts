@@ -5,7 +5,11 @@ import type {
   ExtensionFactory,
 } from "@earendil-works/pi-coding-agent";
 import { NodeServices } from "@effect/platform-node";
-import { recordType } from "@rat-king/mailbox-client";
+import * as PassIngest from "@rat-king/lexicon/desk.ingest";
+import { PassRun } from "@rat-king/lexicon/pass-request";
+import { Transport } from "@rat-king/lexicon/transport";
+import { Identity, recordType, transportLayer } from "@rat-king/mailbox-client";
+import { ownerCid } from "@rat-king/mailbox-client/owner-queue";
 import { decodeAgentGraphBody } from "@rat-king/ratking-client/agentgraph";
 import { attend, formatReason } from "@rat-king/ratking-client/attend";
 import type { Verdict } from "@rat-king/ratking-client/attend";
@@ -22,8 +26,22 @@ import { deliveryReason, injects } from "@rat-king/ratking-client/delivery";
 import { directoryLayer } from "@rat-king/ratking-client/directory";
 import type { SessionFacts } from "@rat-king/ratking-client/identity";
 import { issuerLayer } from "@rat-king/ratking-client/issuer";
-import { canonicalName } from "@rat-king/ratking-client/name";
+import { canonicalName, secretName } from "@rat-king/ratking-client/name";
 import type { ReservedValue } from "@rat-king/ratking-client/name";
+import {
+  importDeskSigningKey,
+  makePassLauncher,
+  PassStart,
+} from "@rat-king/ratking-client/pass-launcher";
+import type { PassLauncher } from "@rat-king/ratking-client/pass-launcher";
+import {
+  makeRunRegistry,
+  passFailure,
+} from "@rat-king/ratking-client/pass-registry";
+import {
+  servePassSocket,
+  socketPath,
+} from "@rat-king/ratking-client/pass-socket";
 import {
   COPY_NOTE,
   LexiconRecord,
@@ -42,12 +60,16 @@ import {
   recordNotice,
   recordRuleVerdict,
 } from "@rat-king/ratking-client/record-visibility";
-import { secretStoreLayer } from "@rat-king/ratking-client/secrets";
+import {
+  SecretStore,
+  secretStoreLayer,
+} from "@rat-king/ratking-client/secrets";
 import {
   Cause,
   Clock,
   Config,
   Duration,
+  DateTime,
   Effect,
   Exit,
   Layer,
@@ -60,6 +82,9 @@ import {
   Predicate,
   Schedule,
   Schema,
+  Redacted,
+  Scope,
+  Semaphore,
 } from "effect";
 import { FetchHttpClient } from "effect/http";
 import { Type } from "typebox";
@@ -969,6 +994,9 @@ export const ratkingExtension = (options: ExtensionOptions) =>
 
     let runtime = Option.none<Runtime>();
     let turns: TurnReporter | undefined;
+    let passLauncher: PassLauncher["Service"] | undefined;
+    let passScope: Scope.Closeable | undefined;
+    const passGate = Semaphore.makeUnsafe(1);
 
     const reportTurn = async (
       effect: Effect.Effect<void, never, RatKing | Settings> | undefined
@@ -1484,6 +1512,19 @@ export const ratkingExtension = (options: ExtensionOptions) =>
     };
 
     const stop = async () => {
+      await Effect.runPromise(
+        passGate.withPermit(
+          Effect.gen(function* stopPassServer() {
+            const previousScope = passScope;
+            passScope = undefined;
+            passLauncher = undefined;
+
+            if (previousScope !== undefined) {
+              yield* Scope.close(previousScope, Exit.void);
+            }
+          })
+        )
+      );
       const previous = runtime;
 
       runtime = Option.none();
@@ -1654,6 +1695,227 @@ export const ratkingExtension = (options: ExtensionOptions) =>
           status: "not-delivered" as const,
         });
       }
+    });
+
+    const passBlocked = (name: string, runId: string, reason: string) =>
+      Effect.gen(function* postPassBlocked() {
+        yield* Effect.sync(() => {
+          pi.events.emit("ratking/pass:blocked", {
+            kind: "blocked",
+            reason,
+            run: runId,
+          });
+        });
+        const settings = yield* Settings;
+        const store = yield* SecretStore;
+
+        const identity = yield* Schema.decodeEffect(
+          Schema.fromJsonString(Identity)
+        )(Redacted.value(yield* store.lease(secretName(name))));
+
+        const now = yield* Clock.currentTimeMillis;
+
+        const content = {
+          author: identity.did,
+          createdAt: DateTime.formatIso(DateTime.makeUnsafe(now)),
+          kind: "blocked" as const,
+          text: `Pass run ${runId} blocked\n${reason}`,
+          uri: `ratking:pass:${runId}:${now}`,
+        };
+
+        const input = yield* Schema.decodeUnknownEffect(PassIngest.Input)({
+          desk: identity.did,
+          item: { ...content, cid: yield* ownerCid(content) },
+        });
+
+        const encoded = yield* Schema.encodeEffect(PassIngest.Input)(input);
+
+        const response = yield* Transport.use((transport) =>
+          transport.request({
+            input: encoded,
+            method: "POST",
+            nsid: PassIngest.Method.nsid,
+            params: undefined,
+          })
+        ).pipe(
+          Effect.provide(
+            transportLayer(
+              settings.endpoint,
+              `${settings.serviceDid.replace(/#mailbox$/u, "")}#mailbox`,
+              identity
+            )
+          )
+        );
+
+        if (response.status < 200 || response.status >= 300) {
+          yield* Effect.logError("Pass blocked desk item was refused");
+        }
+      }).pipe(
+        Effect.matchEffect({
+          onFailure: () =>
+            Effect.logError("Pass blocked desk item could not be stored"),
+          onSuccess: () => Effect.void,
+        })
+      );
+
+    const launchPass = (input: typeof PassStart.Type) =>
+      passGate.withPermit(
+        Effect.gen(function* launchPassRun() {
+          const status = yield* RatKing.use((ratking) => ratking.status);
+
+          if (
+            Option.isNone(status.self) ||
+            status.self.value.name !== input.desk
+          ) {
+            return yield* passFailure(
+              "only a named desk session can launch its own passes"
+            );
+          }
+
+          if (passLauncher === undefined) {
+            const store = yield* SecretStore;
+
+            const identity = yield* Schema.decodeEffect(
+              Schema.fromJsonString(Identity)
+            )(Redacted.value(yield* store.lease(secretName(input.desk))));
+
+            if (identity.did !== status.self.value.did) {
+              return yield* passFailure(
+                "leased desk identity does not match this session"
+              );
+            }
+
+            const path = yield* Path.Path;
+            const home = yield* Config.String("HOME");
+            const directory = path.join(home, ".local/state/ratking/pass");
+            const scope = yield* Scope.make();
+            const context = yield* Effect.context<Services>();
+
+            const launcher = yield* makePassLauncher({
+              desk: input.desk,
+              deskDid: identity.did,
+              key: yield* importDeskSigningKey(identity.signing),
+              onBlocked: (runId, reason) =>
+                passBlocked(input.desk, runId, reason).pipe(
+                  Effect.provideContext(context),
+                  Effect.forkIn(scope),
+                  Effect.asVoid
+                ),
+              registry: yield* makeRunRegistry(directory, input.desk),
+              socket: socketPath(directory, input.desk),
+            });
+
+            yield* servePassSocket(directory, input.desk, launcher).pipe(
+              Effect.provideService(Scope.Scope, scope),
+              Effect.onError(() => Scope.close(scope, Exit.void))
+            );
+            passScope = scope;
+            passLauncher = launcher;
+          }
+
+          return yield* passLauncher.start(input);
+        })
+      );
+
+    pi.events.on("ratking/pass:start", (data) => {
+      const request = Schema.decodeUnknownOption(
+        Schema.Struct({ ...PassStart.fields, requestId: Schema.String })
+      )(data);
+
+      const loose = Schema.decodeUnknownOption(
+        Schema.Struct({ requestId: Schema.String })
+      )(data);
+
+      if (Option.isNone(loose)) {
+        return;
+      }
+
+      const { requestId } = loose.value;
+
+      const refuse = (reason: string) => ({
+        code: "NotAttempted" as const,
+        reason,
+        requestId,
+        status: "not-delivered" as const,
+      });
+
+      const launch = async () => {
+        const result = Option.isNone(request)
+          ? refuse("Invalid pass launch request")
+          : await run(
+              launchPass(request.value).pipe(
+                Effect.map((value) => ({
+                  ...value,
+                  requestId,
+                  status: "started" as const,
+                })),
+                Effect.catch((error) =>
+                  Effect.succeed(
+                    refuse(
+                      Schema.is(Schema.Struct({ reason: Schema.String }))(error)
+                        ? error.reason
+                        : "Pass launch failed"
+                    )
+                  )
+                )
+              ),
+              refuse
+            );
+
+        pi.events.emit("ratking/pass:start:result", result);
+      };
+
+      void launch();
+    });
+
+    pi.events.on("ratking/pass:close", (data) => {
+      const request = Schema.decodeUnknownOption(
+        Schema.Struct({ requestId: Schema.String, run: PassRun })
+      )(data);
+
+      if (Option.isNone(request)) {
+        return;
+      }
+
+      const close = async () => {
+        const result = await run(
+          passGate
+            .withPermit(
+              Effect.gen(function* closePassRun() {
+                if (passLauncher === undefined) {
+                  return {
+                    code: "NotAttempted",
+                    requestId: request.value.requestId,
+                    status: "not-delivered",
+                  };
+                }
+
+                yield* passLauncher.close(request.value.run);
+
+                return { requestId: request.value.requestId, status: "closed" };
+              })
+            )
+            .pipe(
+              Effect.catch(() =>
+                Effect.succeed({
+                  code: "NotAttempted",
+                  requestId: request.value.requestId,
+                  status: "not-delivered",
+                })
+              )
+            ),
+          (reason) => ({
+            code: "NotAttempted",
+            reason,
+            requestId: request.value.requestId,
+            status: "not-delivered",
+          })
+        );
+
+        pi.events.emit("ratking/pass:close:result", result);
+      };
+
+      void close();
     });
 
     pi.events.on(STATUS_EVENT, (data) => {

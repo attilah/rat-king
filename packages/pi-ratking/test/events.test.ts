@@ -1,5 +1,7 @@
 // @effect-diagnostics asyncFunction:off -- Pi's extension API is the Promise boundary under test.
 /* oxlint-disable promise/prefer-await-to-callbacks -- Pi's event bus and Effect HttpClient test adapters take callbacks. */
+import { createConnection } from "node:net";
+
 import { createEventBus } from "@earendil-works/pi-coding-agent";
 import { NodeServices } from "@effect/platform-node";
 import { it } from "@effect/vitest";
@@ -13,6 +15,7 @@ import {
   RatKingMailbox,
 } from "@rat-king/mailbox-client";
 import { Directory } from "@rat-king/ratking-client/directory";
+import { renewalBytes } from "@rat-king/ratking-client/pass-launcher";
 import { LexiconRecord, PayloadJson } from "@rat-king/ratking-client/payload";
 import { RelayHandled } from "@rat-king/ratking-client/relay";
 import { SecretStore } from "@rat-king/ratking-client/secrets";
@@ -34,6 +37,7 @@ import {
 import { HttpClient, HttpClientResponse } from "effect/http";
 import { expect } from "vitest";
 
+import { keypair } from "../../lexicon/test/pass-helpers.ts";
 import { WebSocketPort } from "../../mailbox-client/src/watch.ts";
 import { document, identity } from "../../mailbox-client/test/identity.ts";
 import type { PiHost, SessionStart } from "../src/extension.ts";
@@ -53,37 +57,29 @@ import {
 import { shownIds } from "../src/pending.ts";
 import { harness } from "./harness.ts";
 
-const PEER = "did:web:peer.agents.example.invalid";
-
-const Submitted = Schema.fromJsonString(
-  Schema.Struct({
-    envelope: Schema.Struct({
-      aad: Schema.Struct({
-        messageId: Schema.String,
-        recipientDid: Schema.String,
-        senderDid: Schema.String,
-      }),
-    }),
-  })
-);
-
-const Result = Schema.Union([
-  Schema.Struct({
-    id: Schema.String,
-    requestId: Schema.String,
-    seq: Schema.Number,
-    status: Schema.Literal("delivered"),
-    to: Schema.String,
-  }),
-  Schema.Struct({
-    code: Schema.String,
-    reason: Schema.String,
-    requestId: Schema.String,
-    status: Schema.Literal("not-delivered"),
-  }),
-]);
-
 const idle = async () => {};
+
+const passExchange = (path: string, body: string) =>
+  Effect.callback<string, Error>((resume) => {
+    const socket = createConnection(path);
+    let result = "";
+    socket.once("connect", () => {
+      socket.write(body);
+    });
+    socket.on("data", (bytes) => {
+      result += bytes.toString("utf-8");
+    });
+    socket.once("end", () => {
+      resume(Effect.succeed(result));
+    });
+    socket.once("error", (failure) => {
+      resume(Effect.fail(failure));
+    });
+
+    return Effect.sync(() => {
+      socket.destroy();
+    });
+  });
 
 const fakePi = () => {
   let started: (start: SessionStart) => Promise<void> = idle;
@@ -113,6 +109,224 @@ const fakePi = () => {
 
   return { end, pi, start };
 };
+
+const PEER = "did:web:peer.agents.example.invalid";
+
+it.live.prop(
+  "pass events serve only named desks, start lazily, correlate results and close runs",
+  [Arbitrary.schema(Schema.Boolean)],
+  ([named]) =>
+    Effect.gen(function* passEvents() {
+      const fs = yield* FileSystem.FileSystem;
+      const home = yield* fs.makeTempDirectoryScoped({ prefix: "pe-" });
+
+      const Blocked = Schema.Struct({
+        desk: Schema.String,
+        item: Schema.Struct({
+          cid: Schema.String,
+          kind: Schema.Literal("blocked"),
+          text: Schema.String,
+        }),
+      });
+
+      const ingested = yield* Deferred.make<
+        typeof Blocked.Type,
+        Schema.SchemaError
+      >();
+
+      const http = HttpClient.make((request) =>
+        Effect.gen(function* passHttp() {
+          if (
+            request.url.endsWith("sh.mschf.ratking.desk.ingest") &&
+            Predicate.isTagged(request.body, "Uint8Array")
+          ) {
+            const item = yield* Schema.decodeEffect(
+              Schema.fromJsonString(Blocked)
+            )(new TextDecoder().decode(request.body.body)).pipe(Effect.orDie);
+
+            expect(request.headers.authorization).toMatch(/^Bearer /u);
+            yield* Deferred.succeed(ingested, item);
+
+            return HttpClientResponse.fromWeb(
+              request,
+              Response.json({ seq: 1, stored: true })
+            );
+          }
+
+          return HttpClientResponse.fromWeb(
+            request,
+            Response.json({ error: "MailboxUnavailable" }, { status: 503 })
+          );
+        })
+      );
+
+      const { end, pi, start } = fakePi();
+      yield* Effect.promise(async () => {
+        await ratkingExtension({
+          facts: (session) =>
+            Effect.succeed({
+              alive: () => false,
+              env: named ? Option.some("tester") : Option.none(),
+              nameless: !named,
+              pane: Option.none(),
+              pid: 1,
+              reads: false,
+              session,
+            }),
+          layer: harness(home, http).pipe(
+            Layer.provideMerge(
+              ConfigProvider.layer(ConfigProvider.fromUnknown({ HOME: home }))
+            )
+          ),
+          tool: Effect.succeed("ratking"),
+        })(pi);
+      });
+      yield* start;
+
+      if (named) {
+        const ready = yield* Deferred.make<null>();
+        pi.events.on(SEND_RESULT_EVENT, () => {
+          Deferred.doneUnsafe(ready, Effect.succeed(null));
+        });
+        pi.events.emit(SEND_EVENT, {
+          body: "readiness",
+          requestId: "ready",
+          to: "unknown",
+        });
+        yield* Deferred.await(ready);
+      }
+
+      const socket = `${home}/.local/state/ratking/pass/tester.sock`;
+      expect(yield* fs.exists(socket)).toBe(false);
+
+      const ResultSchema = Schema.Struct({
+        code: Schema.optionalKey(Schema.String),
+        env: Schema.optionalKey(
+          Schema.Struct({
+            RK_PASS_CLAIM: Schema.String,
+            RK_PASS_RUN: Schema.String,
+            RK_PASS_SOCKET: Schema.String,
+          })
+        ),
+        reason: Schema.optionalKey(Schema.String),
+        requestId: Schema.String,
+        status: Schema.String,
+      });
+
+      const answered = yield* Deferred.make<
+        typeof ResultSchema.Type,
+        Schema.SchemaError
+      >();
+
+      pi.events.on("ratking/pass:start:result", (data) => {
+        Deferred.doneUnsafe(
+          answered,
+          Schema.decodeUnknownEffect(ResultSchema)(data)
+        );
+      });
+
+      const request = {
+        desk: "tester",
+        requestId: "pass-start",
+        run: "worker:00000000000000000000000000000008",
+        scope: ["rk.send.plain"],
+        ttl: 2000,
+      };
+
+      pi.events.emit("ratking/pass:start", request);
+      const result = yield* Deferred.await(answered);
+      expect(result.requestId).toBe(request.requestId);
+      expect(result.status, result.reason).toBe(
+        named ? "started" : "not-delivered"
+      );
+
+      if (named) {
+        expect(yield* fs.exists(socket)).toBe(true);
+        const env = yield* Effect.fromOption(Option.fromNullishOr(result.env));
+
+        for (const index of [0, 1]) {
+          const worker = yield* keypair;
+
+          const proof = {
+            nonce: `worker-${index}`,
+            now: Math.floor((yield* Clock.currentTimeMillis) / 1000),
+            run: env.RK_PASS_RUN,
+          };
+
+          const response = yield* passExchange(
+            socket,
+            `${JSON.stringify({ proof: { ...proof, signature: yield* worker.signer.sign(renewalBytes(env.RK_PASS_RUN, worker.did, proof)) }, run: env.RK_PASS_RUN, token: env.RK_PASS_CLAIM, workerDid: worker.did })}\n`
+          );
+
+          const decoded = yield* Schema.decodeEffect(
+            Schema.fromJsonString(Schema.Struct({ ok: Schema.Boolean }))
+          )(response);
+
+          expect(decoded.ok).toBe(index === 0);
+        }
+
+        const item = yield* Deferred.await(ingested);
+        expect(item.desk).toBe("did:web:tester.agents.example.invalid");
+        expect(item.item.text).toContain(env.RK_PASS_RUN);
+        expect(item.item.cid).toMatch(/^[0-9a-f]{32}$/u);
+
+        const closed = yield* Deferred.make<
+          typeof ResultSchema.Type,
+          Schema.SchemaError
+        >();
+
+        pi.events.on("ratking/pass:close:result", (data) => {
+          Deferred.doneUnsafe(
+            closed,
+            Schema.decodeUnknownEffect(ResultSchema)(data)
+          );
+        });
+        pi.events.emit("ratking/pass:close", {
+          requestId: "pass-close",
+          run: request.run,
+        });
+        expect(yield* Deferred.await(closed)).toEqual({
+          requestId: "pass-close",
+          status: "closed",
+        });
+      } else {
+        expect(result.code).toBe("NotAttempted");
+        expect(yield* fs.exists(socket)).toBe(false);
+      }
+
+      yield* end;
+      expect(yield* fs.exists(socket)).toBe(false);
+    }).pipe(Effect.provide(NodeServices.layer)),
+  { arbitrary: { runs: 6 } }
+);
+
+const Submitted = Schema.fromJsonString(
+  Schema.Struct({
+    envelope: Schema.Struct({
+      aad: Schema.Struct({
+        messageId: Schema.String,
+        recipientDid: Schema.String,
+        senderDid: Schema.String,
+      }),
+    }),
+  })
+);
+
+const Result = Schema.Union([
+  Schema.Struct({
+    id: Schema.String,
+    requestId: Schema.String,
+    seq: Schema.Number,
+    status: Schema.Literal("delivered"),
+    to: Schema.String,
+  }),
+  Schema.Struct({
+    code: Schema.String,
+    reason: Schema.String,
+    requestId: Schema.String,
+    status: Schema.Literal("not-delivered"),
+  }),
+]);
 
 const Case = Schema.Struct({
   body: Schema.String,
