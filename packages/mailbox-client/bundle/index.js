@@ -2,6 +2,9 @@
 import { Aes128Gcm, CipherSuite, HkdfSha256 } from "@hpke/core";
 
 // packages/lexicon/src/defs.ts
+import { Schema as Schema3 } from "effect";
+
+// packages/lexicon/src/edge.pass.ts
 import { Schema as Schema2 } from "effect";
 
 // packages/lexicon/src/runtime.ts
@@ -108,37 +111,69 @@ var XrpcErrorBody = Schema.StructWithRest(
   [Schema.Record(Schema.String, Data)]
 );
 
-// packages/lexicon/src/defs.ts
-var Aad = Schema2.StructWithRest(
+// packages/lexicon/src/edge.pass.ts
+var Main = Schema2.StructWithRest(
   Schema2.Struct({
-    expiresAt: Schema2.optionalKey(
-      lexString({
-        description: "Absent means no expiry; never infer expiry from the TID.",
-        format: "datetime",
-        type: "string"
-      }).pipe(Schema2.brand("Lexicon:datetime"))
-    ),
-    messageId: lexString({
-      description: "Sender DID plus TID is the immutable idempotency key.",
-      format: "tid",
-      type: "string"
-    }).pipe(Schema2.brand("Lexicon:tid")),
-    recipientDid: lexString({ format: "did", type: "string" }).pipe(
+    $type: Schema2.Literal("sh.ratking.pass"),
+    desk: lexString({ maxLength: 256, minLength: 1, type: "string" }),
+    deskDid: lexString({ format: "did", type: "string" }).pipe(
       Schema2.brand("Lexicon:did")
     ),
-    recipientKeyId: lexString({
-      description: "DID URL of recipient's keyAgreement key; checked against recipientDid.",
-      format: "uri",
-      type: "string"
-    }).pipe(Schema2.brand("Lexicon:uri")),
-    senderDid: lexString({ format: "did", type: "string" }).pipe(
+    exp: Schema2.Int.check(
+      Schema2.isGreaterThanOrEqualTo(0),
+      Schema2.isLessThanOrEqualTo(9007199254740991)
+    ),
+    iat: Schema2.Int.check(
+      Schema2.isGreaterThanOrEqualTo(0),
+      Schema2.isLessThanOrEqualTo(9007199254740991)
+    ),
+    nonce: lexString({ maxLength: 256, minLength: 1, type: "string" }),
+    run: lexString({ maxLength: 256, minLength: 1, type: "string" }),
+    scope: Schema2.Array(
+      lexString({ maxLength: 512, minLength: 1, type: "string" })
+    ).check(Schema2.isMinLength(1), Schema2.isMaxLength(64)),
+    v: Schema2.Literal(1).check(
+      Schema2.isGreaterThanOrEqualTo(-9007199254740991),
+      Schema2.isLessThanOrEqualTo(9007199254740991)
+    ),
+    worker: lexString({ format: "did", type: "string" }).pipe(
       Schema2.brand("Lexicon:did")
     )
   }),
   [Schema2.Record(Schema2.String, Data)]
 );
-var AppSignature = Schema2.StructWithRest(
-  Schema2.Struct({
+
+// packages/lexicon/src/defs.ts
+var Aad = Schema3.StructWithRest(
+  Schema3.Struct({
+    expiresAt: Schema3.optionalKey(
+      lexString({
+        description: "Absent means no expiry; never infer expiry from the TID.",
+        format: "datetime",
+        type: "string"
+      }).pipe(Schema3.brand("Lexicon:datetime"))
+    ),
+    messageId: lexString({
+      description: "Sender DID plus TID is the immutable idempotency key.",
+      format: "tid",
+      type: "string"
+    }).pipe(Schema3.brand("Lexicon:tid")),
+    recipientDid: lexString({ format: "did", type: "string" }).pipe(
+      Schema3.brand("Lexicon:did")
+    ),
+    recipientKeyId: lexString({
+      description: "DID URL of recipient's keyAgreement key; checked against recipientDid.",
+      format: "uri",
+      type: "string"
+    }).pipe(Schema3.brand("Lexicon:uri")),
+    senderDid: lexString({ format: "did", type: "string" }).pipe(
+      Schema3.brand("Lexicon:did")
+    )
+  }),
+  [Schema3.Record(Schema3.String, Data)]
+);
+var AppSignature = Schema3.StructWithRest(
+  Schema3.Struct({
     algorithm: lexString({
       knownValues: ["ES256", "ES256K"],
       type: "string"
@@ -147,27 +182,27 @@ var AppSignature = Schema2.StructWithRest(
       description: "DID URL of sender's authorized signing key at send time.",
       format: "uri",
       type: "string"
-    }).pipe(Schema2.brand("Lexicon:uri")),
-    publicKeyMultibase: Schema2.optionalKey(
+    }).pipe(Schema3.brand("Lexicon:uri")),
+    publicKeyMultibase: Schema3.optionalKey(
       lexString({
         description: "Optional historical key hint, never authority without verified key history.",
         type: "string"
       })
     ),
     signature: Bytes.check(
-      Schema2.makeFilter(
+      Schema3.makeFilter(
         (value) => value.length >= 0 && value.length <= 9007199254740991,
         { expected: "byte length constraints" }
       )
     )
   }),
-  [Schema2.Record(Schema2.String, Data)]
+  [Schema3.Record(Schema3.String, Data)]
 );
-var BirthContext = Schema2.StructWithRest(
-  Schema2.Struct({
-    createdAt: Schema2.optionalKey(
+var BirthContext = Schema3.StructWithRest(
+  Schema3.Struct({
+    createdAt: Schema3.optionalKey(
       lexString({ format: "datetime", type: "string" }).pipe(
-        Schema2.brand("Lexicon:datetime")
+        Schema3.brand("Lexicon:datetime")
       )
     ),
     operator: lexString({
@@ -179,18 +214,18 @@ var BirthContext = Schema2.StructWithRest(
       type: "string"
     })
   }),
-  [Schema2.Record(Schema2.String, Data)]
+  [Schema3.Record(Schema3.String, Data)]
 );
-var DelegationReceipt = Schema2.StructWithRest(
-  Schema2.Struct({
+var DelegationReceipt = Schema3.StructWithRest(
+  Schema3.Struct({
     to: lexString({ type: "string" }),
-    until: Schema2.optionalKey(
+    until: Schema3.optionalKey(
       lexString({ format: "datetime", type: "string" }).pipe(
-        Schema2.brand("Lexicon:datetime")
+        Schema3.brand("Lexicon:datetime")
       )
     )
   }),
-  [Schema2.Record(Schema2.String, Data)]
+  [Schema3.Record(Schema3.String, Data)]
 );
 var DeliveryState = lexString({
   description: "Open values: accepted = durable admission; queued = awaiting runtime; delivered = injected into leased runtime, not processed; acked = recipient acknowledgment; expired = sender-set expiry reached; failed = terminal failure with a receipt. Unknown values are not success.",
@@ -204,211 +239,310 @@ var DeliveryState = lexString({
   ],
   type: "string"
 });
-var PublicJwk = Schema2.StructWithRest(
-  Schema2.Struct({
+var PublicJwk = Schema3.StructWithRest(
+  Schema3.Struct({
     crv: lexString({ const: "P-256", type: "string" }).pipe(
-      Schema2.decodeTo(Schema2.Literal("P-256"))
+      Schema3.decodeTo(Schema3.Literal("P-256"))
     ),
     kty: lexString({ const: "EC", type: "string" }).pipe(
-      Schema2.decodeTo(Schema2.Literal("EC"))
+      Schema3.decodeTo(Schema3.Literal("EC"))
     ),
     x: lexString({ type: "string" }),
     y: lexString({ type: "string" })
   }),
-  [Schema2.Record(Schema2.String, Data)]
+  [Schema3.Record(Schema3.String, Data)]
 );
-var DidVerificationMethod = Schema2.StructWithRest(
-  Schema2.Struct({
+var DidVerificationMethod = Schema3.StructWithRest(
+  Schema3.Struct({
     controller: lexString({ type: "string" }),
     id: lexString({ type: "string" }),
     publicKeyJwk: PublicJwk
   }),
-  [Schema2.Record(Schema2.String, Data)]
+  [Schema3.Record(Schema3.String, Data)]
 );
-var DidDocument = Schema2.StructWithRest(
-  Schema2.Struct({
-    authentication: Schema2.Array(lexString({ type: "string" })).check(
-      Schema2.isMinLength(0),
-      Schema2.isMaxLength(9007199254740991)
+var DidDocument = Schema3.StructWithRest(
+  Schema3.Struct({
+    authentication: Schema3.Array(lexString({ type: "string" })).check(
+      Schema3.isMinLength(0),
+      Schema3.isMaxLength(9007199254740991)
     ),
     id: lexString({ format: "did", type: "string" }).pipe(
-      Schema2.brand("Lexicon:did")
+      Schema3.brand("Lexicon:did")
     ),
-    keyAgreement: Schema2.Array(lexString({ type: "string" })).check(
-      Schema2.isMinLength(0),
-      Schema2.isMaxLength(9007199254740991)
+    keyAgreement: Schema3.Array(lexString({ type: "string" })).check(
+      Schema3.isMinLength(0),
+      Schema3.isMaxLength(9007199254740991)
     ),
-    verificationMethod: Schema2.Array(DidVerificationMethod).check(
-      Schema2.isMinLength(0),
-      Schema2.isMaxLength(9007199254740991)
+    verificationMethod: Schema3.Array(DidVerificationMethod).check(
+      Schema3.isMinLength(0),
+      Schema3.isMaxLength(9007199254740991)
     )
   }),
-  [Schema2.Record(Schema2.String, Data)]
+  [Schema3.Record(Schema3.String, Data)]
 );
-var HpkeSuite = Schema2.StructWithRest(
-  Schema2.Struct({
-    aeadId: Schema2.Int.check(
-      Schema2.isGreaterThanOrEqualTo(0),
-      Schema2.isLessThanOrEqualTo(65535)
+var HpkeSuite = Schema3.StructWithRest(
+  Schema3.Struct({
+    aeadId: Schema3.Int.check(
+      Schema3.isGreaterThanOrEqualTo(0),
+      Schema3.isLessThanOrEqualTo(65535)
     ),
-    kdfId: Schema2.Int.check(
-      Schema2.isGreaterThanOrEqualTo(0),
-      Schema2.isLessThanOrEqualTo(65535)
+    kdfId: Schema3.Int.check(
+      Schema3.isGreaterThanOrEqualTo(0),
+      Schema3.isLessThanOrEqualTo(65535)
     ),
-    kemId: Schema2.Int.check(
-      Schema2.isGreaterThanOrEqualTo(0),
-      Schema2.isLessThanOrEqualTo(65535)
+    kemId: Schema3.Int.check(
+      Schema3.isGreaterThanOrEqualTo(0),
+      Schema3.isLessThanOrEqualTo(65535)
     )
   }),
-  [Schema2.Record(Schema2.String, Data)]
+  [Schema3.Record(Schema3.String, Data)]
 );
-var EncryptedEnvelope = Schema2.StructWithRest(
-  Schema2.Struct({
+var EncryptedEnvelope = Schema3.StructWithRest(
+  Schema3.Struct({
     aad: Aad,
     ciphertext: Bytes.check(
-      Schema2.makeFilter(
+      Schema3.makeFilter(
         (value) => value.length >= 1 && value.length <= 9007199254740991,
         { expected: "byte length constraints" }
       )
     ),
     enc: Bytes.check(
-      Schema2.makeFilter(
+      Schema3.makeFilter(
         (value) => value.length >= 1 && value.length <= 9007199254740991,
         { expected: "byte length constraints" }
       )
     ),
     suite: HpkeSuite,
-    version: Schema2.Int.check(
-      Schema2.isGreaterThanOrEqualTo(1),
-      Schema2.isLessThanOrEqualTo(9007199254740991)
+    version: Schema3.Int.check(
+      Schema3.isGreaterThanOrEqualTo(1),
+      Schema3.isLessThanOrEqualTo(9007199254740991)
     )
   }),
-  [Schema2.Record(Schema2.String, Data)]
+  [Schema3.Record(Schema3.String, Data)]
 );
-var MessageRef = Schema2.StructWithRest(
-  Schema2.Struct({
-    cid: Schema2.optionalKey(
+var MessageRef = Schema3.StructWithRest(
+  Schema3.Struct({
+    cid: Schema3.optionalKey(
       lexString({
         description: "Optional CID of that exact persisted record, not a hash of JSON.",
         format: "cid",
         type: "string"
-      }).pipe(Schema2.brand("Lexicon:cid"))
+      }).pipe(Schema3.brand("Lexicon:cid"))
     ),
     messageId: lexString({ format: "tid", type: "string" }).pipe(
-      Schema2.brand("Lexicon:tid")
+      Schema3.brand("Lexicon:tid")
     ),
     senderDid: lexString({ format: "did", type: "string" }).pipe(
-      Schema2.brand("Lexicon:did")
+      Schema3.brand("Lexicon:did")
     ),
-    uri: Schema2.optionalKey(
+    uri: Schema3.optionalKey(
       lexString({
         description: "Optional actual persisted record URI; never fabricate a phase-0 record locator.",
         format: "at-uri",
         type: "string"
-      }).pipe(Schema2.brand("Lexicon:at-uri"))
+      }).pipe(Schema3.brand("Lexicon:at-uri"))
     )
   }),
-  [Schema2.Record(Schema2.String, Data)]
+  [Schema3.Record(Schema3.String, Data)]
 );
-var Receipt = Schema2.StructWithRest(
-  Schema2.Struct({
-    delegated: Schema2.optionalKey(DelegationReceipt),
-    delegatedFor: Schema2.optionalKey(lexString({ type: "string" })),
-    delegatedTo: Schema2.optionalKey(lexString({ type: "string" })),
-    detail: Schema2.optionalKey(
+var SignedPass = Schema3.StructWithRest(
+  Schema3.Struct({
+    record: Main,
+    signature: lexString({ type: "string" }).check(
+      Schema3.isPattern(/^[A-Za-z0-9_-]{86}$/u)
+    )
+  }),
+  [Schema3.Record(Schema3.String, Data)]
+);
+var PassRun = lexString({
+  description: "Launcher-minted run handle '<label>:<id>'. The label is a lowercase agent label; the id is the worker's session UUID or 32 lowercase hex characters.",
+  maxLength: 69,
+  type: "string"
+}).check(
+  Schema3.isPattern(
+    /^[a-z][a-z0-9_-]{0,31}:(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/u
+  )
+);
+var Via = Schema3.StructWithRest(
+  Schema3.Struct({
+    desk: lexString({ maxLength: 256, minLength: 1, type: "string" }),
+    deskDid: lexString({ format: "did", type: "string" }).pipe(
+      Schema3.brand("Lexicon:did")
+    ),
+    pass: SignedPass,
+    run: PassRun,
+    worker: lexString({ format: "did", type: "string" }).pipe(
+      Schema3.brand("Lexicon:did")
+    )
+  }),
+  [Schema3.Record(Schema3.String, Data)]
+);
+var Receipt = Schema3.StructWithRest(
+  Schema3.Struct({
+    delegated: Schema3.optionalKey(DelegationReceipt),
+    delegatedFor: Schema3.optionalKey(lexString({ type: "string" })),
+    delegatedTo: Schema3.optionalKey(lexString({ type: "string" })),
+    detail: Schema3.optionalKey(
       lexString({
         description: "Optional public-safe failure or expiry explanation.",
         type: "string"
       })
     ),
     message: MessageRef,
-    originalId: Schema2.optionalKey(
+    originalId: Schema3.optionalKey(
       lexString({ format: "tid", type: "string" }).pipe(
-        Schema2.brand("Lexicon:tid")
+        Schema3.brand("Lexicon:tid")
       )
     ),
     recipientDid: lexString({ format: "did", type: "string" }).pipe(
-      Schema2.brand("Lexicon:did")
+      Schema3.brand("Lexicon:did")
     ),
-    recordedAt: Schema2.optionalKey(
+    recordedAt: Schema3.optionalKey(
       lexString({ format: "datetime", type: "string" }).pipe(
-        Schema2.brand("Lexicon:datetime")
+        Schema3.brand("Lexicon:datetime")
       )
     ),
-    seq: Schema2.Int.check(
-      Schema2.isGreaterThanOrEqualTo(1),
-      Schema2.isLessThanOrEqualTo(9007199254740991)
+    seq: Schema3.Int.check(
+      Schema3.isGreaterThanOrEqualTo(1),
+      Schema3.isLessThanOrEqualTo(9007199254740991)
     ),
     state: DeliveryState,
-    wakeReason: Schema2.optionalKey(lexString({ type: "string" })),
-    woke: Schema2.optionalKey(Schema2.Boolean)
+    via: Schema3.optionalKey(Via),
+    wakeReason: Schema3.optionalKey(lexString({ type: "string" })),
+    woke: Schema3.optionalKey(Schema3.Boolean)
   }),
-  [Schema2.Record(Schema2.String, Data)]
+  [Schema3.Record(Schema3.String, Data)]
 );
-var MessageEvent = Schema2.StructWithRest(
-  Schema2.Struct({
+var MessageEvent = Schema3.StructWithRest(
+  Schema3.Struct({
     envelope: EncryptedEnvelope,
     receipt: Receipt,
-    seq: Schema2.Int.check(
-      Schema2.isGreaterThanOrEqualTo(1),
-      Schema2.isLessThanOrEqualTo(9007199254740991)
+    seq: Schema3.Int.check(
+      Schema3.isGreaterThanOrEqualTo(1),
+      Schema3.isLessThanOrEqualTo(9007199254740991)
     )
   }),
-  [Schema2.Record(Schema2.String, Data)]
+  [Schema3.Record(Schema3.String, Data)]
 );
-var ReceiptEvent = Schema2.StructWithRest(
-  Schema2.Struct({
+var PassIntent = Schema3.StructWithRest(
+  Schema3.Struct({
+    wakeReason: lexString({
+      enum: ["to", "quiet"],
+      type: "string"
+    }).pipe(Schema3.decodeTo(Schema3.Literals(["to", "quiet"]))),
+    woke: Schema3.Boolean
+  }),
+  [Schema3.Record(Schema3.String, Data)]
+).check(
+  Schema3.makeFilter(
+    (value) => Object.keys(value).every((key) => ["wakeReason", "woke"].includes(key)),
+    { expected: "only allowed keys: wakeReason, woke" }
+  )
+);
+var PassRequest = Schema3.StructWithRest(
+  Schema3.Struct({
+    aud: lexString({
+      description: "The mailbox service DID URL, such as <SERVICE_DID>#mailbox. ASCII only, so no two audiences share signing bytes.",
+      maxLength: 512,
+      type: "string"
+    }).check(
+      Schema3.isPattern(/^did:[a-z]+:[A-Za-z0-9._:%-]+#[A-Za-z0-9._~-]+$/u)
+    ),
+    envelopeDigest: lexString({ type: "string" }).check(
+      Schema3.isPattern(/^[A-Za-z0-9_-]{43}$/u)
+    ),
+    exp: Schema3.Int.check(
+      Schema3.isGreaterThanOrEqualTo(0),
+      Schema3.isLessThanOrEqualTo(9007199254740991)
+    ),
+    iat: Schema3.Int.check(
+      Schema3.isGreaterThanOrEqualTo(0),
+      Schema3.isLessThanOrEqualTo(9007199254740991)
+    ),
+    intent: PassIntent,
+    jti: lexString({ type: "string" }).check(
+      Schema3.isPattern(/^[A-Za-z0-9_-]{16,128}$/u)
+    ),
+    lxm: lexString({ format: "nsid", type: "string" }).pipe(
+      Schema3.brand("Lexicon:nsid")
+    ),
+    passDigest: lexString({ type: "string" }).check(
+      Schema3.isPattern(/^[A-Za-z0-9_-]{43}$/u)
+    )
+  }),
+  [Schema3.Record(Schema3.String, Data)]
+).check(
+  Schema3.makeFilter(
+    (value) => Object.keys(value).every(
+      (key) => [
+        "aud",
+        "envelopeDigest",
+        "exp",
+        "iat",
+        "intent",
+        "jti",
+        "lxm",
+        "passDigest"
+      ].includes(key)
+    ),
+    {
+      expected: "only allowed keys: aud, envelopeDigest, exp, iat, intent, jti, lxm, passDigest"
+    }
+  )
+);
+var ReceiptEvent = Schema3.StructWithRest(
+  Schema3.Struct({
     receipt: Receipt,
-    seq: Schema2.Int.check(
-      Schema2.isGreaterThanOrEqualTo(1),
-      Schema2.isLessThanOrEqualTo(9007199254740991)
+    seq: Schema3.Int.check(
+      Schema3.isGreaterThanOrEqualTo(1),
+      Schema3.isLessThanOrEqualTo(9007199254740991)
     )
   }),
-  [Schema2.Record(Schema2.String, Data)]
+  [Schema3.Record(Schema3.String, Data)]
 );
-var SignedMessage = Schema2.StructWithRest(
-  Schema2.Struct({
+var SignedMessage = Schema3.StructWithRest(
+  Schema3.Struct({
     appSignature: AppSignature,
     canonicalSigningBytes: Bytes.check(
-      Schema2.makeFilter(
+      Schema3.makeFilter(
         (value) => value.length >= 0 && value.length <= 9007199254740991,
         { expected: "byte length constraints" }
       )
     )
   }),
-  [Schema2.Record(Schema2.String, Data)]
+  [Schema3.Record(Schema3.String, Data)]
 );
-var SigningPayload = Schema2.StructWithRest(
-  Schema2.Struct({
+var SigningPayload = Schema3.StructWithRest(
+  Schema3.Struct({
     aad: Aad,
     body: Bytes.check(
-      Schema2.makeFilter(
+      Schema3.makeFilter(
         (value) => value.length >= 0 && value.length <= 9007199254740991,
         { expected: "byte length constraints" }
       )
     ),
-    createdAt: Schema2.optionalKey(
+    createdAt: Schema3.optionalKey(
       lexString({ format: "datetime", type: "string" }).pipe(
-        Schema2.brand("Lexicon:datetime")
+        Schema3.brand("Lexicon:datetime")
       )
     ),
-    replyTo: Schema2.optionalKey(MessageRef),
+    replyTo: Schema3.optionalKey(MessageRef),
     suite: HpkeSuite,
-    urgent: Schema2.optionalKey(Schema2.Literal(true)),
-    version: Schema2.Int.check(
-      Schema2.isGreaterThanOrEqualTo(1),
-      Schema2.isLessThanOrEqualTo(9007199254740991)
+    urgent: Schema3.optionalKey(Schema3.Literal(true)),
+    version: Schema3.Int.check(
+      Schema3.isGreaterThanOrEqualTo(1),
+      Schema3.isLessThanOrEqualTo(9007199254740991)
     )
   }),
-  [Schema2.Record(Schema2.String, Data)]
+  [Schema3.Record(Schema3.String, Data)]
 );
 
 // packages/envelope/src/envelope.ts
-import { Effect as Effect5, Schema as Schema6 } from "effect";
+import { Effect as Effect5, Schema as Schema7 } from "effect";
 
 // packages/envelope/src/canonical.ts
 import { decode, encode } from "@ipld/dag-cbor";
-import { Effect, Schema as Schema4 } from "effect";
+import { Effect, Schema as Schema5 } from "effect";
 
 // packages/envelope/src/bytes.ts
 var concatenate = (...parts) => {
@@ -424,10 +558,10 @@ var concatenate = (...parts) => {
 };
 
 // packages/envelope/src/failure.ts
-import { Schema as Schema3 } from "effect";
-var EnvelopeFailure = class extends Schema3.TaggedError()(
+import { Schema as Schema4 } from "effect";
+var EnvelopeFailure = class extends Schema4.TaggedError()(
   "EnvelopeFailure",
-  { reason: Schema3.String }
+  { reason: Schema4.String }
 ) {
 };
 
@@ -451,8 +585,8 @@ var canonicalDecode = Effect.fn("Envelope.canonicalDecode")(
       catch: () => new EnvelopeFailure({ reason: "Invalid CBOR" }),
       try: () => decode(bytes)
     });
-    const parsed = yield* Schema4.decodeUnknownEffect(
-      Schema4.toType(Data)
+    const parsed = yield* Schema5.decodeUnknownEffect(
+      Schema5.toType(Data)
     )(value).pipe(
       Effect.mapError(
         () => new EnvelopeFailure({ reason: "Invalid data model" })
@@ -613,10 +747,10 @@ var CompatibleP256Kem = class extends DhkemP256HkdfSha256 {
 };
 
 // packages/envelope/src/signed.ts
-import { Effect as Effect4, Schema as Schema5 } from "effect";
+import { Effect as Effect4, Schema as Schema6 } from "effect";
 var decodeSigned = Effect4.fn("Envelope.decodeSigned")(function* decodeSigned2(signedBytes) {
-  const signed = yield* Schema5.decodeUnknownEffect(
-    Schema5.toType(SignedMessage)
+  const signed = yield* Schema6.decodeUnknownEffect(
+    Schema6.toType(SignedMessage)
   )(yield* canonicalDecode(signedBytes));
   const bytes = signed.canonicalSigningBytes;
   if (!equalBytes(bytes.subarray(0, signatureDomain.length), signatureDomain)) {
@@ -624,8 +758,8 @@ var decodeSigned = Effect4.fn("Envelope.decodeSigned")(function* decodeSigned2(s
       new EnvelopeFailure({ reason: "Wrong signature domain" })
     );
   }
-  const payload = yield* Schema5.decodeUnknownEffect(
-    Schema5.toType(SigningPayload)
+  const payload = yield* Schema6.decodeUnknownEffect(
+    Schema6.toType(SigningPayload)
   )(yield* canonicalDecode(bytes.subarray(signatureDomain.length)));
   return { bytes, payload, signed };
 });
@@ -710,13 +844,13 @@ var seal = Effect5.fn("Envelope.seal")(function* seal2(request) {
       })
     );
   }
-  const validated = yield* Schema6.decodeUnknownEffect(
-    Schema6.toType(SigningPayload)
+  const validated = yield* Schema7.decodeUnknownEffect(
+    Schema7.toType(SigningPayload)
   )(payload);
   const bytes = signingBytes(validated);
   const signature = yield* sign(request.signingKey, bytes);
-  const signed = yield* Schema6.decodeUnknownEffect(
-    Schema6.toType(SignedMessage)
+  const signed = yield* Schema7.decodeUnknownEffect(
+    Schema7.toType(SignedMessage)
   )({
     appSignature: {
       algorithm: "ES256",
@@ -726,8 +860,8 @@ var seal = Effect5.fn("Envelope.seal")(function* seal2(request) {
     canonicalSigningBytes: bytes
   });
   if (plaintext(payload)) {
-    return yield* Schema6.decodeUnknownEffect(
-      Schema6.toType(EncryptedEnvelope)
+    return yield* Schema7.decodeUnknownEffect(
+      Schema7.toType(EncryptedEnvelope)
     )({
       aad: payload.aad,
       ciphertext: canonical(signed),
@@ -748,13 +882,13 @@ var seal = Effect5.fn("Envelope.seal")(function* seal2(request) {
   const ciphertext = yield* cryptoOperation(
     () => context.seal(canonical(signed), aadBytes(header))
   );
-  return yield* Schema6.decodeUnknownEffect(
-    Schema6.toType(EncryptedEnvelope)
+  return yield* Schema7.decodeUnknownEffect(
+    Schema7.toType(EncryptedEnvelope)
   )({ ...header, ciphertext: new Uint8Array(ciphertext) });
 });
 var open = Effect5.fn("Envelope.open")(function* open2(request) {
-  const envelope = yield* Schema6.decodeUnknownEffect(
-    Schema6.toType(EncryptedEnvelope)
+  const envelope = yield* Schema7.decodeUnknownEffect(
+    Schema7.toType(EncryptedEnvelope)
   )(request.envelope);
   if (!supported(envelope) || envelope.aad.recipientDid !== request.recipientDid || envelope.aad.recipientKeyId !== request.recipientKeyId || !request.recipientKeyId.startsWith(`${request.recipientDid}#`)) {
     return yield* Effect5.fail(
@@ -782,19 +916,19 @@ var open = Effect5.fn("Envelope.open")(function* open2(request) {
 });
 
 // packages/lexicon/src/admin.putDidDocument.ts
-import { Schema as Schema7 } from "effect";
-var Params = Schema7.Undefined;
-var Input = Schema7.StructWithRest(
-  Schema7.Struct({ document: DidDocument }),
-  [Schema7.Record(Schema7.String, Data)]
+import { Schema as Schema8 } from "effect";
+var Params = Schema8.Undefined;
+var Input = Schema8.StructWithRest(
+  Schema8.Struct({ document: DidDocument }),
+  [Schema8.Record(Schema8.String, Data)]
 );
-var Output = Schema7.StructWithRest(
-  Schema7.Struct({
+var Output = Schema8.StructWithRest(
+  Schema8.Struct({
     did: lexString({ format: "did", type: "string" }).pipe(
-      Schema7.brand("Lexicon:did")
+      Schema8.brand("Lexicon:did")
     )
   }),
-  [Schema7.Record(Schema7.String, Data)]
+  [Schema8.Record(Schema8.String, Data)]
 );
 var ErrorBody = XrpcErrorBody;
 var Method = {
@@ -811,228 +945,228 @@ var Method = {
 };
 
 // packages/lexicon/src/mailbox-client.ts
-import { Context as Context2, Effect as Effect10, Layer, Result, Schema as Schema25 } from "effect";
+import { Context as Context2, Effect as Effect10, Layer, Result, Schema as Schema26 } from "effect";
 
 // packages/lexicon/src/attention.getPreferences.ts
-import { Effect as Effect6, Schema as Schema10 } from "effect";
+import { Effect as Effect6, Schema as Schema11 } from "effect";
 
 // packages/lexicon/src/attention.prefs.ts
-import { Schema as Schema8 } from "effect";
+import { Schema as Schema9 } from "effect";
 var Name = lexString({
   maxLength: 128,
   minLength: 1,
   type: "string"
-}).check(Schema8.isPattern(/^[a-z][a-z0-9_-]*(?:\/[a-z][a-z0-9_-]*)*$/u));
-var Digest = Schema8.StructWithRest(
-  Schema8.Struct({
-    minutes: Schema8.Int.check(
-      Schema8.isGreaterThanOrEqualTo(1),
-      Schema8.isLessThanOrEqualTo(1440)
+}).check(Schema9.isPattern(/^[a-z][a-z0-9_-]*(?:\/[a-z][a-z0-9_-]*)*$/u));
+var Digest = Schema9.StructWithRest(
+  Schema9.Struct({
+    minutes: Schema9.Int.check(
+      Schema9.isGreaterThanOrEqualTo(1),
+      Schema9.isLessThanOrEqualTo(1440)
     ),
     name: Name
   }),
-  [Schema8.Record(Schema8.String, Data)]
+  [Schema9.Record(Schema9.String, Data)]
 ).check(
-  Schema8.makeFilter(
+  Schema9.makeFilter(
     (value) => Object.keys(value).every((key) => ["minutes", "name"].includes(key)),
     { expected: "only allowed keys: minutes, name" }
   )
 );
-var Group = Schema8.StructWithRest(
-  Schema8.Struct({
+var Group = Schema9.StructWithRest(
+  Schema9.Struct({
     group: lexString({ maxLength: 256, minLength: 1, type: "string" })
   }),
-  [Schema8.Record(Schema8.String, Data)]
+  [Schema9.Record(Schema9.String, Data)]
 ).check(
-  Schema8.makeFilter(
+  Schema9.makeFilter(
     (value) => Object.keys(value).every((key) => ["group"].includes(key)),
     { expected: "only allowed keys: group" }
   )
 );
-var Jev = Schema8.StructWithRest(
-  Schema8.Struct({
+var Jev = Schema9.StructWithRest(
+  Schema9.Struct({
     judgment: lexString({
       maxLength: 280,
       minLength: 1,
       type: "string"
     }),
-    laterBp: Schema8.Int.check(
-      Schema8.isGreaterThanOrEqualTo(0),
-      Schema8.isLessThanOrEqualTo(1e4)
+    laterBp: Schema9.Int.check(
+      Schema9.isGreaterThanOrEqualTo(0),
+      Schema9.isLessThanOrEqualTo(1e4)
     ),
-    nowBp: Schema8.Int.check(
-      Schema8.isGreaterThanOrEqualTo(0),
-      Schema8.isLessThanOrEqualTo(1e4)
+    nowBp: Schema9.Int.check(
+      Schema9.isGreaterThanOrEqualTo(0),
+      Schema9.isLessThanOrEqualTo(1e4)
     )
   }),
-  [Schema8.Record(Schema8.String, Data)]
+  [Schema9.Record(Schema9.String, Data)]
 ).check(
-  Schema8.makeFilter(
+  Schema9.makeFilter(
     (value) => Object.keys(value).every(
       (key) => ["judgment", "laterBp", "nowBp"].includes(key)
     ),
     { expected: "only allowed keys: judgment, laterBp, nowBp" }
   )
 );
-var Model = Schema8.StructWithRest(
-  Schema8.Struct({
+var Model = Schema9.StructWithRest(
+  Schema9.Struct({
     body: lexString({
       enum: ["never", "summary", "full"],
       type: "string"
-    }).pipe(Schema8.decodeTo(Schema8.Literals(["never", "summary", "full"]))),
-    jev: Schema8.optionalKey(Jev),
+    }).pipe(Schema9.decodeTo(Schema9.Literals(["never", "summary", "full"]))),
+    jev: Schema9.optionalKey(Jev),
     kind: lexString({
       enum: ["none", "jev", "service"],
       type: "string"
-    }).pipe(Schema8.decodeTo(Schema8.Literals(["none", "jev", "service"]))),
-    service: Schema8.optionalKey(
+    }).pipe(Schema9.decodeTo(Schema9.Literals(["none", "jev", "service"]))),
+    service: Schema9.optionalKey(
       lexString({ maxLength: 256, minLength: 1, type: "string" }).check(
-        Schema8.isPattern(
+        Schema9.isPattern(
           /^(?:did:[a-z]+:[^\s]+|[a-z][a-z0-9_-]*(?:\/[a-z][a-z0-9_-]*)*)$/u
         )
       )
     ),
-    timeoutMs: Schema8.Int.check(
-      Schema8.isGreaterThanOrEqualTo(1),
-      Schema8.isLessThanOrEqualTo(6e5)
+    timeoutMs: Schema9.Int.check(
+      Schema9.isGreaterThanOrEqualTo(1),
+      Schema9.isLessThanOrEqualTo(6e5)
     )
   }),
-  [Schema8.Record(Schema8.String, Data)]
+  [Schema9.Record(Schema9.String, Data)]
 ).check(
-  Schema8.makeFilter(
+  Schema9.makeFilter(
     (value) => Object.keys(value).every(
       (key) => ["body", "jev", "kind", "service", "timeoutMs"].includes(key)
     ),
     { expected: "only allowed keys: body, jev, kind, service, timeoutMs" }
   )
 ).check(
-  Schema8.makeFilter(
+  Schema9.makeFilter(
     (value) => value.kind !== "jev" || value.jev !== void 0,
     { expected: "jev: required when kind is jev" }
   )
 );
-var Match = Schema8.StructWithRest(
-  Schema8.Struct({
-    from: Schema8.optionalKey(
+var Match = Schema9.StructWithRest(
+  Schema9.Struct({
+    from: Schema9.optionalKey(
       lexString({ maxLength: 129, minLength: 1, type: "string" }).check(
-        Schema8.isPattern(
+        Schema9.isPattern(
           /^(?:[a-z][a-z0-9_-]*(?:\/[a-z][a-z0-9_-]*)*|[a-z][a-z0-9_/-]*\*|\*)$/u
         )
       )
     ),
-    project: Schema8.optionalKey(
+    project: Schema9.optionalKey(
       lexString({ maxLength: 128, minLength: 1, type: "string" }).check(
-        Schema8.isPattern(/^[a-z][a-z0-9_-]*$/u)
+        Schema9.isPattern(/^[a-z][a-z0-9_-]*$/u)
       )
     ),
-    type: Schema8.optionalKey(
+    type: Schema9.optionalKey(
       lexString({ maxLength: 256, minLength: 1, type: "string" })
     )
   }),
-  [Schema8.Record(Schema8.String, Data)]
+  [Schema9.Record(Schema9.String, Data)]
 ).check(
-  Schema8.makeFilter(
+  Schema9.makeFilter(
     (value) => Object.keys(value).every(
       (key) => ["from", "project", "type"].includes(key)
     ),
     { expected: "only allowed keys: from, project, type" }
   )
 );
-var Rule = Schema8.StructWithRest(
-  Schema8.Struct({
+var Rule = Schema9.StructWithRest(
+  Schema9.Struct({
     id: lexString({
       maxLength: 64,
       minLength: 1,
       type: "string"
-    }).check(Schema8.isPattern(/^[a-zA-Z0-9_-]+$/u)),
+    }).check(Schema9.isPattern(/^[a-zA-Z0-9_-]+$/u)),
     match: Match,
-    minutes: Schema8.optionalKey(
-      Schema8.Int.check(
-        Schema8.isGreaterThanOrEqualTo(1),
-        Schema8.isLessThanOrEqualTo(1440)
+    minutes: Schema9.optionalKey(
+      Schema9.Int.check(
+        Schema9.isGreaterThanOrEqualTo(1),
+        Schema9.isLessThanOrEqualTo(1440)
       )
     ),
-    note: Schema8.optionalKey(
+    note: Schema9.optionalKey(
       lexString({ maxLength: 280, type: "string" })
     ),
     route: lexString({
       enum: ["wake", "quiet", "digest", "hide"],
       type: "string"
     }).pipe(
-      Schema8.decodeTo(Schema8.Literals(["wake", "quiet", "digest", "hide"]))
+      Schema9.decodeTo(Schema9.Literals(["wake", "quiet", "digest", "hide"]))
     ),
-    until: Schema8.optionalKey(
+    until: Schema9.optionalKey(
       lexString({ format: "datetime", type: "string" }).pipe(
-        Schema8.brand("Lexicon:datetime")
+        Schema9.brand("Lexicon:datetime")
       )
     )
   }),
-  [Schema8.Record(Schema8.String, Data)]
+  [Schema9.Record(Schema9.String, Data)]
 ).check(
-  Schema8.makeFilter(
+  Schema9.makeFilter(
     (value) => Object.keys(value).every(
       (key) => ["id", "match", "minutes", "note", "route", "until"].includes(key)
     ),
     { expected: "only allowed keys: id, match, minutes, note, route, until" }
   )
 ).check(
-  Schema8.makeFilter(
+  Schema9.makeFilter(
     (value) => value.route !== "digest" || value.minutes !== void 0,
     { expected: "minutes: required when route is digest" }
   )
 ).check(
-  Schema8.makeFilter(
+  Schema9.makeFilter(
     (value) => !("minutes" in value) || value.route === "digest",
     { expected: "minutes: allowed only when route is digest" }
   )
 );
-var Main = Schema8.StructWithRest(
-  Schema8.Struct({
-    allow: Schema8.Array(Name).check(
-      Schema8.isMinLength(0),
-      Schema8.isMaxLength(256)
+var Main2 = Schema9.StructWithRest(
+  Schema9.Struct({
+    allow: Schema9.Array(Name).check(
+      Schema9.isMinLength(0),
+      Schema9.isMaxLength(256)
     ),
-    digest: Schema8.optionalKey(
-      Schema8.Array(Digest).check(Schema8.isMinLength(0), Schema8.isMaxLength(256))
+    digest: Schema9.optionalKey(
+      Schema9.Array(Digest).check(Schema9.isMinLength(0), Schema9.isMaxLength(256))
     ),
-    forward: Schema8.Array(Name).check(
-      Schema8.isMinLength(0),
-      Schema8.isMaxLength(256)
+    forward: Schema9.Array(Name).check(
+      Schema9.isMinLength(0),
+      Schema9.isMaxLength(256)
     ),
-    log: Schema8.Boolean,
+    log: Schema9.Boolean,
     model: Model,
-    mute: Schema8.Array(
-      Schema8.Union([
-        Schema8.StructWithRest(
-          Schema8.Struct({
-            $type: Schema8.Literal("sh.mschf.ratking.attention.prefs#thread"),
+    mute: Schema9.Array(
+      Schema9.Union([
+        Schema9.StructWithRest(
+          Schema9.Struct({
+            $type: Schema9.Literal("sh.mschf.ratking.attention.prefs#thread"),
             thread: lexString({
               maxLength: 256,
               minLength: 1,
               type: "string"
             })
           }),
-          [Schema8.Record(Schema8.String, Data)]
+          [Schema9.Record(Schema9.String, Data)]
         ).check(
-          Schema8.makeFilter(
+          Schema9.makeFilter(
             (value) => Object.keys(value).every(
               (key) => ["$type", "thread"].includes(key)
             ),
             { expected: "only allowed keys: $type, thread" }
           )
         ),
-        Schema8.StructWithRest(
-          Schema8.Struct({
-            $type: Schema8.Literal("sh.mschf.ratking.attention.prefs#group"),
+        Schema9.StructWithRest(
+          Schema9.Struct({
+            $type: Schema9.Literal("sh.mschf.ratking.attention.prefs#group"),
             group: lexString({
               maxLength: 256,
               minLength: 1,
               type: "string"
             })
           }),
-          [Schema8.Record(Schema8.String, Data)]
+          [Schema9.Record(Schema9.String, Data)]
         ).check(
-          Schema8.makeFilter(
+          Schema9.makeFilter(
             (value) => Object.keys(value).every(
               (key) => ["$type", "group"].includes(key)
             ),
@@ -1040,21 +1174,21 @@ var Main = Schema8.StructWithRest(
           )
         )
       ])
-    ).check(Schema8.isMinLength(0), Schema8.isMaxLength(256)),
-    refuse: Schema8.Array(Name).check(
-      Schema8.isMinLength(0),
-      Schema8.isMaxLength(256)
+    ).check(Schema9.isMinLength(0), Schema9.isMaxLength(256)),
+    refuse: Schema9.Array(Name).check(
+      Schema9.isMinLength(0),
+      Schema9.isMaxLength(256)
     ),
-    rules: Schema8.optionalKey(
-      Schema8.Array(Rule).check(Schema8.isMinLength(0), Schema8.isMaxLength(32))
+    rules: Schema9.optionalKey(
+      Schema9.Array(Rule).check(Schema9.isMinLength(0), Schema9.isMaxLength(32))
     ),
     version: lexString({ const: "0.1", type: "string" }).pipe(
-      Schema8.decodeTo(Schema8.Literal("0.1"))
+      Schema9.decodeTo(Schema9.Literal("0.1"))
     )
   }),
-  [Schema8.Record(Schema8.String, Data)]
+  [Schema9.Record(Schema9.String, Data)]
 ).check(
-  Schema8.makeFilter(
+  Schema9.makeFilter(
     (value) => Object.keys(value).every(
       (key) => [
         "allow",
@@ -1073,30 +1207,30 @@ var Main = Schema8.StructWithRest(
     }
   )
 );
-var Thread = Schema8.StructWithRest(
-  Schema8.Struct({
+var Thread = Schema9.StructWithRest(
+  Schema9.Struct({
     thread: lexString({ maxLength: 256, minLength: 1, type: "string" })
   }),
-  [Schema8.Record(Schema8.String, Data)]
+  [Schema9.Record(Schema9.String, Data)]
 ).check(
-  Schema8.makeFilter(
+  Schema9.makeFilter(
     (value) => Object.keys(value).every((key) => ["thread"].includes(key)),
     { expected: "only allowed keys: thread" }
   )
 );
 
 // packages/lexicon/src/query.ts
-import { Schema as Schema9, SchemaGetter as SchemaGetter2 } from "effect";
-var BooleanFromQuery = Schema9.Literals(["true", "false"]).pipe(
-  Schema9.decodeTo(Schema9.Boolean, {
+import { Schema as Schema10, SchemaGetter as SchemaGetter2 } from "effect";
+var BooleanFromQuery = Schema10.Literals(["true", "false"]).pipe(
+  Schema10.decodeTo(Schema10.Boolean, {
     decode: SchemaGetter2.transform((value) => value === "true"),
     encode: SchemaGetter2.transform((value) => value ? "true" : "false")
   })
 );
-var Value = Schema9.Union([Schema9.String, Schema9.Array(Schema9.String)]);
-var Params2 = Schema9.Record(Schema9.String, Value);
+var Value = Schema10.Union([Schema10.String, Schema10.Array(Schema10.String)]);
+var Params2 = Schema10.Record(Schema10.String, Value);
 var entries = (params) => [...Object.entries(params)].sort(([a], [b]) => a.localeCompare(b)).flatMap(([key, value]) => {
-  if (Schema9.is(Schema9.String)(value)) {
+  if (Schema10.is(Schema10.String)(value)) {
     return [[key, value]];
   }
   return value.map(
@@ -1109,7 +1243,7 @@ var parameters = (pairs) => {
     const previous = grouped.get(key);
     if (previous === void 0) {
       grouped.set(key, value);
-    } else if (Schema9.is(Schema9.String)(previous)) {
+    } else if (Schema10.is(Schema10.String)(previous)) {
       grouped.set(key, [previous, value]);
     } else {
       grouped.set(key, [...previous, value]);
@@ -1119,35 +1253,35 @@ var parameters = (pairs) => {
 };
 
 // packages/lexicon/src/attention.getPreferences.ts
-var Params3 = Schema10.StructWithRest(
-  Schema10.Struct({
+var Params3 = Schema11.StructWithRest(
+  Schema11.Struct({
     did: lexString({ format: "did", type: "string" }).pipe(
-      Schema10.brand("Lexicon:did")
+      Schema11.brand("Lexicon:did")
     )
   }),
-  [Schema10.Record(Schema10.String, Data)]
+  [Schema11.Record(Schema11.String, Data)]
 );
-var Input2 = Schema10.Undefined;
-var Output2 = Schema10.StructWithRest(
-  Schema10.Struct({ prefs: Main }),
-  [Schema10.Record(Schema10.String, Data)]
+var Input2 = Schema11.Undefined;
+var Output2 = Schema11.StructWithRest(
+  Schema11.Struct({ prefs: Main2 }),
+  [Schema11.Record(Schema11.String, Data)]
 );
-var ParamsFromQuery = Schema10.StructWithRest(
-  Schema10.Struct({ did: Schema10.String }),
-  [Schema10.Record(Schema10.String, Data)]
-).pipe(Schema10.decodeTo(Params3));
+var ParamsFromQuery = Schema11.StructWithRest(
+  Schema11.Struct({ did: Schema11.String }),
+  [Schema11.Record(Schema11.String, Data)]
+).pipe(Schema11.decodeTo(Params3));
 var encodeParams = Effect6.fn("lexicon.encodeParams")(
   function* encodeParams2(params) {
     return entries(
-      yield* Schema10.decodeUnknownEffect(Params2)(
-        yield* Schema10.encodeEffect(ParamsFromQuery)(params)
+      yield* Schema11.decodeUnknownEffect(Params2)(
+        yield* Schema11.encodeEffect(ParamsFromQuery)(params)
       )
     );
   }
 );
 var decodeParams = Effect6.fn("lexicon.decodeParams")(
   function* decodeParams2(entries2) {
-    return yield* Schema10.decodeUnknownEffect(ParamsFromQuery)(
+    return yield* Schema11.decodeUnknownEffect(ParamsFromQuery)(
       parameters(entries2)
     );
   }
@@ -1167,78 +1301,78 @@ var Method2 = {
 };
 
 // packages/lexicon/src/attention.getStatus.ts
-import { Effect as Effect7, Schema as Schema12 } from "effect";
+import { Effect as Effect7, Schema as Schema13 } from "effect";
 
 // packages/lexicon/src/attention.status.ts
-import { Schema as Schema11 } from "effect";
-var Main2 = Schema11.StructWithRest(
-  Schema11.Struct({
-    $type: Schema11.Literal("sh.mschf.ratking.attention.status"),
-    delegate: Schema11.optionalKey(
+import { Schema as Schema12 } from "effect";
+var Main3 = Schema12.StructWithRest(
+  Schema12.Struct({
+    $type: Schema12.Literal("sh.mschf.ratking.attention.status"),
+    delegate: Schema12.optionalKey(
       lexString({ type: "string" }).check(
-        Schema11.isPattern(
+        Schema12.isPattern(
           /^(?:[a-z0-9]+(?:-[a-z0-9]+)*\/)?[a-z][a-z0-9_-]{0,31}$/u
         )
       )
     ),
-    exempt: Schema11.optionalKey(
-      Schema11.Array(
+    exempt: Schema12.optionalKey(
+      Schema12.Array(
         lexString({ type: "string" }).check(
-          Schema11.isPattern(
+          Schema12.isPattern(
             /^(?:[a-z0-9]+(?:-[a-z0-9]+)*\/)?[a-z][a-z0-9_-]{0,31}$/u
           )
         )
-      ).check(Schema11.isMinLength(0), Schema11.isMaxLength(16))
+      ).check(Schema12.isMinLength(0), Schema12.isMaxLength(16))
     ),
-    note: Schema11.optionalKey(
+    note: Schema12.optionalKey(
       lexString({ maxLength: 120, type: "string" })
     ),
     state: lexString({
       enum: ["available", "busy", "dnd"],
       type: "string"
-    }).pipe(Schema11.decodeTo(Schema11.Literals(["available", "busy", "dnd"]))),
-    until: Schema11.optionalKey(
+    }).pipe(Schema12.decodeTo(Schema12.Literals(["available", "busy", "dnd"]))),
+    until: Schema12.optionalKey(
       lexString({ format: "datetime", type: "string" }).pipe(
-        Schema11.brand("Lexicon:datetime")
+        Schema12.brand("Lexicon:datetime")
       )
     ),
     version: lexString({ const: "0.1", type: "string" }).pipe(
-      Schema11.decodeTo(Schema11.Literal("0.1"))
+      Schema12.decodeTo(Schema12.Literal("0.1"))
     )
   }),
-  [Schema11.Record(Schema11.String, Data)]
+  [Schema12.Record(Schema12.String, Data)]
 );
 
 // packages/lexicon/src/attention.getStatus.ts
-var Params4 = Schema12.StructWithRest(
-  Schema12.Struct({
+var Params4 = Schema13.StructWithRest(
+  Schema13.Struct({
     did: lexString({ format: "did", type: "string" }).pipe(
-      Schema12.brand("Lexicon:did")
+      Schema13.brand("Lexicon:did")
     )
   }),
-  [Schema12.Record(Schema12.String, Data)]
+  [Schema13.Record(Schema13.String, Data)]
 );
-var Input3 = Schema12.Undefined;
-var Output3 = Schema12.StructWithRest(
-  Schema12.Struct({ status: Main2 }),
-  [Schema12.Record(Schema12.String, Data)]
+var Input3 = Schema13.Undefined;
+var Output3 = Schema13.StructWithRest(
+  Schema13.Struct({ status: Main3 }),
+  [Schema13.Record(Schema13.String, Data)]
 );
-var ParamsFromQuery2 = Schema12.StructWithRest(
-  Schema12.Struct({ did: Schema12.String }),
-  [Schema12.Record(Schema12.String, Data)]
-).pipe(Schema12.decodeTo(Params4));
+var ParamsFromQuery2 = Schema13.StructWithRest(
+  Schema13.Struct({ did: Schema13.String }),
+  [Schema13.Record(Schema13.String, Data)]
+).pipe(Schema13.decodeTo(Params4));
 var encodeParams3 = Effect7.fn("lexicon.encodeParams")(
   function* encodeParams4(params) {
     return entries(
-      yield* Schema12.decodeUnknownEffect(Params2)(
-        yield* Schema12.encodeEffect(ParamsFromQuery2)(params)
+      yield* Schema13.decodeUnknownEffect(Params2)(
+        yield* Schema13.encodeEffect(ParamsFromQuery2)(params)
       )
     );
   }
 );
 var decodeParams3 = Effect7.fn("lexicon.decodeParams")(
   function* decodeParams4(entries2) {
-    return yield* Schema12.decodeUnknownEffect(ParamsFromQuery2)(
+    return yield* Schema13.decodeUnknownEffect(ParamsFromQuery2)(
       parameters(entries2)
     );
   }
@@ -1258,27 +1392,27 @@ var Method3 = {
 };
 
 // packages/lexicon/src/attention.putPreferences.ts
-import { Schema as Schema13 } from "effect";
-var Params5 = Schema13.Undefined;
-var Input4 = Schema13.StructWithRest(
-  Schema13.Struct({
+import { Schema as Schema14 } from "effect";
+var Params5 = Schema14.Undefined;
+var Input4 = Schema14.StructWithRest(
+  Schema14.Struct({
     did: lexString({ format: "did", type: "string" }).pipe(
-      Schema13.brand("Lexicon:did")
+      Schema14.brand("Lexicon:did")
     ),
     keyId: lexString({ type: "string" }),
-    prefs: Main,
+    prefs: Main2,
     signature: Bytes.check(
-      Schema13.makeFilter(
+      Schema14.makeFilter(
         (value) => value.length >= 0 && value.length <= 9007199254740991,
         { expected: "byte length constraints" }
       )
     )
   }),
-  [Schema13.Record(Schema13.String, Data)]
+  [Schema14.Record(Schema14.String, Data)]
 );
-var Output4 = Schema13.StructWithRest(
-  Schema13.Struct({ prefs: Main }),
-  [Schema13.Record(Schema13.String, Data)]
+var Output4 = Schema14.StructWithRest(
+  Schema14.Struct({ prefs: Main2 }),
+  [Schema14.Record(Schema14.String, Data)]
 );
 var ErrorBody4 = XrpcErrorBody;
 var Method4 = {
@@ -1295,27 +1429,27 @@ var Method4 = {
 };
 
 // packages/lexicon/src/attention.putStatus.ts
-import { Schema as Schema14 } from "effect";
-var Params6 = Schema14.Undefined;
-var Input5 = Schema14.StructWithRest(
-  Schema14.Struct({
+import { Schema as Schema15 } from "effect";
+var Params6 = Schema15.Undefined;
+var Input5 = Schema15.StructWithRest(
+  Schema15.Struct({
     did: lexString({ format: "did", type: "string" }).pipe(
-      Schema14.brand("Lexicon:did")
+      Schema15.brand("Lexicon:did")
     ),
     keyId: lexString({ type: "string" }),
     signature: Bytes.check(
-      Schema14.makeFilter(
+      Schema15.makeFilter(
         (value) => value.length >= 0 && value.length <= 9007199254740991,
         { expected: "byte length constraints" }
       )
     ),
-    status: Main2
+    status: Main3
   }),
-  [Schema14.Record(Schema14.String, Data)]
+  [Schema15.Record(Schema15.String, Data)]
 );
-var Output5 = Schema14.StructWithRest(
-  Schema14.Struct({ status: Main2 }),
-  [Schema14.Record(Schema14.String, Data)]
+var Output5 = Schema15.StructWithRest(
+  Schema15.Struct({ status: Main3 }),
+  [Schema15.Record(Schema15.String, Data)]
 );
 var ErrorBody5 = XrpcErrorBody;
 var Method5 = {
@@ -1332,27 +1466,27 @@ var Method5 = {
 };
 
 // packages/lexicon/src/mailbox.ack.ts
-import { Schema as Schema15 } from "effect";
-var Params7 = Schema15.Undefined;
-var Input6 = Schema15.StructWithRest(
-  Schema15.Struct({
-    generation: Schema15.Int.check(
-      Schema15.isGreaterThanOrEqualTo(1),
-      Schema15.isLessThanOrEqualTo(9007199254740991)
+import { Schema as Schema16 } from "effect";
+var Params7 = Schema16.Undefined;
+var Input6 = Schema16.StructWithRest(
+  Schema16.Struct({
+    generation: Schema16.Int.check(
+      Schema16.isGreaterThanOrEqualTo(1),
+      Schema16.isLessThanOrEqualTo(9007199254740991)
     ),
     leaseId: lexString({ format: "tid", type: "string" }).pipe(
-      Schema15.brand("Lexicon:tid")
+      Schema16.brand("Lexicon:tid")
     ),
     message: MessageRef,
     recipientDid: lexString({ format: "did", type: "string" }).pipe(
-      Schema15.brand("Lexicon:did")
+      Schema16.brand("Lexicon:did")
     )
   }),
-  [Schema15.Record(Schema15.String, Data)]
+  [Schema16.Record(Schema16.String, Data)]
 );
-var Output6 = Schema15.StructWithRest(
-  Schema15.Struct({ receipt: Receipt }),
-  [Schema15.Record(Schema15.String, Data)]
+var Output6 = Schema16.StructWithRest(
+  Schema16.Struct({ receipt: Receipt }),
+  [Schema16.Record(Schema16.String, Data)]
 );
 var ErrorBody6 = XrpcErrorBody;
 var Method6 = {
@@ -1369,27 +1503,27 @@ var Method6 = {
 };
 
 // packages/lexicon/src/mailbox.deliver.ts
-import { Schema as Schema16 } from "effect";
-var Params8 = Schema16.Undefined;
-var Input7 = Schema16.StructWithRest(
-  Schema16.Struct({
-    generation: Schema16.Int.check(
-      Schema16.isGreaterThanOrEqualTo(1),
-      Schema16.isLessThanOrEqualTo(9007199254740991)
+import { Schema as Schema17 } from "effect";
+var Params8 = Schema17.Undefined;
+var Input7 = Schema17.StructWithRest(
+  Schema17.Struct({
+    generation: Schema17.Int.check(
+      Schema17.isGreaterThanOrEqualTo(1),
+      Schema17.isLessThanOrEqualTo(9007199254740991)
     ),
     leaseId: lexString({ format: "tid", type: "string" }).pipe(
-      Schema16.brand("Lexicon:tid")
+      Schema17.brand("Lexicon:tid")
     ),
     message: MessageRef,
     recipientDid: lexString({ format: "did", type: "string" }).pipe(
-      Schema16.brand("Lexicon:did")
+      Schema17.brand("Lexicon:did")
     )
   }),
-  [Schema16.Record(Schema16.String, Data)]
+  [Schema17.Record(Schema17.String, Data)]
 );
-var Output7 = Schema16.StructWithRest(
-  Schema16.Struct({ receipt: Receipt }),
-  [Schema16.Record(Schema16.String, Data)]
+var Output7 = Schema17.StructWithRest(
+  Schema17.Struct({ receipt: Receipt }),
+  [Schema17.Record(Schema17.String, Data)]
 );
 var ErrorBody7 = XrpcErrorBody;
 var Method7 = {
@@ -1406,85 +1540,85 @@ var Method7 = {
 };
 
 // packages/lexicon/src/mailbox.list.ts
-import { Effect as Effect8, Schema as Schema17 } from "effect";
-var Params9 = Schema17.StructWithRest(
-  Schema17.Struct({
-    afterSeq: Schema17.optionalKey(
-      Schema17.Int.check(
-        Schema17.isGreaterThanOrEqualTo(0),
-        Schema17.isLessThanOrEqualTo(9007199254740991)
+import { Effect as Effect8, Schema as Schema18 } from "effect";
+var Params9 = Schema18.StructWithRest(
+  Schema18.Struct({
+    afterSeq: Schema18.optionalKey(
+      Schema18.Int.check(
+        Schema18.isGreaterThanOrEqualTo(0),
+        Schema18.isLessThanOrEqualTo(9007199254740991)
       )
     ),
-    cursor: Schema17.optionalKey(
+    cursor: Schema18.optionalKey(
       lexString({
         description: "Opaque snapshot cursor; keep all other parameters fixed while paginating.",
         type: "string"
       })
     ),
-    limit: Schema17.optionalKey(
-      Schema17.Int.check(
-        Schema17.isGreaterThanOrEqualTo(1),
-        Schema17.isLessThanOrEqualTo(100)
+    limit: Schema18.optionalKey(
+      Schema18.Int.check(
+        Schema18.isGreaterThanOrEqualTo(1),
+        Schema18.isLessThanOrEqualTo(100)
       )
     ),
     recipientDid: lexString({ format: "did", type: "string" }).pipe(
-      Schema17.brand("Lexicon:did")
+      Schema18.brand("Lexicon:did")
     )
   }),
-  [Schema17.Record(Schema17.String, Data)]
+  [Schema18.Record(Schema18.String, Data)]
 );
-var Input8 = Schema17.Undefined;
-var Output8 = Schema17.StructWithRest(
-  Schema17.Struct({
-    cursor: Schema17.optionalKey(
+var Input8 = Schema18.Undefined;
+var Output8 = Schema18.StructWithRest(
+  Schema18.Struct({
+    cursor: Schema18.optionalKey(
       lexString({
         description: "Present only while more entries remain. Checkpoint throughSeq after processing every page.",
         type: "string"
       })
     ),
-    events: Schema17.Array(
-      Schema17.Union([
-        Schema17.StructWithRest(
-          Schema17.Struct({
-            $type: Schema17.Literal("sh.mschf.ratking.defs#messageEvent"),
+    events: Schema18.Array(
+      Schema18.Union([
+        Schema18.StructWithRest(
+          Schema18.Struct({
+            $type: Schema18.Literal("sh.mschf.ratking.defs#messageEvent"),
             envelope: EncryptedEnvelope,
             receipt: Receipt,
-            seq: Schema17.Int.check(
-              Schema17.isGreaterThanOrEqualTo(1),
-              Schema17.isLessThanOrEqualTo(9007199254740991)
+            seq: Schema18.Int.check(
+              Schema18.isGreaterThanOrEqualTo(1),
+              Schema18.isLessThanOrEqualTo(9007199254740991)
             )
           }),
-          [Schema17.Record(Schema17.String, Data)]
+          [Schema18.Record(Schema18.String, Data)]
         ),
-        Schema17.StructWithRest(
-          Schema17.Struct({
-            $type: Schema17.Literal("sh.mschf.ratking.defs#receiptEvent"),
+        Schema18.StructWithRest(
+          Schema18.Struct({
+            $type: Schema18.Literal("sh.mschf.ratking.defs#receiptEvent"),
             receipt: Receipt,
-            seq: Schema17.Int.check(
-              Schema17.isGreaterThanOrEqualTo(1),
-              Schema17.isLessThanOrEqualTo(9007199254740991)
+            seq: Schema18.Int.check(
+              Schema18.isGreaterThanOrEqualTo(1),
+              Schema18.isLessThanOrEqualTo(9007199254740991)
             )
           }),
-          [Schema17.Record(Schema17.String, Data)]
+          [Schema18.Record(Schema18.String, Data)]
         ),
-        Schema17.StructWithRest(
-          Schema17.Struct({
-            $type: Schema17.Literal("sh.mschf.ratking.attention.receipt"),
+        Schema18.StructWithRest(
+          Schema18.Struct({
+            $type: Schema18.Literal("sh.mschf.ratking.attention.receipt"),
             operation: lexString({
               enum: ["putPreferences", "putStatus"],
               type: "string"
             }).pipe(
-              Schema17.decodeTo(Schema17.Literals(["putPreferences", "putStatus"]))
+              Schema18.decodeTo(Schema18.Literals(["putPreferences", "putStatus"]))
             ),
-            seq: Schema17.Int.check(
-              Schema17.isGreaterThanOrEqualTo(1),
-              Schema17.isLessThanOrEqualTo(9007199254740991)
+            seq: Schema18.Int.check(
+              Schema18.isGreaterThanOrEqualTo(1),
+              Schema18.isLessThanOrEqualTo(9007199254740991)
             )
           }),
-          [Schema17.Record(Schema17.String, Data)]
+          [Schema18.Record(Schema18.String, Data)]
         ),
         TaggedMap.check(
-          Schema17.makeFilter(
+          Schema18.makeFilter(
             (value) => ![
               "sh.mschf.ratking.defs#messageEvent",
               "sh.mschf.ratking.defs#receiptEvent",
@@ -1494,35 +1628,35 @@ var Output8 = Schema17.StructWithRest(
           )
         )
       ])
-    ).check(Schema17.isMinLength(0), Schema17.isMaxLength(100)),
-    throughSeq: Schema17.Int.check(
-      Schema17.isGreaterThanOrEqualTo(0),
-      Schema17.isLessThanOrEqualTo(9007199254740991)
+    ).check(Schema18.isMinLength(0), Schema18.isMaxLength(100)),
+    throughSeq: Schema18.Int.check(
+      Schema18.isGreaterThanOrEqualTo(0),
+      Schema18.isLessThanOrEqualTo(9007199254740991)
     )
   }),
-  [Schema17.Record(Schema17.String, Data)]
+  [Schema18.Record(Schema18.String, Data)]
 );
-var ParamsFromQuery3 = Schema17.StructWithRest(
-  Schema17.Struct({
-    afterSeq: Schema17.optionalKey(Schema17.FiniteFromString),
-    cursor: Schema17.optionalKey(Schema17.String),
-    limit: Schema17.optionalKey(Schema17.FiniteFromString),
-    recipientDid: Schema17.String
+var ParamsFromQuery3 = Schema18.StructWithRest(
+  Schema18.Struct({
+    afterSeq: Schema18.optionalKey(Schema18.FiniteFromString),
+    cursor: Schema18.optionalKey(Schema18.String),
+    limit: Schema18.optionalKey(Schema18.FiniteFromString),
+    recipientDid: Schema18.String
   }),
-  [Schema17.Record(Schema17.String, Data)]
-).pipe(Schema17.decodeTo(Params9));
+  [Schema18.Record(Schema18.String, Data)]
+).pipe(Schema18.decodeTo(Params9));
 var encodeParams5 = Effect8.fn("lexicon.encodeParams")(
   function* encodeParams6(params) {
     return entries(
-      yield* Schema17.decodeUnknownEffect(Params2)(
-        yield* Schema17.encodeEffect(ParamsFromQuery3)(params)
+      yield* Schema18.decodeUnknownEffect(Params2)(
+        yield* Schema18.encodeEffect(ParamsFromQuery3)(params)
       )
     );
   }
 );
 var decodeParams5 = Effect8.fn("lexicon.decodeParams")(
   function* decodeParams6(entries2) {
-    return yield* Schema17.decodeUnknownEffect(ParamsFromQuery3)(
+    return yield* Schema18.decodeUnknownEffect(ParamsFromQuery3)(
       parameters(entries2)
     );
   }
@@ -1542,40 +1676,40 @@ var Method8 = {
 };
 
 // packages/lexicon/src/mailbox.send.ts
-import { Schema as Schema18 } from "effect";
-var Params10 = Schema18.Undefined;
-var Input9 = Schema18.StructWithRest(
-  Schema18.Struct({
-    critical: Schema18.optionalKey(Schema18.Boolean),
+import { Schema as Schema19 } from "effect";
+var Params10 = Schema19.Undefined;
+var Input9 = Schema19.StructWithRest(
+  Schema19.Struct({
+    critical: Schema19.optionalKey(Schema19.Boolean),
     envelope: EncryptedEnvelope,
-    generation: Schema18.optionalKey(
-      Schema18.Int.check(
-        Schema18.isGreaterThanOrEqualTo(1),
-        Schema18.isLessThanOrEqualTo(9007199254740991)
+    generation: Schema19.optionalKey(
+      Schema19.Int.check(
+        Schema19.isGreaterThanOrEqualTo(1),
+        Schema19.isLessThanOrEqualTo(9007199254740991)
       )
     ),
-    leaseId: Schema18.optionalKey(
+    leaseId: Schema19.optionalKey(
       lexString({ format: "tid", type: "string" }).pipe(
-        Schema18.brand("Lexicon:tid")
+        Schema19.brand("Lexicon:tid")
       )
     ),
-    wakeReason: Schema18.optionalKey(
+    wakeReason: Schema19.optionalKey(
       lexString({
         enum: ["to", "ask", "reply", "cc", "quiet", "data"],
         type: "string"
       }).pipe(
-        Schema18.decodeTo(
-          Schema18.Literals(["to", "ask", "reply", "cc", "quiet", "data"])
+        Schema19.decodeTo(
+          Schema19.Literals(["to", "ask", "reply", "cc", "quiet", "data"])
         )
       )
     ),
-    woke: Schema18.optionalKey(Schema18.Boolean)
+    woke: Schema19.optionalKey(Schema19.Boolean)
   }),
-  [Schema18.Record(Schema18.String, Data)]
+  [Schema19.Record(Schema19.String, Data)]
 );
-var Output9 = Schema18.StructWithRest(
-  Schema18.Struct({ receipt: Receipt }),
-  [Schema18.Record(Schema18.String, Data)]
+var Output9 = Schema19.StructWithRest(
+  Schema19.Struct({ receipt: Receipt }),
+  [Schema19.Record(Schema19.String, Data)]
 );
 var ErrorBody9 = XrpcErrorBody;
 var Method9 = {
@@ -1592,300 +1726,57 @@ var Method9 = {
 };
 
 // packages/lexicon/src/runtime.acquireLease.ts
-import { Schema as Schema20 } from "effect";
+import { Schema as Schema21 } from "effect";
 
 // packages/lexicon/src/runtime.lease.ts
-import { Schema as Schema19 } from "effect";
-var Claude = Schema19.StructWithRest(
-  Schema19.Struct({
-    executionId: Schema19.optionalKey(
+import { Schema as Schema20 } from "effect";
+var Claude = Schema20.StructWithRest(
+  Schema20.Struct({
+    executionId: Schema20.optionalKey(
       lexString({
         description: "Optional run inside the bound session.",
         type: "string"
       })
     ),
-    paneId: Schema19.optionalKey(
+    paneId: Schema20.optionalKey(
       lexString({
         description: "Opaque adapter-local pane identifier, never a host address.",
         type: "string"
       })
     ),
-    sessionId: Schema19.optionalKey(
+    sessionId: Schema20.optionalKey(
       lexString({
         description: "Opaque adapter-local session identifier, never identity.",
         type: "string"
       })
     )
   }),
-  [Schema19.Record(Schema19.String, Data)]
+  [Schema20.Record(Schema20.String, Data)]
 );
-var Codex = Schema19.StructWithRest(
-  Schema19.Struct({
-    executionId: Schema19.optionalKey(
+var Codex = Schema20.StructWithRest(
+  Schema20.Struct({
+    executionId: Schema20.optionalKey(
       lexString({
         description: "Optional run inside the bound session.",
         type: "string"
       })
     ),
-    paneId: Schema19.optionalKey(
+    paneId: Schema20.optionalKey(
       lexString({
         description: "Opaque adapter-local pane identifier, never a host address.",
         type: "string"
       })
     ),
-    sessionId: Schema19.optionalKey(
+    sessionId: Schema20.optionalKey(
       lexString({
         description: "Opaque adapter-local session identifier, never identity.",
         type: "string"
       })
     )
   }),
-  [Schema19.Record(Schema19.String, Data)]
+  [Schema20.Record(Schema20.String, Data)]
 );
-var Main3 = Schema19.StructWithRest(
-  Schema19.Struct({
-    did: lexString({ format: "did", type: "string" }).pipe(
-      Schema19.brand("Lexicon:did")
-    ),
-    expiresAt: lexString({ format: "datetime", type: "string" }).pipe(
-      Schema19.brand("Lexicon:datetime")
-    ),
-    generation: Schema19.Int.check(
-      Schema19.isGreaterThanOrEqualTo(1),
-      Schema19.isLessThanOrEqualTo(9007199254740991)
-    ),
-    harness: Schema19.Union([
-      Schema19.StructWithRest(
-        Schema19.Struct({
-          $type: Schema19.Literal("sh.mschf.ratking.runtime.lease#pi"),
-          executionId: Schema19.optionalKey(
-            lexString({
-              description: "Optional run inside the bound session.",
-              type: "string"
-            })
-          ),
-          paneId: Schema19.optionalKey(
-            lexString({
-              description: "Opaque adapter-local pane identifier, never a host address.",
-              type: "string"
-            })
-          ),
-          sessionId: Schema19.optionalKey(
-            lexString({
-              description: "Opaque adapter-local session identifier, never identity.",
-              type: "string"
-            })
-          )
-        }),
-        [Schema19.Record(Schema19.String, Data)]
-      ),
-      Schema19.StructWithRest(
-        Schema19.Struct({
-          $type: Schema19.Literal("sh.mschf.ratking.runtime.lease#claude"),
-          executionId: Schema19.optionalKey(
-            lexString({
-              description: "Optional run inside the bound session.",
-              type: "string"
-            })
-          ),
-          paneId: Schema19.optionalKey(
-            lexString({
-              description: "Opaque adapter-local pane identifier, never a host address.",
-              type: "string"
-            })
-          ),
-          sessionId: Schema19.optionalKey(
-            lexString({
-              description: "Opaque adapter-local session identifier, never identity.",
-              type: "string"
-            })
-          )
-        }),
-        [Schema19.Record(Schema19.String, Data)]
-      ),
-      Schema19.StructWithRest(
-        Schema19.Struct({
-          $type: Schema19.Literal("sh.mschf.ratking.runtime.lease#codex"),
-          executionId: Schema19.optionalKey(
-            lexString({
-              description: "Optional run inside the bound session.",
-              type: "string"
-            })
-          ),
-          paneId: Schema19.optionalKey(
-            lexString({
-              description: "Opaque adapter-local pane identifier, never a host address.",
-              type: "string"
-            })
-          ),
-          sessionId: Schema19.optionalKey(
-            lexString({
-              description: "Opaque adapter-local session identifier, never identity.",
-              type: "string"
-            })
-          )
-        }),
-        [Schema19.Record(Schema19.String, Data)]
-      ),
-      Schema19.StructWithRest(
-        Schema19.Struct({
-          $type: Schema19.Literal("sh.mschf.ratking.runtime.lease#opencode"),
-          executionId: Schema19.optionalKey(
-            lexString({
-              description: "Optional run inside the bound session.",
-              type: "string"
-            })
-          ),
-          paneId: Schema19.optionalKey(
-            lexString({
-              description: "Opaque adapter-local pane identifier, never a host address.",
-              type: "string"
-            })
-          ),
-          sessionId: Schema19.optionalKey(
-            lexString({
-              description: "Opaque adapter-local session identifier, never identity.",
-              type: "string"
-            })
-          )
-        }),
-        [Schema19.Record(Schema19.String, Data)]
-      ),
-      Schema19.StructWithRest(
-        Schema19.Struct({
-          $type: Schema19.Literal("sh.mschf.ratking.runtime.lease#other"),
-          executionId: Schema19.optionalKey(
-            lexString({
-              description: "Optional run inside the bound session.",
-              type: "string"
-            })
-          ),
-          kind: lexString({
-            description: "Harness adapter identifier.",
-            type: "string"
-          }),
-          paneId: Schema19.optionalKey(
-            lexString({
-              description: "Opaque adapter-local pane identifier, never a host address.",
-              type: "string"
-            })
-          ),
-          sessionId: Schema19.optionalKey(
-            lexString({
-              description: "Opaque adapter-local session identifier, never identity.",
-              type: "string"
-            })
-          )
-        }),
-        [Schema19.Record(Schema19.String, Data)]
-      ),
-      TaggedMap.check(
-        Schema19.makeFilter(
-          (value) => ![
-            "sh.mschf.ratking.runtime.lease#pi",
-            "sh.mschf.ratking.runtime.lease#claude",
-            "sh.mschf.ratking.runtime.lease#codex",
-            "sh.mschf.ratking.runtime.lease#opencode",
-            "sh.mschf.ratking.runtime.lease#other"
-          ].includes(value.$type),
-          { expected: "unknown union tag only" }
-        )
-      )
-    ]),
-    issuedAt: Schema19.optionalKey(
-      lexString({ format: "datetime", type: "string" }).pipe(
-        Schema19.brand("Lexicon:datetime")
-      )
-    ),
-    leaseId: lexString({ format: "tid", type: "string" }).pipe(
-      Schema19.brand("Lexicon:tid")
-    ),
-    renders: Schema19.optionalKey(
-      Schema19.Array(lexString({ type: "string" })).check(
-        Schema19.isMinLength(0),
-        Schema19.isMaxLength(9007199254740991)
-      )
-    )
-  }),
-  [Schema19.Record(Schema19.String, Data)]
-);
-var Opencode = Schema19.StructWithRest(
-  Schema19.Struct({
-    executionId: Schema19.optionalKey(
-      lexString({
-        description: "Optional run inside the bound session.",
-        type: "string"
-      })
-    ),
-    paneId: Schema19.optionalKey(
-      lexString({
-        description: "Opaque adapter-local pane identifier, never a host address.",
-        type: "string"
-      })
-    ),
-    sessionId: Schema19.optionalKey(
-      lexString({
-        description: "Opaque adapter-local session identifier, never identity.",
-        type: "string"
-      })
-    )
-  }),
-  [Schema19.Record(Schema19.String, Data)]
-);
-var Other = Schema19.StructWithRest(
-  Schema19.Struct({
-    executionId: Schema19.optionalKey(
-      lexString({
-        description: "Optional run inside the bound session.",
-        type: "string"
-      })
-    ),
-    kind: lexString({
-      description: "Harness adapter identifier.",
-      type: "string"
-    }),
-    paneId: Schema19.optionalKey(
-      lexString({
-        description: "Opaque adapter-local pane identifier, never a host address.",
-        type: "string"
-      })
-    ),
-    sessionId: Schema19.optionalKey(
-      lexString({
-        description: "Opaque adapter-local session identifier, never identity.",
-        type: "string"
-      })
-    )
-  }),
-  [Schema19.Record(Schema19.String, Data)]
-);
-var Pi = Schema19.StructWithRest(
-  Schema19.Struct({
-    executionId: Schema19.optionalKey(
-      lexString({
-        description: "Optional run inside the bound session.",
-        type: "string"
-      })
-    ),
-    paneId: Schema19.optionalKey(
-      lexString({
-        description: "Opaque adapter-local pane identifier, never a host address.",
-        type: "string"
-      })
-    ),
-    sessionId: Schema19.optionalKey(
-      lexString({
-        description: "Opaque adapter-local session identifier, never identity.",
-        type: "string"
-      })
-    )
-  }),
-  [Schema19.Record(Schema19.String, Data)]
-);
-
-// packages/lexicon/src/runtime.acquireLease.ts
-var Params11 = Schema20.Undefined;
-var Input10 = Schema20.StructWithRest(
+var Main4 = Schema20.StructWithRest(
   Schema20.Struct({
     did: lexString({ format: "did", type: "string" }).pipe(
       Schema20.brand("Lexicon:did")
@@ -1893,11 +1784,9 @@ var Input10 = Schema20.StructWithRest(
     expiresAt: lexString({ format: "datetime", type: "string" }).pipe(
       Schema20.brand("Lexicon:datetime")
     ),
-    generation: Schema20.optionalKey(
-      Schema20.Int.check(
-        Schema20.isGreaterThanOrEqualTo(1),
-        Schema20.isLessThanOrEqualTo(9007199254740991)
-      )
+    generation: Schema20.Int.check(
+      Schema20.isGreaterThanOrEqualTo(1),
+      Schema20.isLessThanOrEqualTo(9007199254740991)
     ),
     harness: Schema20.Union([
       Schema20.StructWithRest(
@@ -2037,10 +1926,13 @@ var Input10 = Schema20.StructWithRest(
         )
       )
     ]),
-    leaseId: Schema20.optionalKey(
-      lexString({ format: "tid", type: "string" }).pipe(
-        Schema20.brand("Lexicon:tid")
+    issuedAt: Schema20.optionalKey(
+      lexString({ format: "datetime", type: "string" }).pipe(
+        Schema20.brand("Lexicon:datetime")
       )
+    ),
+    leaseId: lexString({ format: "tid", type: "string" }).pipe(
+      Schema20.brand("Lexicon:tid")
     ),
     renders: Schema20.optionalKey(
       Schema20.Array(lexString({ type: "string" })).check(
@@ -2051,9 +1943,251 @@ var Input10 = Schema20.StructWithRest(
   }),
   [Schema20.Record(Schema20.String, Data)]
 );
-var Output10 = Schema20.StructWithRest(
-  Schema20.Struct({ lease: Main3 }),
+var Opencode = Schema20.StructWithRest(
+  Schema20.Struct({
+    executionId: Schema20.optionalKey(
+      lexString({
+        description: "Optional run inside the bound session.",
+        type: "string"
+      })
+    ),
+    paneId: Schema20.optionalKey(
+      lexString({
+        description: "Opaque adapter-local pane identifier, never a host address.",
+        type: "string"
+      })
+    ),
+    sessionId: Schema20.optionalKey(
+      lexString({
+        description: "Opaque adapter-local session identifier, never identity.",
+        type: "string"
+      })
+    )
+  }),
   [Schema20.Record(Schema20.String, Data)]
+);
+var Other = Schema20.StructWithRest(
+  Schema20.Struct({
+    executionId: Schema20.optionalKey(
+      lexString({
+        description: "Optional run inside the bound session.",
+        type: "string"
+      })
+    ),
+    kind: lexString({
+      description: "Harness adapter identifier.",
+      type: "string"
+    }),
+    paneId: Schema20.optionalKey(
+      lexString({
+        description: "Opaque adapter-local pane identifier, never a host address.",
+        type: "string"
+      })
+    ),
+    sessionId: Schema20.optionalKey(
+      lexString({
+        description: "Opaque adapter-local session identifier, never identity.",
+        type: "string"
+      })
+    )
+  }),
+  [Schema20.Record(Schema20.String, Data)]
+);
+var Pi = Schema20.StructWithRest(
+  Schema20.Struct({
+    executionId: Schema20.optionalKey(
+      lexString({
+        description: "Optional run inside the bound session.",
+        type: "string"
+      })
+    ),
+    paneId: Schema20.optionalKey(
+      lexString({
+        description: "Opaque adapter-local pane identifier, never a host address.",
+        type: "string"
+      })
+    ),
+    sessionId: Schema20.optionalKey(
+      lexString({
+        description: "Opaque adapter-local session identifier, never identity.",
+        type: "string"
+      })
+    )
+  }),
+  [Schema20.Record(Schema20.String, Data)]
+);
+
+// packages/lexicon/src/runtime.acquireLease.ts
+var Params11 = Schema21.Undefined;
+var Input10 = Schema21.StructWithRest(
+  Schema21.Struct({
+    did: lexString({ format: "did", type: "string" }).pipe(
+      Schema21.brand("Lexicon:did")
+    ),
+    expiresAt: lexString({ format: "datetime", type: "string" }).pipe(
+      Schema21.brand("Lexicon:datetime")
+    ),
+    generation: Schema21.optionalKey(
+      Schema21.Int.check(
+        Schema21.isGreaterThanOrEqualTo(1),
+        Schema21.isLessThanOrEqualTo(9007199254740991)
+      )
+    ),
+    harness: Schema21.Union([
+      Schema21.StructWithRest(
+        Schema21.Struct({
+          $type: Schema21.Literal("sh.mschf.ratking.runtime.lease#pi"),
+          executionId: Schema21.optionalKey(
+            lexString({
+              description: "Optional run inside the bound session.",
+              type: "string"
+            })
+          ),
+          paneId: Schema21.optionalKey(
+            lexString({
+              description: "Opaque adapter-local pane identifier, never a host address.",
+              type: "string"
+            })
+          ),
+          sessionId: Schema21.optionalKey(
+            lexString({
+              description: "Opaque adapter-local session identifier, never identity.",
+              type: "string"
+            })
+          )
+        }),
+        [Schema21.Record(Schema21.String, Data)]
+      ),
+      Schema21.StructWithRest(
+        Schema21.Struct({
+          $type: Schema21.Literal("sh.mschf.ratking.runtime.lease#claude"),
+          executionId: Schema21.optionalKey(
+            lexString({
+              description: "Optional run inside the bound session.",
+              type: "string"
+            })
+          ),
+          paneId: Schema21.optionalKey(
+            lexString({
+              description: "Opaque adapter-local pane identifier, never a host address.",
+              type: "string"
+            })
+          ),
+          sessionId: Schema21.optionalKey(
+            lexString({
+              description: "Opaque adapter-local session identifier, never identity.",
+              type: "string"
+            })
+          )
+        }),
+        [Schema21.Record(Schema21.String, Data)]
+      ),
+      Schema21.StructWithRest(
+        Schema21.Struct({
+          $type: Schema21.Literal("sh.mschf.ratking.runtime.lease#codex"),
+          executionId: Schema21.optionalKey(
+            lexString({
+              description: "Optional run inside the bound session.",
+              type: "string"
+            })
+          ),
+          paneId: Schema21.optionalKey(
+            lexString({
+              description: "Opaque adapter-local pane identifier, never a host address.",
+              type: "string"
+            })
+          ),
+          sessionId: Schema21.optionalKey(
+            lexString({
+              description: "Opaque adapter-local session identifier, never identity.",
+              type: "string"
+            })
+          )
+        }),
+        [Schema21.Record(Schema21.String, Data)]
+      ),
+      Schema21.StructWithRest(
+        Schema21.Struct({
+          $type: Schema21.Literal("sh.mschf.ratking.runtime.lease#opencode"),
+          executionId: Schema21.optionalKey(
+            lexString({
+              description: "Optional run inside the bound session.",
+              type: "string"
+            })
+          ),
+          paneId: Schema21.optionalKey(
+            lexString({
+              description: "Opaque adapter-local pane identifier, never a host address.",
+              type: "string"
+            })
+          ),
+          sessionId: Schema21.optionalKey(
+            lexString({
+              description: "Opaque adapter-local session identifier, never identity.",
+              type: "string"
+            })
+          )
+        }),
+        [Schema21.Record(Schema21.String, Data)]
+      ),
+      Schema21.StructWithRest(
+        Schema21.Struct({
+          $type: Schema21.Literal("sh.mschf.ratking.runtime.lease#other"),
+          executionId: Schema21.optionalKey(
+            lexString({
+              description: "Optional run inside the bound session.",
+              type: "string"
+            })
+          ),
+          kind: lexString({
+            description: "Harness adapter identifier.",
+            type: "string"
+          }),
+          paneId: Schema21.optionalKey(
+            lexString({
+              description: "Opaque adapter-local pane identifier, never a host address.",
+              type: "string"
+            })
+          ),
+          sessionId: Schema21.optionalKey(
+            lexString({
+              description: "Opaque adapter-local session identifier, never identity.",
+              type: "string"
+            })
+          )
+        }),
+        [Schema21.Record(Schema21.String, Data)]
+      ),
+      TaggedMap.check(
+        Schema21.makeFilter(
+          (value) => ![
+            "sh.mschf.ratking.runtime.lease#pi",
+            "sh.mschf.ratking.runtime.lease#claude",
+            "sh.mschf.ratking.runtime.lease#codex",
+            "sh.mschf.ratking.runtime.lease#opencode",
+            "sh.mschf.ratking.runtime.lease#other"
+          ].includes(value.$type),
+          { expected: "unknown union tag only" }
+        )
+      )
+    ]),
+    leaseId: Schema21.optionalKey(
+      lexString({ format: "tid", type: "string" }).pipe(
+        Schema21.brand("Lexicon:tid")
+      )
+    ),
+    renders: Schema21.optionalKey(
+      Schema21.Array(lexString({ type: "string" })).check(
+        Schema21.isMinLength(0),
+        Schema21.isMaxLength(9007199254740991)
+      )
+    )
+  }),
+  [Schema21.Record(Schema21.String, Data)]
+);
+var Output10 = Schema21.StructWithRest(
+  Schema21.Struct({ lease: Main4 }),
+  [Schema21.Record(Schema21.String, Data)]
 );
 var ErrorBody10 = XrpcErrorBody;
 var Method10 = {
@@ -2070,24 +2204,24 @@ var Method10 = {
 };
 
 // packages/lexicon/src/runtime.releaseLease.ts
-import { Schema as Schema21 } from "effect";
-var Params12 = Schema21.Undefined;
-var Input11 = Schema21.StructWithRest(
-  Schema21.Struct({
+import { Schema as Schema22 } from "effect";
+var Params12 = Schema22.Undefined;
+var Input11 = Schema22.StructWithRest(
+  Schema22.Struct({
     did: lexString({ format: "did", type: "string" }).pipe(
-      Schema21.brand("Lexicon:did")
+      Schema22.brand("Lexicon:did")
     ),
-    generation: Schema21.Int.check(
-      Schema21.isGreaterThanOrEqualTo(1),
-      Schema21.isLessThanOrEqualTo(9007199254740991)
+    generation: Schema22.Int.check(
+      Schema22.isGreaterThanOrEqualTo(1),
+      Schema22.isLessThanOrEqualTo(9007199254740991)
     ),
     leaseId: lexString({ format: "tid", type: "string" }).pipe(
-      Schema21.brand("Lexicon:tid")
+      Schema22.brand("Lexicon:tid")
     )
   }),
-  [Schema21.Record(Schema21.String, Data)]
+  [Schema22.Record(Schema22.String, Data)]
 );
-var Output11 = Schema21.Undefined;
+var Output11 = Schema22.Undefined;
 var ErrorBody11 = XrpcErrorBody;
 var Method11 = {
   defaults: {},
@@ -2103,35 +2237,35 @@ var Method11 = {
 };
 
 // packages/lexicon/src/runtime.renewLease.ts
-import { Schema as Schema22 } from "effect";
-var Params13 = Schema22.Undefined;
-var Input12 = Schema22.StructWithRest(
-  Schema22.Struct({
+import { Schema as Schema23 } from "effect";
+var Params13 = Schema23.Undefined;
+var Input12 = Schema23.StructWithRest(
+  Schema23.Struct({
     did: lexString({ format: "did", type: "string" }).pipe(
-      Schema22.brand("Lexicon:did")
+      Schema23.brand("Lexicon:did")
     ),
     expiresAt: lexString({ format: "datetime", type: "string" }).pipe(
-      Schema22.brand("Lexicon:datetime")
+      Schema23.brand("Lexicon:datetime")
     ),
-    generation: Schema22.Int.check(
-      Schema22.isGreaterThanOrEqualTo(1),
-      Schema22.isLessThanOrEqualTo(9007199254740991)
+    generation: Schema23.Int.check(
+      Schema23.isGreaterThanOrEqualTo(1),
+      Schema23.isLessThanOrEqualTo(9007199254740991)
     ),
     leaseId: lexString({ format: "tid", type: "string" }).pipe(
-      Schema22.brand("Lexicon:tid")
+      Schema23.brand("Lexicon:tid")
     ),
-    renders: Schema22.optionalKey(
-      Schema22.Array(lexString({ type: "string" })).check(
-        Schema22.isMinLength(0),
-        Schema22.isMaxLength(9007199254740991)
+    renders: Schema23.optionalKey(
+      Schema23.Array(lexString({ type: "string" })).check(
+        Schema23.isMinLength(0),
+        Schema23.isMaxLength(9007199254740991)
       )
     )
   }),
-  [Schema22.Record(Schema22.String, Data)]
+  [Schema23.Record(Schema23.String, Data)]
 );
-var Output12 = Schema22.StructWithRest(
-  Schema22.Struct({ lease: Main3 }),
-  [Schema22.Record(Schema22.String, Data)]
+var Output12 = Schema23.StructWithRest(
+  Schema23.Struct({ lease: Main4 }),
+  [Schema23.Record(Schema23.String, Data)]
 );
 var ErrorBody12 = XrpcErrorBody;
 var Method12 = {
@@ -2148,36 +2282,36 @@ var Method12 = {
 };
 
 // packages/lexicon/src/runtime.resolveLease.ts
-import { Effect as Effect9, Schema as Schema23 } from "effect";
-var Params14 = Schema23.StructWithRest(
-  Schema23.Struct({
+import { Effect as Effect9, Schema as Schema24 } from "effect";
+var Params14 = Schema24.StructWithRest(
+  Schema24.Struct({
     did: lexString({ format: "did", type: "string" }).pipe(
-      Schema23.brand("Lexicon:did")
+      Schema24.brand("Lexicon:did")
     )
   }),
-  [Schema23.Record(Schema23.String, Data)]
+  [Schema24.Record(Schema24.String, Data)]
 );
-var Input13 = Schema23.Undefined;
-var Output13 = Schema23.StructWithRest(
-  Schema23.Struct({ lease: Main3 }),
-  [Schema23.Record(Schema23.String, Data)]
+var Input13 = Schema24.Undefined;
+var Output13 = Schema24.StructWithRest(
+  Schema24.Struct({ lease: Main4 }),
+  [Schema24.Record(Schema24.String, Data)]
 );
-var ParamsFromQuery4 = Schema23.StructWithRest(
-  Schema23.Struct({ did: Schema23.String }),
-  [Schema23.Record(Schema23.String, Data)]
-).pipe(Schema23.decodeTo(Params14));
+var ParamsFromQuery4 = Schema24.StructWithRest(
+  Schema24.Struct({ did: Schema24.String }),
+  [Schema24.Record(Schema24.String, Data)]
+).pipe(Schema24.decodeTo(Params14));
 var encodeParams7 = Effect9.fn("lexicon.encodeParams")(
   function* encodeParams8(params) {
     return entries(
-      yield* Schema23.decodeUnknownEffect(Params2)(
-        yield* Schema23.encodeEffect(ParamsFromQuery4)(params)
+      yield* Schema24.decodeUnknownEffect(Params2)(
+        yield* Schema24.encodeEffect(ParamsFromQuery4)(params)
       )
     );
   }
 );
 var decodeParams7 = Effect9.fn("lexicon.decodeParams")(
   function* decodeParams8(entries2) {
-    return yield* Schema23.decodeUnknownEffect(ParamsFromQuery4)(
+    return yield* Schema24.decodeUnknownEffect(ParamsFromQuery4)(
       parameters(entries2)
     );
   }
@@ -2202,14 +2336,14 @@ var Transport = class extends Context.Service()("@rat-king/lexicon/Transport") {
 };
 
 // packages/lexicon/src/xrpc-failure.ts
-import { Schema as Schema24 } from "effect";
-var XrpcFailure = class extends Schema24.TaggedError()(
+import { Schema as Schema25 } from "effect";
+var XrpcFailure = class extends Schema25.TaggedError()(
   "XrpcFailure",
   {
-    error: Schema24.String,
-    message: Schema24.optionalKey(Schema24.String),
-    response: Schema24.Union([Schema24.String, DataMap]),
-    status: Schema24.Int
+    error: Schema25.String,
+    message: Schema25.optionalKey(Schema25.String),
+    response: Schema25.Union([Schema25.String, DataMap]),
+    status: Schema25.Int
   }
 ) {
 };
@@ -2224,7 +2358,7 @@ var responseBody = Effect10.fn("lexicon.responseBody")(function* responseBody2(r
     });
   }
   if (response.status < 200 || response.status >= 300) {
-    const result = yield* Schema25.decodeUnknownEffect(XrpcErrorBody)(
+    const result = yield* Schema26.decodeUnknownEffect(XrpcErrorBody)(
       response.body
     ).pipe(Effect10.result);
     if (Result.isSuccess(result)) {
@@ -2250,44 +2384,44 @@ var clientLayer = Layer.effect(
     const transport = yield* Transport;
     return MailboxClient.of({
       ack: Effect10.fn("lexicon.ack")(function* invoke(input) {
-        const body = yield* Schema25.encodeEffect(Input6)(input);
+        const body = yield* Schema26.encodeEffect(Input6)(input);
         const response = yield* transport.request({
           input: body,
           method: Method6.method,
           nsid: Method6.nsid,
           params: void 0
         });
-        return yield* Schema25.decodeUnknownEffect(Output6)(
+        return yield* Schema26.decodeUnknownEffect(Output6)(
           yield* responseBody(response)
         );
       }),
       acquireLease: Effect10.fn("lexicon.acquireLease")(function* invoke(input) {
-        const encoded = yield* Schema25.encodeEffect(Input10)(input);
+        const encoded = yield* Schema26.encodeEffect(Input10)(input);
         const response = yield* transport.request({
           input: encoded,
           method: Method10.method,
           nsid: Method10.nsid,
           params: void 0
         });
-        return yield* Schema25.decodeUnknownEffect(Output10)(
+        return yield* Schema26.decodeUnknownEffect(Output10)(
           yield* responseBody(response)
         );
       }),
       deliver: Effect10.fn("lexicon.deliver")(function* invoke(input) {
-        const encoded = yield* Schema25.encodeEffect(Input7)(input);
+        const encoded = yield* Schema26.encodeEffect(Input7)(input);
         const response = yield* transport.request({
           input: encoded,
           method: Method7.method,
           nsid: Method7.nsid,
           params: void 0
         });
-        return yield* Schema25.decodeUnknownEffect(Output7)(
+        return yield* Schema26.decodeUnknownEffect(Output7)(
           yield* responseBody(response)
         );
       }),
       getPreferences: Effect10.fn("lexicon.getPreferences")(
         function* invoke(params) {
-          const encoded = yield* Schema25.encodeEffect(Params3)(
+          const encoded = yield* Schema26.encodeEffect(Params3)(
             params
           );
           const response = yield* transport.request({
@@ -2296,25 +2430,25 @@ var clientLayer = Layer.effect(
             nsid: Method2.nsid,
             params: encoded
           });
-          return yield* Schema25.decodeUnknownEffect(Output2)(
+          return yield* Schema26.decodeUnknownEffect(Output2)(
             yield* responseBody(response)
           );
         }
       ),
       getStatus: Effect10.fn("lexicon.getStatus")(function* invoke(params) {
-        const encoded = yield* Schema25.encodeEffect(Params4)(params);
+        const encoded = yield* Schema26.encodeEffect(Params4)(params);
         const response = yield* transport.request({
           input: void 0,
           method: Method3.method,
           nsid: Method3.nsid,
           params: encoded
         });
-        return yield* Schema25.decodeUnknownEffect(Output3)(
+        return yield* Schema26.decodeUnknownEffect(Output3)(
           yield* responseBody(response)
         );
       }),
       list: Effect10.fn("lexicon.list")(function* invoke(params) {
-        const encoded = yield* Schema25.encodeEffect(Params9)({
+        const encoded = yield* Schema26.encodeEffect(Params9)({
           ...Method8.defaults,
           ...params
         });
@@ -2324,13 +2458,13 @@ var clientLayer = Layer.effect(
           nsid: Method8.nsid,
           params: encoded
         });
-        return yield* Schema25.decodeUnknownEffect(Output8)(
+        return yield* Schema26.decodeUnknownEffect(Output8)(
           yield* responseBody(response)
         );
       }),
       putDidDocument: Effect10.fn("lexicon.putDidDocument")(
         function* invoke(input) {
-          const encoded = yield* Schema25.encodeEffect(Input)(
+          const encoded = yield* Schema26.encodeEffect(Input)(
             input
           );
           const response = yield* transport.request({
@@ -2339,14 +2473,14 @@ var clientLayer = Layer.effect(
             nsid: Method.nsid,
             params: void 0
           });
-          return yield* Schema25.decodeUnknownEffect(Output)(
+          return yield* Schema26.decodeUnknownEffect(Output)(
             yield* responseBody(response)
           );
         }
       ),
       putPreferences: Effect10.fn("lexicon.putPreferences")(
         function* invoke(input) {
-          const encoded = yield* Schema25.encodeEffect(Input4)(
+          const encoded = yield* Schema26.encodeEffect(Input4)(
             input
           );
           const response = yield* transport.request({
@@ -2355,25 +2489,25 @@ var clientLayer = Layer.effect(
             nsid: Method4.nsid,
             params: void 0
           });
-          return yield* Schema25.decodeUnknownEffect(Output4)(
+          return yield* Schema26.decodeUnknownEffect(Output4)(
             yield* responseBody(response)
           );
         }
       ),
       putStatus: Effect10.fn("lexicon.putStatus")(function* invoke(input) {
-        const encoded = yield* Schema25.encodeEffect(Input5)(input);
+        const encoded = yield* Schema26.encodeEffect(Input5)(input);
         const response = yield* transport.request({
           input: encoded,
           method: Method5.method,
           nsid: Method5.nsid,
           params: void 0
         });
-        return yield* Schema25.decodeUnknownEffect(Output5)(
+        return yield* Schema26.decodeUnknownEffect(Output5)(
           yield* responseBody(response)
         );
       }),
       releaseLease: Effect10.fn("lexicon.releaseLease")(function* invoke(input) {
-        const encoded = yield* Schema25.encodeEffect(Input11)(input);
+        const encoded = yield* Schema26.encodeEffect(Input11)(input);
         const response = yield* transport.request({
           input: encoded,
           method: Method11.method,
@@ -2382,26 +2516,26 @@ var clientLayer = Layer.effect(
         });
         if (response.status === 204 && response.kind === "text" && response.body === "") {
           const output = void 0;
-          return yield* Schema25.decodeEffect(Output11)(output);
+          return yield* Schema26.decodeEffect(Output11)(output);
         }
-        return yield* Schema25.decodeUnknownEffect(Output11)(
+        return yield* Schema26.decodeUnknownEffect(Output11)(
           yield* responseBody(response)
         );
       }),
       renewLease: Effect10.fn("lexicon.renewLease")(function* invoke(input) {
-        const encoded = yield* Schema25.encodeEffect(Input12)(input);
+        const encoded = yield* Schema26.encodeEffect(Input12)(input);
         const response = yield* transport.request({
           input: encoded,
           method: Method12.method,
           nsid: Method12.nsid,
           params: void 0
         });
-        return yield* Schema25.decodeUnknownEffect(Output12)(
+        return yield* Schema26.decodeUnknownEffect(Output12)(
           yield* responseBody(response)
         );
       }),
       resolveLease: Effect10.fn("lexicon.resolveLease")(function* invoke(params) {
-        const encoded = yield* Schema25.encodeEffect(Params14)({
+        const encoded = yield* Schema26.encodeEffect(Params14)({
           ...Method13.defaults,
           ...params
         });
@@ -2411,19 +2545,19 @@ var clientLayer = Layer.effect(
           nsid: Method13.nsid,
           params: encoded
         });
-        return yield* Schema25.decodeUnknownEffect(Output13)(
+        return yield* Schema26.decodeUnknownEffect(Output13)(
           yield* responseBody(response)
         );
       }),
       send: Effect10.fn("lexicon.send")(function* invoke(input) {
-        const body = yield* Schema25.encodeEffect(Input9)(input);
+        const body = yield* Schema26.encodeEffect(Input9)(input);
         const response = yield* transport.request({
           input: body,
           method: Method9.method,
           nsid: Method9.nsid,
           params: void 0
         });
-        return yield* Schema25.decodeUnknownEffect(Output9)(
+        return yield* Schema26.decodeUnknownEffect(Output9)(
           yield* responseBody(response)
         );
       })
@@ -2432,27 +2566,27 @@ var clientLayer = Layer.effect(
 );
 
 // packages/mailbox-client/src/mailbox.ts
-import { Clock as Clock3, Context as Context6, Effect as Effect20, Layer as Layer4, Option as Option3, Schema as Schema39 } from "effect";
+import { Clock as Clock3, Context as Context6, Effect as Effect20, Layer as Layer4, Option as Option3, Schema as Schema40 } from "effect";
 
 // packages/mailbox-client/src/attention.ts
-import { Effect as Effect11, Schema as Schema28 } from "effect";
+import { Effect as Effect11, Schema as Schema29 } from "effect";
 
 // packages/mailbox-client/src/error.ts
-import { Schema as Schema26 } from "effect";
-var MailboxClientError = class extends Schema26.TaggedError()(
+import { Schema as Schema27 } from "effect";
+var MailboxClientError = class extends Schema27.TaggedError()(
   "MailboxClientError",
   {
-    error: Schema26.optionalKey(Schema26.String),
-    reason: Schema26.String,
-    status: Schema26.optionalKey(Schema26.Finite)
+    error: Schema27.optionalKey(Schema27.String),
+    reason: Schema27.String,
+    status: Schema27.optionalKey(Schema27.Finite)
   }
 ) {
 };
 var clientError = (failure3) => {
-  if (Schema26.is(MailboxClientError)(failure3)) {
+  if (Schema27.is(MailboxClientError)(failure3)) {
     return failure3;
   }
-  if (Schema26.is(XrpcFailure)(failure3)) {
+  if (Schema27.is(XrpcFailure)(failure3)) {
     return new MailboxClientError({
       error: failure3.error,
       reason: failure3.message ?? "Mailbox XRPC call failed",
@@ -2463,17 +2597,17 @@ var clientError = (failure3) => {
 };
 
 // packages/mailbox-client/src/identity.ts
-import { Schema as Schema27 } from "effect";
-var PrivateJwk = Schema27.Struct({
-  crv: Schema27.Literal("P-256"),
-  d: Schema27.String,
-  kty: Schema27.Literal("EC"),
-  x: Schema27.String,
-  y: Schema27.String
+import { Schema as Schema28 } from "effect";
+var PrivateJwk = Schema28.Struct({
+  crv: Schema28.Literal("P-256"),
+  d: Schema28.String,
+  kty: Schema28.Literal("EC"),
+  x: Schema28.String,
+  y: Schema28.String
 });
-var Identity = Schema27.Struct({
+var Identity = Schema28.Struct({
   agreement: PrivateJwk,
-  did: Schema27.String.check(Schema27.isPattern(/^did:web:/u)),
+  did: Schema28.String.check(Schema28.isPattern(/^did:web:/u)),
   signing: PrivateJwk
 });
 var importSigning = (identity) => cryptoOperation(
@@ -2499,7 +2633,7 @@ var importAgreement = (identity) => cryptoOperation(
 var attentionBytes = (did, nsid, value) => canonical({ did, nsid, value });
 var attentionClient = (client, identity) => ({
   getPreferences: Effect11.fn("AttentionClient.getPreferences")(
-    () => Schema28.decodeUnknownEffect(Params3)({
+    () => Schema29.decodeUnknownEffect(Params3)({
       did: identity.did
     }).pipe(
       Effect11.flatMap(client.getPreferences),
@@ -2508,7 +2642,7 @@ var attentionClient = (client, identity) => ({
     )
   ),
   getStatus: Effect11.fn("AttentionClient.getStatus")(
-    (did = identity.did) => Schema28.decodeUnknownEffect(Params4)({ did }).pipe(
+    (did = identity.did) => Schema29.decodeUnknownEffect(Params4)({ did }).pipe(
       Effect11.flatMap(client.getStatus),
       Effect11.map((output) => output.status),
       Effect11.mapError(clientError)
@@ -2516,14 +2650,14 @@ var attentionClient = (client, identity) => ({
   ),
   putPreferences: Effect11.fn("AttentionClient.putPreferences")(
     function* putPreferences(prefs) {
-      const validated = yield* Schema28.decodeUnknownEffect(Main)(prefs);
+      const validated = yield* Schema29.decodeUnknownEffect(Main2)(prefs);
       const key = yield* importSigning(identity);
       const signature = yield* sign(
         key,
         attentionBytes(identity.did, Method4.nsid, validated)
       );
-      const input = yield* Schema28.decodeUnknownEffect(
-        Schema28.toType(Input4)
+      const input = yield* Schema29.decodeUnknownEffect(
+        Schema29.toType(Input4)
       )({
         did: identity.did,
         keyId: `${identity.did}#atproto`,
@@ -2535,14 +2669,14 @@ var attentionClient = (client, identity) => ({
     Effect11.mapError(clientError)
   ),
   putStatus: Effect11.fn("AttentionClient.putStatus")(function* putStatus(status) {
-    const validated = yield* Schema28.decodeUnknownEffect(Main2)(status);
+    const validated = yield* Schema29.decodeUnknownEffect(Main3)(status);
     const key = yield* importSigning(identity);
     const signature = yield* sign(
       key,
       attentionBytes(identity.did, Method5.nsid, validated)
     );
-    const input = yield* Schema28.decodeUnknownEffect(
-      Schema28.toType(Input5)
+    const input = yield* Schema29.decodeUnknownEffect(
+      Schema29.toType(Input5)
     )({
       did: identity.did,
       keyId: `${identity.did}#atproto`,
@@ -2552,7 +2686,7 @@ var attentionClient = (client, identity) => ({
     return (yield* client.putStatus(input)).status;
   }, Effect11.mapError(clientError))
 });
-var defaultPreferences = () => Schema28.decodeUnknownSync(Main)({
+var defaultPreferences = () => Schema29.decodeUnknownSync(Main2)({
   allow: [],
   forward: [],
   log: false,
@@ -2561,7 +2695,7 @@ var defaultPreferences = () => Schema28.decodeUnknownSync(Main)({
   refuse: [],
   version: "0.1"
 });
-var defaultStatus = () => Schema28.decodeUnknownSync(Main2)({
+var defaultStatus = () => Schema29.decodeUnknownSync(Main3)({
   $type: "sh.mschf.ratking.attention.status",
   state: "available",
   version: "0.1"
@@ -2570,17 +2704,17 @@ var toBasisPoints = (decimal) => Math.round(decimal * 1e4);
 var fromBasisPoints = (points) => points / 1e4;
 
 // packages/mailbox-client/src/auth.ts
-import { Context as Context4, Effect as Effect12, Layer as Layer2, Schema as Schema30 } from "effect";
+import { Context as Context4, Effect as Effect12, Layer as Layer2, Schema as Schema31 } from "effect";
 
 // packages/mailbox-client/src/auth-failure.ts
-import { Schema as Schema29 } from "effect";
-var ServiceAuthFailure = class extends Schema29.TaggedError()(
+import { Schema as Schema30 } from "effect";
+var ServiceAuthFailure = class extends Schema30.TaggedError()(
   "XrpcFailure",
   {
-    error: Schema29.String,
-    message: Schema29.optionalKey(Schema29.String),
-    response: Schema29.Record(Schema29.String, Schema29.Json),
-    status: Schema29.Int
+    error: Schema30.String,
+    message: Schema30.optionalKey(Schema30.String),
+    response: Schema30.Record(Schema30.String, Schema30.Json),
+    status: Schema30.Int
   }
 ) {
 };
@@ -2602,13 +2736,13 @@ var unbase64url = (text) => Uint8Array.from(
   atob(text.replaceAll("-", "+").replaceAll("_", "/")),
   (character) => character.codePointAt(0) ?? 0
 );
-var Claims = Schema30.Struct({
-  aud: Schema30.String,
-  exp: Schema30.Int,
-  iat: Schema30.Int,
-  iss: Schema30.String,
-  jti: Schema30.String.check(Schema30.isMinLength(16)),
-  lxm: Schema30.String
+var Claims = Schema31.Struct({
+  aud: Schema31.String,
+  exp: Schema31.Int,
+  iat: Schema31.Int,
+  iss: Schema31.String,
+  jti: Schema31.String.check(Schema31.isMinLength(16)),
+  lxm: Schema31.String
 });
 var authFailure = (error, status = 400, message = error) => new ServiceAuthFailure({
   error,
@@ -2616,26 +2750,26 @@ var authFailure = (error, status = 400, message = error) => new ServiceAuthFailu
   response: { error, message },
   status
 });
-var PublicJwk2 = Schema30.Struct({
-  crv: Schema30.Literal("P-256"),
-  d: Schema30.optionalKey(Schema30.Never),
-  kty: Schema30.Literal("EC"),
-  x: Schema30.String,
-  y: Schema30.String
+var PublicJwk2 = Schema31.Struct({
+  crv: Schema31.Literal("P-256"),
+  d: Schema31.optionalKey(Schema31.Never),
+  kty: Schema31.Literal("EC"),
+  x: Schema31.String,
+  y: Schema31.String
 });
-var Document = Schema30.Struct({
-  authentication: Schema30.Array(Schema30.String),
-  id: Schema30.String,
-  keyAgreement: Schema30.Array(Schema30.String),
-  verificationMethod: Schema30.Array(
-    Schema30.Struct({
-      controller: Schema30.String,
-      id: Schema30.String,
+var Document = Schema31.Struct({
+  authentication: Schema31.Array(Schema31.String),
+  id: Schema31.String,
+  keyAgreement: Schema31.Array(Schema31.String),
+  verificationMethod: Schema31.Array(
+    Schema31.Struct({
+      controller: Schema31.String,
+      id: Schema31.String,
       publicKeyJwk: PublicJwk2
     })
   )
 });
-var Documents = Schema30.Array(Document);
+var Documents = Schema31.Array(Document);
 var DidResolver = class extends Context4.Service()("mailbox/DidResolver") {
 };
 var documentResolver = (lookup) => Layer2.succeed(
@@ -2669,10 +2803,10 @@ var documentResolver = (lookup) => Layer2.succeed(
 var staticResolver = (documents) => documentResolver(
   (did) => Effect12.succeed(documents.find((candidate) => candidate.id === did))
 );
-var Header = Schema30.Struct({
-  alg: Schema30.Literal("ES256"),
-  kid: Schema30.optionalKey(Schema30.String),
-  typ: Schema30.optionalKey(Schema30.Literal("JWT"))
+var Header = Schema31.Struct({
+  alg: Schema31.Literal("ES256"),
+  kid: Schema31.optionalKey(Schema31.String),
+  typ: Schema31.optionalKey(Schema31.Literal("JWT"))
 });
 var json = (text) => Effect12.try({
   catch: () => authFailure("AuthRequired", 401),
@@ -2687,13 +2821,13 @@ var authenticateClaims = Effect12.fn("ServiceAuth.authenticateClaims")(
       return yield* Effect12.fail(authFailure("AuthRequired", 401));
     }
     const [headerText = "", claimsText = "", signatureText = ""] = token.split(".");
-    const header = yield* Schema30.decodeUnknownEffect(
-      Schema30.fromJsonString(Header)
+    const header = yield* Schema31.decodeUnknownEffect(
+      Schema31.fromJsonString(Header)
     )(yield* json(headerText)).pipe(
       Effect12.mapError(() => authFailure("AuthRequired", 401))
     );
-    const claims = yield* Schema30.decodeUnknownEffect(
-      Schema30.fromJsonString(Claims)
+    const claims = yield* Schema31.decodeUnknownEffect(
+      Schema31.fromJsonString(Claims)
     )(yield* json(claimsText)).pipe(
       Effect12.mapError(() => authFailure("AuthRequired", 401))
     );
@@ -2738,40 +2872,40 @@ var serviceToken = Effect12.fn("ServiceAuth.sign")(
 );
 
 // packages/mailbox-client/src/delegation.ts
-import { Effect as Effect14, Schema as Schema32 } from "effect";
+import { Effect as Effect14, Schema as Schema33 } from "effect";
 
 // packages/mailbox-client/src/payload.ts
-import { Effect as Effect13, Schema as Schema31 } from "effect";
-var AgentName = Schema31.String.check(
-  Schema31.isPattern(/^(?:[a-z0-9]+(?:-[a-z0-9]+)*\/)?[a-z][a-z0-9_-]{0,31}$/u)
+import { Effect as Effect13, Schema as Schema32 } from "effect";
+var AgentName = Schema32.String.check(
+  Schema32.isPattern(/^(?:[a-z0-9]+(?:-[a-z0-9]+)*\/)?[a-z][a-z0-9_-]{0,31}$/u)
 );
 var SUMMARY_MAX = 280;
 var SUMMARY_HARD_MAX = 400;
 var SUMMARY_WIRE_MAX = SUMMARY_MAX;
-var Kind = Schema31.Literals(["message", "ask", "reply", "data"]);
-var ReplyRef = Schema31.Struct({
-  parent: Schema31.String,
-  root: Schema31.String
+var Kind = Schema32.Literals(["message", "ask", "reply", "data"]);
+var ReplyRef = Schema32.Struct({
+  parent: Schema32.String,
+  root: Schema32.String
 });
-var Payload = Schema31.Struct({
-  body: Schema31.String,
-  cc: Schema31.optionalKey(Schema31.Array(AgentName)),
+var Payload = Schema32.Struct({
+  body: Schema32.String,
+  cc: Schema32.optionalKey(Schema32.Array(AgentName)),
   from: AgentName,
-  kind: Schema31.optionalKey(Kind),
-  label: Schema31.optionalKey(Schema31.String.check(Schema31.isMaxLength(256))),
-  quiet: Schema31.optionalKey(Schema31.Literal(true)),
-  reply: Schema31.optionalKey(ReplyRef),
-  replyTo: Schema31.optionalKey(Schema31.String),
-  summary: Schema31.optionalKey(
-    Schema31.String.check(Schema31.isMaxLength(SUMMARY_HARD_MAX))
+  kind: Schema32.optionalKey(Kind),
+  label: Schema32.optionalKey(Schema32.String.check(Schema32.isMaxLength(256))),
+  quiet: Schema32.optionalKey(Schema32.Literal(true)),
+  reply: Schema32.optionalKey(ReplyRef),
+  replyTo: Schema32.optionalKey(Schema32.String),
+  summary: Schema32.optionalKey(
+    Schema32.String.check(Schema32.isMaxLength(SUMMARY_HARD_MAX))
   ),
-  thread: Schema31.optionalKey(Schema31.String),
-  to: Schema31.optionalKey(AgentName)
+  thread: Schema32.optionalKey(Schema32.String),
+  to: Schema32.optionalKey(AgentName)
 });
-var PayloadJson = Schema31.fromJsonString(Payload);
+var PayloadJson = Schema32.fromJsonString(Payload);
 var encodePayload = Effect13.fn("RatKing.encodePayload")(
   function* encodePayload2(payload) {
-    return yield* Schema31.encodeEffect(PayloadJson)(payload);
+    return yield* Schema32.encodeEffect(PayloadJson)(payload);
   }
 );
 
@@ -2784,7 +2918,7 @@ var openDelegated = Effect14.fn("Mailbox.openDelegated")(
       });
     }
     const signed = yield* openPlaintext(envelope, resolveSigningKey);
-    const payload = yield* Schema32.decodeUnknownEffect(PayloadJson)(
+    const payload = yield* Schema33.decodeUnknownEffect(PayloadJson)(
       new TextDecoder().decode(signed.body)
     );
     if (receipt.delegatedFor === void 0 || payload.to !== receipt.delegatedFor) {
@@ -2797,52 +2931,52 @@ var openDelegated = Effect14.fn("Mailbox.openDelegated")(
 );
 
 // packages/lexicon/src/mailbox.getPresence.ts
-import { Effect as Effect15, Schema as Schema33 } from "effect";
-var Params15 = Schema33.StructWithRest(
-  Schema33.Struct({
+import { Effect as Effect15, Schema as Schema34 } from "effect";
+var Params15 = Schema34.StructWithRest(
+  Schema34.Struct({
     did: lexString({ format: "did", type: "string" }).pipe(
-      Schema33.brand("Lexicon:did")
+      Schema34.brand("Lexicon:did")
     )
   }),
-  [Schema33.Record(Schema33.String, Data)]
+  [Schema34.Record(Schema34.String, Data)]
 );
-var Input14 = Schema33.Undefined;
-var Output14 = Schema33.StructWithRest(
-  Schema33.Struct({
+var Input14 = Schema34.Undefined;
+var Output14 = Schema34.StructWithRest(
+  Schema34.Struct({
     did: lexString({ format: "did", type: "string" }).pipe(
-      Schema33.brand("Lexicon:did")
+      Schema34.brand("Lexicon:did")
     ),
-    held: Schema33.Boolean,
-    lastHeldAt: Schema33.optionalKey(
+    held: Schema34.Boolean,
+    lastHeldAt: Schema34.optionalKey(
       lexString({ format: "datetime", type: "string" }).pipe(
-        Schema33.brand("Lexicon:datetime")
+        Schema34.brand("Lexicon:datetime")
       )
     ),
-    renders: Schema33.optionalKey(
-      Schema33.Array(lexString({ type: "string" })).check(
-        Schema33.isMinLength(0),
-        Schema33.isMaxLength(9007199254740991)
+    renders: Schema34.optionalKey(
+      Schema34.Array(lexString({ type: "string" })).check(
+        Schema34.isMinLength(0),
+        Schema34.isMaxLength(9007199254740991)
       )
     )
   }),
-  [Schema33.Record(Schema33.String, Data)]
+  [Schema34.Record(Schema34.String, Data)]
 );
-var ParamsFromQuery5 = Schema33.StructWithRest(
-  Schema33.Struct({ did: Schema33.String }),
-  [Schema33.Record(Schema33.String, Data)]
-).pipe(Schema33.decodeTo(Params15));
+var ParamsFromQuery5 = Schema34.StructWithRest(
+  Schema34.Struct({ did: Schema34.String }),
+  [Schema34.Record(Schema34.String, Data)]
+).pipe(Schema34.decodeTo(Params15));
 var encodeParams9 = Effect15.fn("lexicon.encodeParams")(
   function* encodeParams10(params) {
     return entries(
-      yield* Schema33.decodeUnknownEffect(Params2)(
-        yield* Schema33.encodeEffect(ParamsFromQuery5)(params)
+      yield* Schema34.decodeUnknownEffect(Params2)(
+        yield* Schema34.encodeEffect(ParamsFromQuery5)(params)
       )
     );
   }
 );
 var decodeParams9 = Effect15.fn("lexicon.decodeParams")(
   function* decodeParams10(entries2) {
-    return yield* Schema33.decodeUnknownEffect(ParamsFromQuery5)(
+    return yield* Schema34.decodeUnknownEffect(ParamsFromQuery5)(
       parameters(entries2)
     );
   }
@@ -2862,13 +2996,13 @@ var Method14 = {
 };
 
 // packages/mailbox-client/src/record-visibility.ts
-import { Effect as Effect16, Option, Schema as Schema34 } from "effect";
+import { Effect as Effect16, Option, Schema as Schema35 } from "effect";
 var readerCannotRender = (name, type, presence) => type !== "unknown" && presence?.held === true && presence.renders !== void 0 && !presence.renders.some(
   (render) => render.endsWith(".*") ? type.startsWith(render.slice(0, -1)) : type === render
 ) ? `NOT SENT: ReaderCannotRender. ${name}'s reader doesn't render ${type} (it predates typed records or doesn't declare it). Send prose instead, or ask them to restart.` : void 0;
 var recordType = (body) => {
-  const result = Schema34.decodeUnknownOption(
-    Schema34.fromJsonString(Schema34.Struct({ $type: Schema34.String }))
+  const result = Schema35.decodeUnknownOption(
+    Schema35.fromJsonString(Schema35.Struct({ $type: Schema35.String }))
   )(body);
   return Option.match(result, {
     onNone: () => "unknown",
@@ -2878,14 +3012,14 @@ var recordType = (body) => {
 var lookupPresence = Effect16.fn("Mailbox.lookupPresence")(
   function* lookupPresence2(did) {
     const transport = yield* Transport;
-    const params = yield* Schema34.decodeUnknownEffect(Params15)({
+    const params = yield* Schema35.decodeUnknownEffect(Params15)({
       did
     }).pipe(Effect16.mapError(clientError));
     const response = yield* transport.request({
       input: void 0,
       method: "GET",
       nsid: Method14.nsid,
-      params: yield* Schema34.encodeEffect(Params15)(params).pipe(
+      params: yield* Schema35.encodeEffect(Params15)(params).pipe(
         Effect16.mapError(clientError)
       )
     }).pipe(Effect16.mapError(clientError));
@@ -2894,7 +3028,7 @@ var lookupPresence = Effect16.fn("Mailbox.lookupPresence")(
         reason: "Presence request refused"
       });
     }
-    return yield* Schema34.decodeUnknownEffect(Output14)(
+    return yield* Schema35.decodeUnknownEffect(Output14)(
       response.body
     ).pipe(Effect16.mapError(clientError));
   }
@@ -2917,15 +3051,15 @@ var randomTid = (millis) => {
 };
 
 // packages/lexicon/src/transport-failure.ts
-import { Schema as Schema35 } from "effect";
-var TransportFailure = class extends Schema35.TaggedError()(
+import { Schema as Schema36 } from "effect";
+var TransportFailure = class extends Schema36.TaggedError()(
   "TransportFailure",
-  { cause: Schema35.Defect(), reason: Schema35.String }
+  { cause: Schema36.Defect(), reason: Schema36.String }
 ) {
 };
 
 // packages/mailbox-client/src/transport.ts
-import { Clock, Effect as Effect17, Layer as Layer3, Result as Result2, Schema as Schema36 } from "effect";
+import { Clock, Effect as Effect17, Layer as Layer3, Result as Result2, Schema as Schema37 } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/http";
 var transportLayer = (endpoint, audience, identity) => Layer3.effect(
   Transport,
@@ -2955,7 +3089,7 @@ var transportLayer = (endpoint, audience, identity) => Layer3.effect(
           );
           if (request.params !== void 0) {
             for (const [name, value] of Object.entries(request.params)) {
-              if (Schema36.is(Schema36.String)(value) || Schema36.is(Schema36.Finite)(value) || Schema36.is(Schema36.Boolean)(value)) {
+              if (Schema37.is(Schema37.String)(value) || Schema37.is(Schema37.Finite)(value) || Schema37.is(Schema37.Boolean)(value)) {
                 url.searchParams.set(name, String(value));
               }
             }
@@ -2971,8 +3105,8 @@ var transportLayer = (endpoint, audience, identity) => Layer3.effect(
           }
           const response = yield* http.execute(outgoing);
           const body = yield* response.text;
-          const json2 = yield* Schema36.decodeUnknownEffect(
-            Schema36.fromJsonString(Schema36.toEncoded(Data))
+          const json2 = yield* Schema37.decodeUnknownEffect(
+            Schema37.fromJsonString(Schema37.toEncoded(Data))
           )(body).pipe(Effect17.result);
           if (Result2.isFailure(json2)) {
             return { body, kind: "text", status: response.status };
@@ -2995,64 +3129,64 @@ var transportLayer = (endpoint, audience, identity) => Layer3.effect(
 );
 
 // packages/lexicon/src/mailbox.subscribe.ts
-import { Effect as Effect18, Schema as Schema37 } from "effect";
-var Auth = Schema37.StructWithRest(
-  Schema37.Struct({ token: lexString({ type: "string" }) }),
-  [Schema37.Record(Schema37.String, Data)]
+import { Effect as Effect18, Schema as Schema38 } from "effect";
+var Auth = Schema38.StructWithRest(
+  Schema38.Struct({ token: lexString({ type: "string" }) }),
+  [Schema38.Record(Schema38.String, Data)]
 );
-var Params16 = Schema37.StructWithRest(
-  Schema37.Struct({
-    generation: Schema37.Int.check(
-      Schema37.isGreaterThanOrEqualTo(1),
-      Schema37.isLessThanOrEqualTo(9007199254740991)
+var Params16 = Schema38.StructWithRest(
+  Schema38.Struct({
+    generation: Schema38.Int.check(
+      Schema38.isGreaterThanOrEqualTo(1),
+      Schema38.isLessThanOrEqualTo(9007199254740991)
     ),
     leaseId: lexString({ format: "tid", type: "string" }).pipe(
-      Schema37.brand("Lexicon:tid")
+      Schema38.brand("Lexicon:tid")
     ),
     recipientDid: lexString({ format: "did", type: "string" }).pipe(
-      Schema37.brand("Lexicon:did")
+      Schema38.brand("Lexicon:did")
     )
   }),
-  [Schema37.Record(Schema37.String, Data)]
+  [Schema38.Record(Schema38.String, Data)]
 );
-var Message = Schema37.Union([
-  Schema37.StructWithRest(
-    Schema37.Struct({
-      $type: Schema37.Literal("sh.mschf.ratking.mailbox.subscribe#notice"),
-      seq: Schema37.Int.check(
-        Schema37.isGreaterThanOrEqualTo(0),
-        Schema37.isLessThanOrEqualTo(9007199254740991)
+var Message = Schema38.Union([
+  Schema38.StructWithRest(
+    Schema38.Struct({
+      $type: Schema38.Literal("sh.mschf.ratking.mailbox.subscribe#notice"),
+      seq: Schema38.Int.check(
+        Schema38.isGreaterThanOrEqualTo(0),
+        Schema38.isLessThanOrEqualTo(9007199254740991)
       )
     }),
-    [Schema37.Record(Schema37.String, Data)]
+    [Schema38.Record(Schema38.String, Data)]
   ),
   TaggedMap.check(
-    Schema37.makeFilter(
+    Schema38.makeFilter(
       (value) => !["sh.mschf.ratking.mailbox.subscribe#notice"].includes(value.$type),
       { expected: "unknown union tag only" }
     )
   )
 ]);
-var ParamsFromQuery6 = Schema37.StructWithRest(
-  Schema37.Struct({
-    generation: Schema37.FiniteFromString,
-    leaseId: Schema37.String,
-    recipientDid: Schema37.String
+var ParamsFromQuery6 = Schema38.StructWithRest(
+  Schema38.Struct({
+    generation: Schema38.FiniteFromString,
+    leaseId: Schema38.String,
+    recipientDid: Schema38.String
   }),
-  [Schema37.Record(Schema37.String, Data)]
-).pipe(Schema37.decodeTo(Params16));
+  [Schema38.Record(Schema38.String, Data)]
+).pipe(Schema38.decodeTo(Params16));
 var encodeParams11 = Effect18.fn("lexicon.encodeParams")(
   function* encodeParams12(params) {
     return entries(
-      yield* Schema37.decodeUnknownEffect(Params2)(
-        yield* Schema37.encodeEffect(ParamsFromQuery6)(params)
+      yield* Schema38.decodeUnknownEffect(Params2)(
+        yield* Schema38.encodeEffect(ParamsFromQuery6)(params)
       )
     );
   }
 );
 var decodeParams11 = Effect18.fn("lexicon.decodeParams")(
   function* decodeParams12(entries2) {
-    return yield* Schema37.decodeUnknownEffect(ParamsFromQuery6)(
+    return yield* Schema38.decodeUnknownEffect(ParamsFromQuery6)(
       parameters(entries2)
     );
   }
@@ -3062,14 +3196,14 @@ var Method15 = {
   params: Params16,
   path: "/xrpc/sh.mschf.ratking.mailbox.subscribe"
 };
-var Notice = Schema37.StructWithRest(
-  Schema37.Struct({
-    seq: Schema37.Int.check(
-      Schema37.isGreaterThanOrEqualTo(0),
-      Schema37.isLessThanOrEqualTo(9007199254740991)
+var Notice = Schema38.StructWithRest(
+  Schema38.Struct({
+    seq: Schema38.Int.check(
+      Schema38.isGreaterThanOrEqualTo(0),
+      Schema38.isLessThanOrEqualTo(9007199254740991)
     )
   }),
-  [Schema37.Record(Schema37.String, Data)]
+  [Schema38.Record(Schema38.String, Data)]
 );
 
 // packages/mailbox-client/src/watch.ts
@@ -3081,7 +3215,7 @@ import {
   Option as Option2,
   Predicate,
   Schedule,
-  Schema as Schema38,
+  Schema as Schema39,
   Stream
 } from "effect";
 import { Socket } from "effect/socket";
@@ -3116,8 +3250,8 @@ var watch = (config, poll, afterSeq, fence) => Stream.suspend(() => {
           reason: "Watch fence DID differs from recipient"
         });
       }
-      const params = yield* Schema38.decodeUnknownEffect(
-        Schema38.toType(Params16)
+      const params = yield* Schema39.decodeUnknownEffect(
+        Schema39.toType(Params16)
       )({
         generation: fence.generation,
         leaseId: fence.leaseId,
@@ -3164,7 +3298,7 @@ var watch = (config, poll, afterSeq, fence) => Stream.suspend(() => {
           Effect19.mapError(clientError)
         )
       ).pipe(Effect19.mapError(clientError));
-      const auth = yield* Schema38.encodeEffect(Auth)({
+      const auth = yield* Schema39.encodeEffect(Auth)({
         $type: "sh.mschf.ratking.mailbox.subscribe#auth",
         token
       }).pipe(Effect19.mapError(clientError));
@@ -3172,10 +3306,10 @@ var watch = (config, poll, afterSeq, fence) => Stream.suspend(() => {
       const receiveNotice = Effect19.gen(function* receiveNotice2() {
         const frames = yield* reader.pull.pipe(Effect19.mapError(socketError));
         for (const frame of frames) {
-          yield* Schema38.decodeUnknownEffect(
-            Schema38.fromJsonString(Notice)
+          yield* Schema39.decodeUnknownEffect(
+            Schema39.fromJsonString(Notice)
           )(
-            Schema38.is(Schema38.String)(frame) ? frame : new TextDecoder().decode(frame)
+            Schema39.is(Schema39.String)(frame) ? frame : new TextDecoder().decode(frame)
           ).pipe(Effect19.mapError(clientError));
         }
       });
@@ -3230,7 +3364,7 @@ var layer = (config, resolverLayer = staticResolver(config.documents)) => Layer4
     const resolver = yield* DidResolver;
     const { identity } = config;
     const list = Effect20.fn("RatKingMailbox.list")(
-      (params) => Schema39.decodeUnknownEffect(Schema39.toType(Params9))({
+      (params) => Schema40.decodeUnknownEffect(Schema40.toType(Params9))({
         ...params,
         recipientDid: identity.did
       }).pipe(Effect20.flatMap(client.list), Effect20.mapError(clientError))
@@ -3254,20 +3388,20 @@ var layer = (config, resolverLayer = staticResolver(config.documents)) => Layer4
     return RatKingMailbox.of({
       ...attentionClient(client, identity),
       ack: Effect20.fn("RatKingMailbox.ack")(
-        (input) => Schema39.decodeUnknownEffect(Schema39.toType(Input6))({
+        (input) => Schema40.decodeUnknownEffect(Schema40.toType(Input6))({
           ...input,
           recipientDid: identity.did
         }).pipe(Effect20.flatMap(client.ack), Effect20.mapError(clientError))
       ),
       deliver: Effect20.fn("RatKingMailbox.deliver")(
-        (input) => Schema39.decodeUnknownEffect(Schema39.toType(Input7))({
+        (input) => Schema40.decodeUnknownEffect(Schema40.toType(Input7))({
           ...input,
           recipientDid: identity.did
         }).pipe(Effect20.flatMap(client.deliver), Effect20.mapError(clientError))
       ),
       lease: {
         acquire: Effect20.fn("RatKingMailbox.lease.acquire")(
-          (input) => Schema39.decodeUnknownEffect(Schema39.toType(Input10))(
+          (input) => Schema40.decodeUnknownEffect(Schema40.toType(Input10))(
             input
           ).pipe(
             Effect20.flatMap(client.acquireLease),
@@ -3276,7 +3410,7 @@ var layer = (config, resolverLayer = staticResolver(config.documents)) => Layer4
           )
         ),
         release: Effect20.fn("RatKingMailbox.lease.release")(
-          (input) => Schema39.decodeUnknownEffect(Schema39.toType(Input11))(
+          (input) => Schema40.decodeUnknownEffect(Schema40.toType(Input11))(
             input
           ).pipe(
             Effect20.flatMap(client.releaseLease),
@@ -3284,14 +3418,14 @@ var layer = (config, resolverLayer = staticResolver(config.documents)) => Layer4
           )
         ),
         renew: Effect20.fn("RatKingMailbox.lease.renew")(
-          (input) => Schema39.decodeUnknownEffect(Schema39.toType(Input12))(input).pipe(
+          (input) => Schema40.decodeUnknownEffect(Schema40.toType(Input12))(input).pipe(
             Effect20.flatMap(client.renewLease),
             Effect20.map((output) => output.lease),
             Effect20.mapError(clientError)
           )
         ),
         resolve: Effect20.fn("RatKingMailbox.lease.resolve")(
-          (did) => Schema39.decodeUnknownEffect(Schema39.toType(Params14))({
+          (did) => Schema40.decodeUnknownEffect(Schema40.toType(Params14))({
             did
           }).pipe(
             Effect20.flatMap(client.resolveLease),
@@ -3302,8 +3436,8 @@ var layer = (config, resolverLayer = staticResolver(config.documents)) => Layer4
       },
       list,
       open: Effect20.fn("RatKingMailbox.open")(function* open3(input, receipt) {
-        const envelope = yield* Schema39.decodeUnknownEffect(
-          Schema39.toType(EncryptedEnvelope)
+        const envelope = yield* Schema40.decodeUnknownEffect(
+          Schema40.toType(EncryptedEnvelope)
         )(input);
         const resolveSigningKey = (did, keyId) => resolver.resolve(did, keyId, "authentication").pipe(
           Effect20.mapError(
@@ -3326,15 +3460,15 @@ var layer = (config, resolverLayer = staticResolver(config.documents)) => Layer4
             ignoreBOM: false
           }).decode(payload.body)
         });
-        const carbonCopy = yield* Schema39.decodeUnknownEffect(
-          Schema39.fromJsonString(
-            Schema39.Struct({
-              $type: Schema39.Literal("sh.mschf.ratking.mailbox.cc"),
-              body: Schema39.String,
-              primary: Schema39.Struct({
-                messageId: Schema39.String,
-                recipientDid: Schema39.String,
-                senderDid: Schema39.String
+        const carbonCopy = yield* Schema40.decodeUnknownEffect(
+          Schema40.fromJsonString(
+            Schema40.Struct({
+              $type: Schema40.Literal("sh.mschf.ratking.mailbox.cc"),
+              body: Schema40.String,
+              primary: Schema40.Struct({
+                messageId: Schema40.String,
+                recipientDid: Schema40.String,
+                senderDid: Schema40.String
               })
             })
           )
@@ -3373,7 +3507,7 @@ var layer = (config, resolverLayer = staticResolver(config.documents)) => Layer4
       }, Effect20.mapError(clientError)),
       poll,
       putDidDocument: Effect20.fn("RatKingMailbox.putDidDocument")(
-        (document) => Schema39.decodeUnknownEffect(Schema39.toType(Input))({
+        (document) => Schema40.decodeUnknownEffect(Schema40.toType(Input))({
           document
         }).pipe(
           Effect20.flatMap(client.putDidDocument),
@@ -3424,8 +3558,8 @@ var layer = (config, resolverLayer = staticResolver(config.documents)) => Layer4
         if (opts?.urgent !== void 0) {
           raw.urgent = opts.urgent;
         }
-        const payload = yield* Schema39.decodeUnknownEffect(
-          Schema39.toType(SigningPayload)
+        const payload = yield* Schema40.decodeUnknownEffect(
+          Schema40.toType(SigningPayload)
         )(raw);
         const envelope = yield* seal({
           payload,
@@ -3447,7 +3581,7 @@ var layer = (config, resolverLayer = staticResolver(config.documents)) => Layer4
           input.leaseId = opts.fence.leaseId;
         }
         return yield* client.send(
-          yield* Schema39.decodeUnknownEffect(Schema39.toType(Input9))(input)
+          yield* Schema40.decodeUnknownEffect(Schema40.toType(Input9))(input)
         );
       }, Effect20.mapError(clientError)),
       watch: (afterSeq, fence) => watch(config, poll, afterSeq, fence)
@@ -3469,36 +3603,36 @@ var layer = (config, resolverLayer = staticResolver(config.documents)) => Layer4
 );
 
 // packages/lexicon/src/mailbox.getPeerDocument.ts
-import { Effect as Effect21, Schema as Schema40 } from "effect";
-var Params17 = Schema40.StructWithRest(
-  Schema40.Struct({
+import { Effect as Effect21, Schema as Schema41 } from "effect";
+var Params17 = Schema41.StructWithRest(
+  Schema41.Struct({
     did: lexString({ format: "did", type: "string" }).pipe(
-      Schema40.brand("Lexicon:did")
+      Schema41.brand("Lexicon:did")
     )
   }),
-  [Schema40.Record(Schema40.String, Data)]
+  [Schema41.Record(Schema41.String, Data)]
 );
-var Input15 = Schema40.Undefined;
-var Output15 = Schema40.StructWithRest(
-  Schema40.Struct({ document: DidDocument }),
-  [Schema40.Record(Schema40.String, Data)]
+var Input15 = Schema41.Undefined;
+var Output15 = Schema41.StructWithRest(
+  Schema41.Struct({ document: DidDocument }),
+  [Schema41.Record(Schema41.String, Data)]
 );
-var ParamsFromQuery7 = Schema40.StructWithRest(
-  Schema40.Struct({ did: Schema40.String }),
-  [Schema40.Record(Schema40.String, Data)]
-).pipe(Schema40.decodeTo(Params17));
+var ParamsFromQuery7 = Schema41.StructWithRest(
+  Schema41.Struct({ did: Schema41.String }),
+  [Schema41.Record(Schema41.String, Data)]
+).pipe(Schema41.decodeTo(Params17));
 var encodeParams13 = Effect21.fn("lexicon.encodeParams")(
   function* encodeParams14(params) {
     return entries(
-      yield* Schema40.decodeUnknownEffect(Params2)(
-        yield* Schema40.encodeEffect(ParamsFromQuery7)(params)
+      yield* Schema41.decodeUnknownEffect(Params2)(
+        yield* Schema41.encodeEffect(ParamsFromQuery7)(params)
       )
     );
   }
 );
 var decodeParams13 = Effect21.fn("lexicon.decodeParams")(
   function* decodeParams14(entries2) {
-    return yield* Schema40.decodeUnknownEffect(ParamsFromQuery7)(
+    return yield* Schema41.decodeUnknownEffect(ParamsFromQuery7)(
       parameters(entries2)
     );
   }
@@ -3527,24 +3661,24 @@ import {
   Match as Match3,
   Predicate as Predicate2,
   Result as Result3,
-  Schema as Schema49
+  Schema as Schema50
 } from "effect";
 
 // packages/lexicon/src/attention.receipt.ts
-import { Schema as Schema41 } from "effect";
-var Main4 = Schema41.StructWithRest(
-  Schema41.Struct({
-    $type: Schema41.Literal("sh.mschf.ratking.attention.receipt"),
+import { Schema as Schema42 } from "effect";
+var Main5 = Schema42.StructWithRest(
+  Schema42.Struct({
+    $type: Schema42.Literal("sh.mschf.ratking.attention.receipt"),
     operation: lexString({
       enum: ["putPreferences", "putStatus"],
       type: "string"
-    }).pipe(Schema41.decodeTo(Schema41.Literals(["putPreferences", "putStatus"]))),
-    seq: Schema41.Int.check(
-      Schema41.isGreaterThanOrEqualTo(1),
-      Schema41.isLessThanOrEqualTo(9007199254740991)
+    }).pipe(Schema42.decodeTo(Schema42.Literals(["putPreferences", "putStatus"]))),
+    seq: Schema42.Int.check(
+      Schema42.isGreaterThanOrEqualTo(1),
+      Schema42.isLessThanOrEqualTo(9007199254740991)
     )
   }),
-  [Schema41.Record(Schema41.String, Data)]
+  [Schema42.Record(Schema42.String, Data)]
 );
 
 // packages/mailbox-client/src/consume.ts
@@ -3556,7 +3690,7 @@ import {
   Match as Match2,
   Option as Option4,
   Schedule as Schedule2,
-  Schema as Schema42,
+  Schema as Schema43,
   Stream as Stream2
 } from "effect";
 import { createMachine, initialTransition, transition } from "xstate";
@@ -3825,10 +3959,10 @@ var consume = (mailbox, did, handler, options) => Effect22.scoped(
         (batch) => Effect22.forEach(
           batch.events,
           (event) => Effect22.gen(function* accept() {
-            if (Schema42.is(Main4)(event) && options.onAttentionReceipt !== void 0) {
+            if (Schema43.is(Main5)(event) && options.onAttentionReceipt !== void 0) {
               yield* options.onAttentionReceipt(event);
             }
-            if (!Schema42.is(MessageEvent)(event)) {
+            if (!Schema43.is(MessageEvent)(event)) {
               return;
             }
             const key = JSON.stringify([
@@ -3902,7 +4036,7 @@ var consume = (mailbox, did, handler, options) => Effect22.scoped(
         )
       ),
       Effect22.catch((error) => {
-        if (Schema42.is(MailboxClientError)(error) && error.error === "LeaseMismatch") {
+        if (Schema43.is(MailboxClientError)(error) && error.error === "LeaseMismatch") {
           return lost(error);
         }
         return Effect22.fail(error);
@@ -3913,79 +4047,79 @@ var consume = (mailbox, did, handler, options) => Effect22.scoped(
 );
 
 // packages/lexicon/src/mailbox.nameHealth.ts
-import { Effect as Effect23, Schema as Schema43 } from "effect";
-var Lease = Schema43.StructWithRest(
-  Schema43.Struct({
+import { Effect as Effect23, Schema as Schema44 } from "effect";
+var Lease = Schema44.StructWithRest(
+  Schema44.Struct({
     expiresAt: lexString({ format: "datetime", type: "string" }).pipe(
-      Schema43.brand("Lexicon:datetime")
+      Schema44.brand("Lexicon:datetime")
     ),
-    generation: Schema43.Int.check(
-      Schema43.isGreaterThanOrEqualTo(1),
-      Schema43.isLessThanOrEqualTo(9007199254740991)
+    generation: Schema44.Int.check(
+      Schema44.isGreaterThanOrEqualTo(1),
+      Schema44.isLessThanOrEqualTo(9007199254740991)
     ),
     holder: lexString({ type: "string" }),
-    pane: Schema43.optionalKey(lexString({ type: "string" }))
+    pane: Schema44.optionalKey(lexString({ type: "string" }))
   }),
-  [Schema43.Record(Schema43.String, Data)]
+  [Schema44.Record(Schema44.String, Data)]
 );
-var Wake = Schema43.StructWithRest(
-  Schema43.Struct({
+var Wake = Schema44.StructWithRest(
+  Schema44.Struct({
     id: lexString({ format: "tid", type: "string" }).pipe(
-      Schema43.brand("Lexicon:tid")
+      Schema44.brand("Lexicon:tid")
     ),
     recordedAt: lexString({ format: "datetime", type: "string" }).pipe(
-      Schema43.brand("Lexicon:datetime")
+      Schema44.brand("Lexicon:datetime")
     ),
     sender: lexString({ format: "did", type: "string" }).pipe(
-      Schema43.brand("Lexicon:did")
+      Schema44.brand("Lexicon:did")
     ),
-    woke: Schema43.Boolean
+    woke: Schema44.Boolean
   }),
-  [Schema43.Record(Schema43.String, Data)]
+  [Schema44.Record(Schema44.String, Data)]
 );
-var Params18 = Schema43.StructWithRest(
-  Schema43.Struct({
+var Params18 = Schema44.StructWithRest(
+  Schema44.Struct({
     name: lexString({ maxLength: 128, type: "string" }),
     recipientDid: lexString({ format: "did", type: "string" }).pipe(
-      Schema43.brand("Lexicon:did")
+      Schema44.brand("Lexicon:did")
     )
   }),
-  [Schema43.Record(Schema43.String, Data)]
+  [Schema44.Record(Schema44.String, Data)]
 );
-var Input16 = Schema43.Undefined;
-var Output16 = Schema43.StructWithRest(
-  Schema43.Struct({
-    complete: Schema43.Boolean,
-    lastAck: Schema43.optionalKey(
+var Input16 = Schema44.Undefined;
+var Output16 = Schema44.StructWithRest(
+  Schema44.Struct({
+    complete: Schema44.Boolean,
+    lastAck: Schema44.optionalKey(
       lexString({ format: "datetime", type: "string" }).pipe(
-        Schema43.brand("Lexicon:datetime")
+        Schema44.brand("Lexicon:datetime")
       )
     ),
-    lease: Schema43.optionalKey(Lease),
-    oldestWake: Schema43.optionalKey(Wake),
-    quietUnacked: Schema43.Int.check(
-      Schema43.isGreaterThanOrEqualTo(0),
-      Schema43.isLessThanOrEqualTo(9007199254740991)
+    lease: Schema44.optionalKey(Lease),
+    oldestWake: Schema44.optionalKey(Wake),
+    quietUnacked: Schema44.Int.check(
+      Schema44.isGreaterThanOrEqualTo(0),
+      Schema44.isLessThanOrEqualTo(9007199254740991)
     )
   }),
-  [Schema43.Record(Schema43.String, Data)]
+  [Schema44.Record(Schema44.String, Data)]
 );
-var ParamsFromQuery8 = Schema43.StructWithRest(
-  Schema43.Struct({ name: Schema43.String, recipientDid: Schema43.String }),
-  [Schema43.Record(Schema43.String, Data)]
-).pipe(Schema43.decodeTo(Params18));
+var ParamsFromQuery8 = Schema44.StructWithRest(
+  Schema44.Struct({ name: Schema44.String, recipientDid: Schema44.String }),
+  [Schema44.Record(Schema44.String, Data)]
+).pipe(Schema44.decodeTo(Params18));
 var encodeParams15 = Effect23.fn("lexicon.encodeParams")(
   function* encodeParams16(params) {
     return entries(
-      yield* Schema43.decodeUnknownEffect(Params2)(
-        yield* Schema43.encodeEffect(ParamsFromQuery8)(params)
+      yield* Schema44.decodeUnknownEffect(Params2)(
+        yield* Schema44.encodeEffect(ParamsFromQuery8)(params)
       )
     );
   }
 );
 var decodeParams15 = Effect23.fn("lexicon.decodeParams")(
   function* decodeParams16(entries2) {
-    return yield* Schema43.decodeUnknownEffect(ParamsFromQuery8)(
+    return yield* Schema44.decodeUnknownEffect(ParamsFromQuery8)(
       parameters(entries2)
     );
   }
@@ -4005,46 +4139,46 @@ var Method17 = {
 };
 
 // packages/mailbox-client/src/health.ts
-import { Effect as Effect24, Schema as Schema44 } from "effect";
-var Wake2 = Schema44.Struct({
-  at: Schema44.Finite,
-  id: Schema44.String,
-  sender: Schema44.String
+import { Effect as Effect24, Schema as Schema45 } from "effect";
+var Wake2 = Schema45.Struct({
+  at: Schema45.Finite,
+  id: Schema45.String,
+  sender: Schema45.String
 });
-var MailboxHealth = Schema44.Struct({
-  complete: Schema44.Boolean,
-  lastAck: Schema44.NullOr(Schema44.Finite),
-  lease: Schema44.NullOr(
-    Schema44.Struct({
-      expiresAt: Schema44.Finite,
-      generation: Schema44.Int,
-      holder: Schema44.String,
-      pane: Schema44.NullOr(Schema44.String)
+var MailboxHealth = Schema45.Struct({
+  complete: Schema45.Boolean,
+  lastAck: Schema45.NullOr(Schema45.Finite),
+  lease: Schema45.NullOr(
+    Schema45.Struct({
+      expiresAt: Schema45.Finite,
+      generation: Schema45.Int,
+      holder: Schema45.String,
+      pane: Schema45.NullOr(Schema45.String)
     })
   ),
-  oldestWake: Schema44.NullOr(Wake2),
-  quietUnacked: Schema44.Int.check(Schema44.isGreaterThanOrEqualTo(0))
+  oldestWake: Schema45.NullOr(Wake2),
+  quietUnacked: Schema45.Int.check(Schema45.isGreaterThanOrEqualTo(0))
 });
 var readMailboxHealth = Effect24.fn("Mailbox.readHealth")(
   function* readMailboxHealth2(transport, did, name) {
-    const params = yield* Schema44.decodeUnknownEffect(
-      Schema44.toType(Params18)
+    const params = yield* Schema45.decodeUnknownEffect(
+      Schema45.toType(Params18)
     )({ name, recipientDid: did });
     const response = yield* transport.request({
       input: void 0,
       method: "GET",
       nsid: Method17.nsid,
-      params: yield* Schema44.encodeEffect(Params18)(params)
+      params: yield* Schema45.encodeEffect(Params18)(params)
     });
     if (response.status !== 200 || response.kind !== "json") {
       return yield* new MailboxClientError({
         reason: "Health projection unavailable (operator credentials required)"
       });
     }
-    const value = yield* Schema44.decodeUnknownEffect(Output16)(
+    const value = yield* Schema45.decodeUnknownEffect(Output16)(
       response.body
     );
-    return yield* Schema44.decodeEffect(MailboxHealth)({
+    return yield* Schema45.decodeEffect(MailboxHealth)({
       complete: value.complete,
       lastAck: value.lastAck === void 0 ? null : Date.parse(value.lastAck),
       lease: value.lease === void 0 ? null : {
@@ -4065,48 +4199,58 @@ var readMailboxHealth = Effect24.fn("Mailbox.readHealth")(
 );
 
 // packages/lexicon/src/mailbox.listTraffic.ts
-import { Effect as Effect25, Schema as Schema45 } from "effect";
-var CriticalCount = Schema45.StructWithRest(
-  Schema45.Struct({
-    count: Schema45.Int.check(
-      Schema45.isGreaterThanOrEqualTo(1),
-      Schema45.isLessThanOrEqualTo(9007199254740991)
+import { Effect as Effect25, Schema as Schema46 } from "effect";
+var CriticalCount = Schema46.StructWithRest(
+  Schema46.Struct({
+    count: Schema46.Int.check(
+      Schema46.isGreaterThanOrEqualTo(1),
+      Schema46.isLessThanOrEqualTo(9007199254740991)
     ),
     day: lexString({ type: "string" }),
     senderDid: lexString({ format: "did", type: "string" }).pipe(
-      Schema45.brand("Lexicon:did")
+      Schema46.brand("Lexicon:did")
     )
   }),
-  [Schema45.Record(Schema45.String, Data)]
+  [Schema46.Record(Schema46.String, Data)]
 );
-var Entry = Schema45.StructWithRest(
-  Schema45.Struct({
-    body: Schema45.optionalKey(
+var Via2 = Schema46.StructWithRest(
+  Schema46.Struct({
+    desk: lexString({ maxLength: 256, minLength: 1, type: "string" }),
+    deskDid: lexString({ format: "did", type: "string" }).pipe(
+      Schema46.brand("Lexicon:did")
+    ),
+    run: PassRun
+  }),
+  [Schema46.Record(Schema46.String, Data)]
+);
+var Entry = Schema46.StructWithRest(
+  Schema46.Struct({
+    body: Schema46.optionalKey(
       lexString({
         description: "UTF-8 body of a signed plaintext message, verified at admission. Absent for encrypted messages.",
         type: "string"
       })
     ),
-    ciphertextSize: Schema45.Int.check(
-      Schema45.isGreaterThanOrEqualTo(0),
-      Schema45.isLessThanOrEqualTo(9007199254740991)
+    ciphertextSize: Schema46.Int.check(
+      Schema46.isGreaterThanOrEqualTo(0),
+      Schema46.isLessThanOrEqualTo(9007199254740991)
     ),
     messageId: lexString({ format: "tid", type: "string" }).pipe(
-      Schema45.brand("Lexicon:tid")
+      Schema46.brand("Lexicon:tid")
     ),
     recipientDid: lexString({ format: "did", type: "string" }).pipe(
-      Schema45.brand("Lexicon:did")
+      Schema46.brand("Lexicon:did")
     ),
-    recipientSeq: Schema45.Int.check(
-      Schema45.isGreaterThanOrEqualTo(1),
-      Schema45.isLessThanOrEqualTo(9007199254740991)
+    recipientSeq: Schema46.Int.check(
+      Schema46.isGreaterThanOrEqualTo(1),
+      Schema46.isLessThanOrEqualTo(9007199254740991)
     ),
     senderDid: lexString({ format: "did", type: "string" }).pipe(
-      Schema45.brand("Lexicon:did")
+      Schema46.brand("Lexicon:did")
     ),
-    seq: Schema45.Int.check(
-      Schema45.isGreaterThanOrEqualTo(1),
-      Schema45.isLessThanOrEqualTo(9007199254740991)
+    seq: Schema46.Int.check(
+      Schema46.isGreaterThanOrEqualTo(1),
+      Schema46.isLessThanOrEqualTo(9007199254740991)
     ),
     state: lexString({
       knownValues: [
@@ -4120,59 +4264,60 @@ var Entry = Schema45.StructWithRest(
       type: "string"
     }),
     time: lexString({ format: "datetime", type: "string" }).pipe(
-      Schema45.brand("Lexicon:datetime")
-    )
+      Schema46.brand("Lexicon:datetime")
+    ),
+    via: Schema46.optionalKey(Via2)
   }),
-  [Schema45.Record(Schema45.String, Data)]
+  [Schema46.Record(Schema46.String, Data)]
 );
-var Params19 = Schema45.StructWithRest(
-  Schema45.Struct({
-    cursor: Schema45.optionalKey(lexString({ type: "string" })),
-    limit: Schema45.optionalKey(
-      Schema45.Int.check(
-        Schema45.isGreaterThanOrEqualTo(1),
-        Schema45.isLessThanOrEqualTo(100)
+var Params19 = Schema46.StructWithRest(
+  Schema46.Struct({
+    cursor: Schema46.optionalKey(lexString({ type: "string" })),
+    limit: Schema46.optionalKey(
+      Schema46.Int.check(
+        Schema46.isGreaterThanOrEqualTo(1),
+        Schema46.isLessThanOrEqualTo(100)
       )
     )
   }),
-  [Schema45.Record(Schema45.String, Data)]
+  [Schema46.Record(Schema46.String, Data)]
 );
-var Input17 = Schema45.Undefined;
-var Output17 = Schema45.StructWithRest(
-  Schema45.Struct({
-    criticalCounts: Schema45.optionalKey(
-      Schema45.Array(CriticalCount).check(
-        Schema45.isMinLength(0),
-        Schema45.isMaxLength(100)
+var Input17 = Schema46.Undefined;
+var Output17 = Schema46.StructWithRest(
+  Schema46.Struct({
+    criticalCounts: Schema46.optionalKey(
+      Schema46.Array(CriticalCount).check(
+        Schema46.isMinLength(0),
+        Schema46.isMaxLength(100)
       )
     ),
     cursor: lexString({ type: "string" }),
-    events: Schema45.Array(Entry).check(
-      Schema45.isMinLength(0),
-      Schema45.isMaxLength(100)
+    events: Schema46.Array(Entry).check(
+      Schema46.isMinLength(0),
+      Schema46.isMaxLength(100)
     )
   }),
-  [Schema45.Record(Schema45.String, Data)]
+  [Schema46.Record(Schema46.String, Data)]
 );
-var ParamsFromQuery9 = Schema45.StructWithRest(
-  Schema45.Struct({
-    cursor: Schema45.optionalKey(Schema45.String),
-    limit: Schema45.optionalKey(Schema45.FiniteFromString)
+var ParamsFromQuery9 = Schema46.StructWithRest(
+  Schema46.Struct({
+    cursor: Schema46.optionalKey(Schema46.String),
+    limit: Schema46.optionalKey(Schema46.FiniteFromString)
   }),
-  [Schema45.Record(Schema45.String, Data)]
-).pipe(Schema45.decodeTo(Params19));
+  [Schema46.Record(Schema46.String, Data)]
+).pipe(Schema46.decodeTo(Params19));
 var encodeParams17 = Effect25.fn("lexicon.encodeParams")(
   function* encodeParams18(params) {
     return entries(
-      yield* Schema45.decodeUnknownEffect(Params2)(
-        yield* Schema45.encodeEffect(ParamsFromQuery9)(params)
+      yield* Schema46.decodeUnknownEffect(Params2)(
+        yield* Schema46.encodeEffect(ParamsFromQuery9)(params)
       )
     );
   }
 );
 var decodeParams17 = Effect25.fn("lexicon.decodeParams")(
   function* decodeParams18(entries2) {
-    return yield* Schema45.decodeUnknownEffect(ParamsFromQuery9)(
+    return yield* Schema46.decodeUnknownEffect(ParamsFromQuery9)(
       parameters(entries2)
     );
   }
@@ -4192,61 +4337,61 @@ var Method18 = {
 };
 
 // packages/lexicon/turns.ts
-import { Array as Arr, Schema as Schema47 } from "effect";
+import { Array as Arr, Schema as Schema48 } from "effect";
 
 // packages/lexicon/src/agentgraph.turn.ts
-import { Schema as Schema46 } from "effect";
-var Main5 = Schema46.StructWithRest(
-  Schema46.Struct({
-    $type: Schema46.Literal("sh.mschf.agentgraph.turn"),
+import { Schema as Schema47 } from "effect";
+var Main6 = Schema47.StructWithRest(
+  Schema47.Struct({
+    $type: Schema47.Literal("sh.mschf.agentgraph.turn"),
     agent: lexString({ type: "string" }).check(
-      Schema46.isPattern(
+      Schema47.isPattern(
         /^(?:[a-z0-9]+(?:-[a-z0-9]+)*\/)?[a-z][a-z0-9_-]{0,31}$/u
       )
     ),
     at: lexString({ format: "datetime", type: "string" }).pipe(
-      Schema46.brand("Lexicon:datetime")
+      Schema47.brand("Lexicon:datetime")
     ),
-    generation: Schema46.optionalKey(
-      Schema46.Int.check(
-        Schema46.isGreaterThanOrEqualTo(0),
-        Schema46.isLessThanOrEqualTo(9007199254740991)
+    generation: Schema47.optionalKey(
+      Schema47.Int.check(
+        Schema47.isGreaterThanOrEqualTo(0),
+        Schema47.isLessThanOrEqualTo(9007199254740991)
       )
     ),
-    reason: Schema46.optionalKey(
-      lexString({ type: "string" }).check(Schema46.isMaxLength(280))
+    reason: Schema47.optionalKey(
+      lexString({ type: "string" }).check(Schema47.isMaxLength(280))
     ),
     session: lexString({ type: "string" }).check(
-      Schema46.isMinLength(1),
-      Schema46.isMaxLength(128)
+      Schema47.isMinLength(1),
+      Schema47.isMaxLength(128)
     ),
     state: lexString({
       enum: ["working", "done", "blocked", "idle", "crashed"],
       type: "string"
     }).pipe(
-      Schema46.decodeTo(
-        Schema46.Literals(["working", "done", "blocked", "idle", "crashed"])
+      Schema47.decodeTo(
+        Schema47.Literals(["working", "done", "blocked", "idle", "crashed"])
       )
     ),
-    stopReason: Schema46.optionalKey(
+    stopReason: Schema47.optionalKey(
       lexString({
         enum: ["stop", "aborted", "error", "length"],
         type: "string"
       }).pipe(
-        Schema46.decodeTo(Schema46.Literals(["stop", "aborted", "error", "length"]))
+        Schema47.decodeTo(Schema47.Literals(["stop", "aborted", "error", "length"]))
       )
     ),
     turnId: lexString({ type: "string" }).check(
-      Schema46.isPattern(/^.+:[0-9]+$/u),
-      Schema46.isMaxLength(128)
+      Schema47.isPattern(/^.+:[0-9]+$/u),
+      Schema47.isMaxLength(128)
     ),
     version: lexString({ enum: ["0.1"], type: "string" }).pipe(
-      Schema46.decodeTo(Schema46.Literals(["0.1"]))
+      Schema47.decodeTo(Schema47.Literals(["0.1"]))
     )
   }),
-  [Schema46.Record(Schema46.String, Data)]
+  [Schema47.Record(Schema47.String, Data)]
 ).check(
-  Schema46.makeFilter(
+  Schema47.makeFilter(
     (value) => Object.keys(value).every(
       (key) => [
         "$type",
@@ -4266,15 +4411,15 @@ var Main5 = Schema46.StructWithRest(
     }
   )
 ).check(
-  Schema46.makeFilter(
+  Schema47.makeFilter(
     (value) => !("generation" in value) || value.state === "crashed",
     { expected: "generation: allowed only when state is crashed" }
   )
 );
 
 // packages/lexicon/turns.ts
-var Turn = Main5.check(
-  Schema47.makeFilter(
+var Turn = Main6.check(
+  Schema48.makeFilter(
     (value) => value.turnId.startsWith(`${value.session}:`) && Number.isSafeInteger(
       Number(value.turnId.slice(value.session.length + 1))
     ) && (value.stopReason === void 0 || value.state === "done") && (value.reason === void 0 || value.state === "blocked" || value.state === "crashed"),
@@ -4285,7 +4430,7 @@ var Turn = Main5.check(
 );
 
 // packages/mailbox-client/src/turn-health.ts
-import { Effect as Effect26, Option as Option5, Schema as Schema48 } from "effect";
+import { Effect as Effect26, Option as Option5, Schema as Schema49 } from "effect";
 var readTurnHealth = Effect26.fn("Mailbox.readTurnHealth")(
   function* readTurnHealth2(transport, did, name, session) {
     let cursor = "0";
@@ -4302,7 +4447,7 @@ var readTurnHealth = Effect26.fn("Mailbox.readTurnHealth")(
           reason: "Turn record observations unavailable"
         });
       }
-      const output = yield* Schema48.decodeUnknownEffect(Output17)(
+      const output = yield* Schema49.decodeUnknownEffect(Output17)(
         response.body
       );
       for (const event of output.events) {
@@ -4310,12 +4455,12 @@ var readTurnHealth = Effect26.fn("Mailbox.readTurnHealth")(
           continue;
         }
         const text = event.body ?? "";
-        const payload = Schema48.decodeOption(PayloadJson)(text);
+        const payload = Schema49.decodeOption(PayloadJson)(text);
         const body = Option5.match(payload, {
           onNone: () => text,
           onSome: (value) => value.body
         });
-        const record = Schema48.decodeOption(Schema48.fromJsonString(Turn))(body);
+        const record = Schema49.decodeOption(Schema49.fromJsonString(Turn))(body);
         if (Option5.isSome(record) && record.value.agent === name && record.value.session === session && (last === null || record.value.at > last.at)) {
           last = {
             at: record.value.at,
@@ -4341,7 +4486,7 @@ var ownBrand = /* @__PURE__ */ Symbol("OwnIdentity");
 var identities = /* @__PURE__ */ new WeakMap();
 var ownIdentity = Effect27.fn("Mailbox.ownIdentity")(
   function* ownIdentity2(value) {
-    const identity = yield* Schema49.decodeUnknownEffect(Identity)(value).pipe(
+    const identity = yield* Schema50.decodeUnknownEffect(Identity)(value).pipe(
       Effect27.mapError(clientError)
     );
     yield* importSigning(identity).pipe(Effect27.mapError(clientError));
@@ -4373,7 +4518,7 @@ var prepare = Effect27.fn("Mailbox.prepare")(function* prepare2(options) {
   }
   const peers = /* @__PURE__ */ new Map();
   for (const value of options.peers) {
-    const peer = yield* Schema49.decodeUnknownEffect(Document)(value).pipe(
+    const peer = yield* Schema50.decodeUnknownEffect(Document)(value).pipe(
       Effect27.mapError(clientError)
     );
     const existing = peers.get(peer.id);
@@ -4386,8 +4531,8 @@ var prepare = Effect27.fn("Mailbox.prepare")(function* prepare2(options) {
     (did) => Effect27.sync(() => peers.get(did))
   );
   const config = {
-    documents: yield* Schema49.decodeUnknownEffect(
-      Schema49.Array(Schema49.toType(DidDocument))
+    documents: yield* Schema50.decodeUnknownEffect(
+      Schema50.Array(Schema50.toType(DidDocument))
     )(options.peers).pipe(Effect27.mapError(clientError)),
     endpoint: options.endpoint,
     identity,
@@ -4445,8 +4590,8 @@ var prepare = Effect27.fn("Mailbox.prepare")(function* prepare2(options) {
       if (opts?.urgent !== void 0) {
         Object.assign(raw, { urgent: opts.urgent });
       }
-      const payload = yield* Schema49.decodeUnknownEffect(
-        Schema49.toType(SigningPayload)
+      const payload = yield* Schema50.decodeUnknownEffect(
+        Schema50.toType(SigningPayload)
       )(raw).pipe(Effect27.mapError(clientError));
       const envelope = yield* seal({
         payload,
@@ -4476,8 +4621,8 @@ var prepare = Effect27.fn("Mailbox.prepare")(function* prepare2(options) {
         leaseId: fence.leaseId
       });
     }
-    const decoded = yield* Schema49.decodeUnknownEffect(
-      Schema49.toType(Input9)
+    const decoded = yield* Schema50.decodeUnknownEffect(
+      Schema50.toType(Input9)
     )(raw).pipe(Effect27.mapError(clientError), Effect27.result);
     if (Result3.isFailure(decoded)) {
       return SendOutcomes.NotAttempted({ reason: decoded.failure.reason });
@@ -4535,8 +4680,8 @@ var prepare = Effect27.fn("Mailbox.prepare")(function* prepare2(options) {
             senderDid: identity.did
           }
         });
-        const replyTo = yield* Schema49.decodeUnknownEffect(
-          Schema49.toType(MessageRef)
+        const replyTo = yield* Schema50.decodeUnknownEffect(
+          Schema50.toType(MessageRef)
         )({ messageId: envelope.aad.messageId, senderDid: identity.did }).pipe(
           Effect27.mapError(clientError)
         );
@@ -4581,21 +4726,21 @@ var prepare = Effect27.fn("Mailbox.prepare")(function* prepare2(options) {
         if (opts?.replyTo !== void 0) {
           Object.assign(payload, { replyTo: opts.replyTo.messageId });
         }
-        return Schema49.encodeSync(PayloadJson)(payload);
+        return Schema50.encodeSync(PayloadJson)(payload);
       },
       opts
     ).pipe(Effect27.mapError(clientError));
     return { envelope, messageId: envelope.aad.messageId };
   });
   const refresh = Effect27.fn("Mailbox.refresh")(function* refresh2(did) {
-    const params = yield* Schema49.decodeUnknownEffect(Params17)({ did }).pipe(
+    const params = yield* Schema50.decodeUnknownEffect(Params17)({ did }).pipe(
       Effect27.mapError(clientError)
     );
     const response = yield* transport.request({
       input: void 0,
       method: "GET",
       nsid: Method16.nsid,
-      params: yield* Schema49.encodeEffect(Params17)(params).pipe(
+      params: yield* Schema50.encodeEffect(Params17)(params).pipe(
         Effect27.mapError(clientError)
       )
     }).pipe(Effect27.mapError(clientError));
@@ -4605,10 +4750,10 @@ var prepare = Effect27.fn("Mailbox.prepare")(function* prepare2(options) {
         status: response.status
       });
     }
-    const output = yield* Schema49.decodeUnknownEffect(Output15)(
+    const output = yield* Schema50.decodeUnknownEffect(Output15)(
       response.body
     ).pipe(Effect27.mapError(clientError));
-    const peer = yield* Schema49.decodeUnknownEffect(Document)(
+    const peer = yield* Schema50.decodeUnknownEffect(Document)(
       output.document
     ).pipe(Effect27.mapError(clientError));
     const existing = peers.get(did);

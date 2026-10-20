@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/mailbox-client.ts",
     "./passes": "./passes.ts",
+    "./pass-request": "./pass-request.ts",
     "./pass-webcrypto": "./adapters/pass-webcrypto.ts",
     "./turns": "./turns.ts",
     "./trust": "./trust.ts",

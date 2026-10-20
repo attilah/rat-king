@@ -189,7 +189,7 @@ it.effect.prop(
               for (const event of page.events) {
                 expect(Object.keys(event).toSorted()).toEqual(
                   Object.keys(TrafficEntry.fields)
-                    .filter((key) => key !== "body")
+                    .filter((key) => key !== "body" && key !== "via")
                     .toSorted()
                 );
                 received.push(event.recipientSeq);
@@ -292,7 +292,7 @@ it.effect.prop(
         expect(entry.messageId).toBe(envelope.aad.messageId);
         expect(Object.keys(entry).toSorted()).toEqual(
           Object.keys(TrafficEntry.fields)
-            .filter((key) => key !== "body")
+            .filter((key) => key !== "body" && key !== "via")
             .toSorted()
         );
       }

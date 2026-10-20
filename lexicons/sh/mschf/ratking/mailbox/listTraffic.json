@@ -67,6 +67,15 @@
         "count": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 }
       }
     },
+    "via": {
+      "type": "object",
+      "required": ["desk", "deskDid", "run"],
+      "properties": {
+        "desk": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "deskDid": { "type": "string", "format": "did" },
+        "run": { "type": "ref", "ref": "sh.mschf.ratking.defs#passRun" }
+      }
+    },
     "entry": {
       "type": "object",
       "required": [
@@ -114,6 +123,11 @@
         "body": {
           "type": "string",
           "description": "UTF-8 body of a signed plaintext message, verified at admission. Absent for encrypted messages."
+        },
+        "via": {
+          "type": "ref",
+          "ref": "#via",
+          "description": "Present when a worker sent under its desk's pass. Readers show the desk as the sender."
         },
         "state": {
           "type": "string",

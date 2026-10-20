@@ -108,6 +108,46 @@ export declare const MessageRef: Schema.StructWithRest<Schema.Struct<{
     readonly uri: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:at-uri">>;
 }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
 export type MessageRefValue = typeof MessageRef.Type;
+export declare const SignedPass: Schema.StructWithRest<Schema.Struct<{
+    readonly record: Schema.StructWithRest<Schema.Struct<{
+        readonly $type: Schema.Literal<"sh.ratking.pass">;
+        readonly desk: Schema.String;
+        readonly deskDid: Schema.brand<Schema.String, "Lexicon:did">;
+        readonly exp: Schema.Int;
+        readonly iat: Schema.Int;
+        readonly nonce: Schema.String;
+        readonly run: Schema.String;
+        readonly scope: Schema.$Array<Schema.String>;
+        readonly v: Schema.Literal<1>;
+        readonly worker: Schema.brand<Schema.String, "Lexicon:did">;
+    }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
+    readonly signature: Schema.String;
+}>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
+export type SignedPassValue = typeof SignedPass.Type;
+export declare const PassRun: Schema.String;
+export type PassRunValue = typeof PassRun.Type;
+export declare const Via: Schema.StructWithRest<Schema.Struct<{
+    readonly desk: Schema.String;
+    readonly deskDid: Schema.brand<Schema.String, "Lexicon:did">;
+    readonly pass: Schema.StructWithRest<Schema.Struct<{
+        readonly record: Schema.StructWithRest<Schema.Struct<{
+            readonly $type: Schema.Literal<"sh.ratking.pass">;
+            readonly desk: Schema.String;
+            readonly deskDid: Schema.brand<Schema.String, "Lexicon:did">;
+            readonly exp: Schema.Int;
+            readonly iat: Schema.Int;
+            readonly nonce: Schema.String;
+            readonly run: Schema.String;
+            readonly scope: Schema.$Array<Schema.String>;
+            readonly v: Schema.Literal<1>;
+            readonly worker: Schema.brand<Schema.String, "Lexicon:did">;
+        }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
+        readonly signature: Schema.String;
+    }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
+    readonly run: Schema.String;
+    readonly worker: Schema.brand<Schema.String, "Lexicon:did">;
+}>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
+export type ViaValue = typeof Via.Type;
 export declare const Receipt: Schema.StructWithRest<Schema.Struct<{
     readonly delegated: Schema.optionalKey<Schema.StructWithRest<Schema.Struct<{
         readonly to: Schema.String;
@@ -127,6 +167,27 @@ export declare const Receipt: Schema.StructWithRest<Schema.Struct<{
     readonly recordedAt: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:datetime">>;
     readonly seq: Schema.Int;
     readonly state: Schema.String;
+    readonly via: Schema.optionalKey<Schema.StructWithRest<Schema.Struct<{
+        readonly desk: Schema.String;
+        readonly deskDid: Schema.brand<Schema.String, "Lexicon:did">;
+        readonly pass: Schema.StructWithRest<Schema.Struct<{
+            readonly record: Schema.StructWithRest<Schema.Struct<{
+                readonly $type: Schema.Literal<"sh.ratking.pass">;
+                readonly desk: Schema.String;
+                readonly deskDid: Schema.brand<Schema.String, "Lexicon:did">;
+                readonly exp: Schema.Int;
+                readonly iat: Schema.Int;
+                readonly nonce: Schema.String;
+                readonly run: Schema.String;
+                readonly scope: Schema.$Array<Schema.String>;
+                readonly v: Schema.Literal<1>;
+                readonly worker: Schema.brand<Schema.String, "Lexicon:did">;
+            }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
+            readonly signature: Schema.String;
+        }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
+        readonly run: Schema.String;
+        readonly worker: Schema.brand<Schema.String, "Lexicon:did">;
+    }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>>;
     readonly wakeReason: Schema.optionalKey<Schema.String>;
     readonly woke: Schema.optionalKey<Schema.Boolean>;
 }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
@@ -176,12 +237,52 @@ export declare const MessageEvent: Schema.StructWithRest<Schema.Struct<{
         readonly recordedAt: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:datetime">>;
         readonly seq: Schema.Int;
         readonly state: Schema.String;
+        readonly via: Schema.optionalKey<Schema.StructWithRest<Schema.Struct<{
+            readonly desk: Schema.String;
+            readonly deskDid: Schema.brand<Schema.String, "Lexicon:did">;
+            readonly pass: Schema.StructWithRest<Schema.Struct<{
+                readonly record: Schema.StructWithRest<Schema.Struct<{
+                    readonly $type: Schema.Literal<"sh.ratking.pass">;
+                    readonly desk: Schema.String;
+                    readonly deskDid: Schema.brand<Schema.String, "Lexicon:did">;
+                    readonly exp: Schema.Int;
+                    readonly iat: Schema.Int;
+                    readonly nonce: Schema.String;
+                    readonly run: Schema.String;
+                    readonly scope: Schema.$Array<Schema.String>;
+                    readonly v: Schema.Literal<1>;
+                    readonly worker: Schema.brand<Schema.String, "Lexicon:did">;
+                }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
+                readonly signature: Schema.String;
+            }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
+            readonly run: Schema.String;
+            readonly worker: Schema.brand<Schema.String, "Lexicon:did">;
+        }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>>;
         readonly wakeReason: Schema.optionalKey<Schema.String>;
         readonly woke: Schema.optionalKey<Schema.Boolean>;
     }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
     readonly seq: Schema.Int;
 }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
 export type MessageEventValue = typeof MessageEvent.Type;
+export declare const PassIntent: Schema.StructWithRest<Schema.Struct<{
+    readonly wakeReason: Schema.compose<Schema.Literals<readonly ["to", "quiet"]>, Schema.String>;
+    readonly woke: Schema.Boolean;
+}>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
+export type PassIntentValue = typeof PassIntent.Type;
+export declare const PassRequest: Schema.StructWithRest<Schema.Struct<{
+    readonly aud: Schema.String;
+    readonly envelopeDigest: Schema.String;
+    readonly exp: Schema.Int;
+    readonly iat: Schema.Int;
+    readonly intent: Schema.StructWithRest<Schema.Struct<{
+        readonly wakeReason: Schema.compose<Schema.Literals<readonly ["to", "quiet"]>, Schema.String>;
+        readonly woke: Schema.Boolean;
+    }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
+    readonly jti: Schema.String;
+    readonly lxm: Schema.brand<Schema.String, "Lexicon:nsid">;
+    readonly passDigest: Schema.String;
+}>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
+export type PassRequestValue = typeof PassRequest.Type;
 export declare const ReceiptEvent: Schema.StructWithRest<Schema.Struct<{
     readonly receipt: Schema.StructWithRest<Schema.Struct<{
         readonly delegated: Schema.optionalKey<Schema.StructWithRest<Schema.Struct<{
@@ -202,6 +303,27 @@ export declare const ReceiptEvent: Schema.StructWithRest<Schema.Struct<{
         readonly recordedAt: Schema.optionalKey<Schema.brand<Schema.String, "Lexicon:datetime">>;
         readonly seq: Schema.Int;
         readonly state: Schema.String;
+        readonly via: Schema.optionalKey<Schema.StructWithRest<Schema.Struct<{
+            readonly desk: Schema.String;
+            readonly deskDid: Schema.brand<Schema.String, "Lexicon:did">;
+            readonly pass: Schema.StructWithRest<Schema.Struct<{
+                readonly record: Schema.StructWithRest<Schema.Struct<{
+                    readonly $type: Schema.Literal<"sh.ratking.pass">;
+                    readonly desk: Schema.String;
+                    readonly deskDid: Schema.brand<Schema.String, "Lexicon:did">;
+                    readonly exp: Schema.Int;
+                    readonly iat: Schema.Int;
+                    readonly nonce: Schema.String;
+                    readonly run: Schema.String;
+                    readonly scope: Schema.$Array<Schema.String>;
+                    readonly v: Schema.Literal<1>;
+                    readonly worker: Schema.brand<Schema.String, "Lexicon:did">;
+                }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
+                readonly signature: Schema.String;
+            }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;
+            readonly run: Schema.String;
+            readonly worker: Schema.brand<Schema.String, "Lexicon:did">;
+        }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>>;
         readonly wakeReason: Schema.optionalKey<Schema.String>;
         readonly woke: Schema.optionalKey<Schema.Boolean>;
     }>, readonly [Schema.$Record<Schema.String, Schema.Codec<Runtime.LexValue, Runtime.LexJson, never, never>>]>;

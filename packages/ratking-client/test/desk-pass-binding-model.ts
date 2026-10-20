@@ -7,7 +7,7 @@ import { NonceBinding, RunBinding } from "../../lexicon/pass-bindings.ts";
 import type { TrustFailure } from "../../lexicon/trust-failure.ts";
 
 export interface RunAction {
-  readonly kind: "open" | "close" | "claim" | "expire";
+  readonly kind: "open" | "close" | "claim" | "expire" | "renew";
   readonly run: number;
   readonly worker: number;
 }
@@ -45,6 +45,12 @@ const expectedRun = (model: RunModel, action: RunAction) => {
     model.states.set(action.run, { state: "open", worker: -1 });
 
     return "void";
+  }
+
+  if (action.kind === "renew") {
+    return current?.state === "bound" && current.worker === action.worker
+      ? "match"
+      : "refused";
   }
 
   if (
@@ -106,6 +112,10 @@ const actualRun = (
     return Effect.succeed("void");
   }
 
+  if (action.kind === "renew") {
+    return observe(service.renew(run, workers[action.worker] ?? "", now));
+  }
+
   return observe(
     service.claim(run, tokenHash, workers[action.worker] ?? "", now)
   );
@@ -130,8 +140,19 @@ export const runModel = Effect.fn("Test.runModel")(function* runModel(
     { kind: "open", run: 2, worker: 0 },
     { kind: "close", run: 2, worker: 0 },
     { kind: "claim", run: 2, worker: 0 },
+    { kind: "renew", run: 2, worker: 0 },
+    { kind: "open", run: 3, worker: 0 },
+    { kind: "renew", run: 3, worker: 0 },
+    { kind: "claim", run: 3, worker: 0 },
+    { kind: "renew", run: 3, worker: 1 },
+    { kind: "renew", run: 3, worker: 0 },
+    { kind: "claim", run: 3, worker: 0 },
+    { kind: "renew", run: 0, worker: 0 },
     { kind: "expire", run: 1, worker: 0 },
     { kind: "claim", run: 1, worker: 0 },
+    { kind: "renew", run: 3, worker: 0 },
+    { kind: "close", run: 3, worker: 0 },
+    { kind: "renew", run: 3, worker: 0 },
   ];
 
   const commands: readonly AsyncCommand<RunModel, typeof service>[] = [

@@ -25,6 +25,11 @@ export class RunBinding extends Context.Service<
       token: RunToken,
       now: number
     ) => Effect.Effect<void, TrustFailure>;
+    readonly renew: (
+      run: string,
+      workerDid: string,
+      now: number
+    ) => Effect.Effect<"match", TrustFailure>;
   }
 >()("ratking/RunBinding") {}
 
@@ -123,5 +128,29 @@ export const makeMemoryRunBinding = () =>
 
           return Effect.void;
         }),
+      renew: Effect.fn("RunBinding.renew")(
+        function* renewRun(run, workerDid, now) {
+          yield* decodeDidKey(workerDid);
+          const current = runs.get(run);
+
+          if (current?.state !== "bound" || !Number.isFinite(now)) {
+            return yield* refusal(
+              "Run refused",
+              "run is unknown, unclaimed, closed or compromised",
+              "claim the run with its token, or ask the launcher for a new run"
+            );
+          }
+
+          if (current.workerDid !== workerDid) {
+            return yield* refusal(
+              "Run refused",
+              "worker key is not bound to this run",
+              "use the bound worker key"
+            );
+          }
+
+          return "match" as const;
+        }
+      ),
     });
   });
