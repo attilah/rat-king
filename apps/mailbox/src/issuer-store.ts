@@ -34,6 +34,7 @@ export interface IssuerTransaction {
   readonly retire: (retired: RetiredName) => void;
   readonly unretire: (name: string, retiredAt?: number) => void;
   readonly retired: (after: string, limit: number) => readonly RetiredName[];
+  readonly retiredEntry: (name: string) => RetiredName | undefined;
 }
 
 export class IssuerStore extends Context.Service<
@@ -151,6 +152,19 @@ export const issuerStore = (sql: Sql) => {
           return successor === "" ? decoded : { ...decoded, successor };
         }
       ),
+    retiredEntry: (name) =>
+      Array.from(
+        sql.exec(
+          "SELECT name,did,retired_at AS retiredAt,successor,by FROM retired WHERE name=?",
+          name
+        ),
+        (row) => {
+          const { successor, ...decoded } =
+            Schema.decodeUnknownSync(RetiredRow)(row);
+
+          return successor === "" ? decoded : { ...decoded, successor };
+        }
+      ).at(0),
     unretire: (name, retiredAt) => {
       if (retiredAt === undefined) {
         sql.exec("DELETE FROM retired WHERE name=?", name);
