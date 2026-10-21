@@ -90,5 +90,5 @@ it.effect(
         )
       ).toBe(true);
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
-  30_000
+  10_000
 );

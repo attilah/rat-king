@@ -61,7 +61,7 @@ it.effect.prop(
             RAT_KING_BILLING_HOSTNAME: hostname,
             RAT_KING_STATE_DIR: directory,
           },
-          timeout: 60_000,
+          timeout: 25_000,
         }
       );
 
@@ -86,7 +86,7 @@ it.effect.prop(
       expect(plan.surface.hostname).toBe(hostname);
       expect(plan.surface.secrets).toHaveLength(2);
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
-  { arbitrary: { runs: 3 }, timeout: 90_000 }
+  { arbitrary: { runs: 3 }, timeout: 30_000 }
 );
 
 it("a billing deploy without explicit approval is refused", () => {
@@ -96,7 +96,7 @@ it("a billing deploy without explicit approval is refused", () => {
     {
       encoding: "utf-8",
       env: { ALCHEMY_TELEMETRY_DISABLED: "1" },
-      timeout: 30_000,
+      timeout: 10_000,
     }
   );
 
@@ -104,4 +104,4 @@ it("a billing deploy without explicit approval is refused", () => {
   expect(denied.stdout + denied.stderr).toContain(
     "Explicit billing deploy approval required"
   );
-}, 60_000);
+}, 15_000);
