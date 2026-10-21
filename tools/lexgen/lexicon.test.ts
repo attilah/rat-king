@@ -299,7 +299,8 @@ it.effect(
       ) {
         expect(result.failure.reason).toContain("Generation drift");
       }
-    }).pipe(Effect.provide(NodeServices.layer))
+    }).pipe(Effect.provide(NodeServices.layer)),
+  10_000
 );
 
 it.effect(

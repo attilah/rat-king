@@ -220,6 +220,9 @@ it.live(
   60_000
 );
 
+const touchedMailbox = (calls: readonly string[]) =>
+  calls.some((nsid) => nsid.includes(".lease.") || nsid.endsWith(".list"));
+
 it.live.prop(
   "a send-only Pi (pi -p from a desk pane) never calls the mailbox lease or list; a reading Pi does",
   [Arbitrary.schema(Schema.Boolean)],
@@ -233,16 +236,21 @@ it.live.prop(
         const ratking = yield* RatKing;
 
         yield* ratking.run({ ...facts, reads }, () => Effect.void);
-        yield* Effect.sleep(Duration.millis(300));
+
+        yield* reads
+          ? eventually(
+              Effect.suspend(() =>
+                touchedMailbox(mailbox.calls)
+                  ? Effect.void
+                  : Effect.fail("reader has not reached the mailbox")
+              )
+            )
+          : Effect.sleep(Duration.millis(300));
 
         const status = yield* ratking.status;
 
-        const touched = mailbox.calls.filter(
-          (nsid) => nsid.includes(".lease.") || nsid.endsWith(".list")
-        );
-
         expect(ReaderState.$is("SendOnly")(status.reader)).toBe(!reads);
-        expect(touched.length === 0).toBe(!reads);
+        expect(touchedMailbox(mailbox.calls)).toBe(reads);
       }).pipe(Effect.provide(harness(state, mailbox.http)));
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   { arbitrary: { runs: 4 }, timeout: 60_000 }

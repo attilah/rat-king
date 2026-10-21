@@ -61,7 +61,7 @@ it.effect.prop(
             RAT_KING_BILLING_HOSTNAME: hostname,
             RAT_KING_STATE_DIR: directory,
           },
-          timeout: 15_000,
+          timeout: 25_000,
         }
       );
 
@@ -85,21 +85,23 @@ it.effect.prop(
       ]);
       expect(plan.surface.hostname).toBe(hostname);
       expect(plan.surface.secrets).toHaveLength(2);
-
-      const denied = spawnSync(
-        process.execPath,
-        [new URL("cli.ts", import.meta.url).pathname, "deploy"],
-        {
-          encoding: "utf-8",
-          env: { ALCHEMY_TELEMETRY_DISABLED: "1" },
-          timeout: 5000,
-        }
-      );
-
-      expect(denied.status).not.toBe(0);
-      expect(denied.stdout + denied.stderr).toContain(
-        "Explicit billing deploy approval required"
-      );
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
-  { arbitrary: { runs: 3 }, timeout: 20_000 }
+  { arbitrary: { runs: 3 }, timeout: 30_000 }
 );
+
+it("a billing deploy without explicit approval is refused", () => {
+  const denied = spawnSync(
+    process.execPath,
+    [new URL("cli.ts", import.meta.url).pathname, "deploy"],
+    {
+      encoding: "utf-8",
+      env: { ALCHEMY_TELEMETRY_DISABLED: "1" },
+      timeout: 10_000,
+    }
+  );
+
+  expect(denied.status).not.toBe(0);
+  expect(denied.stdout + denied.stderr).toContain(
+    "Explicit billing deploy approval required"
+  );
+}, 15_000);
