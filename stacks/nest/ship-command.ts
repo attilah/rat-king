@@ -245,6 +245,7 @@ export const shipCommand = Effect.fn("Ship.command")(
           JSON.stringify({
             deferred: state.deferred ?? "",
             failed: state.failed,
+            failedGate: state.failedGate ?? "",
             retryAt: state.retryAt ?? 0,
             successful: state.successful,
           })

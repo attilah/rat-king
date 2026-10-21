@@ -25,7 +25,9 @@ export interface ShipPorts<R = never> {
   >;
   readonly checkpoint: (
     snapshot: Pick<ShipSnapshot["context"], "failed" | "successful"> &
-      Partial<Pick<ShipSnapshot["context"], "deferred" | "retryAt">>
+      Partial<
+        Pick<ShipSnapshot["context"], "deferred" | "failedGate" | "retryAt">
+      >
   ) => Effect.Effect<void, FleetError, R>;
   readonly recover: Effect.Effect<
     "running" | "recovered" | "failed",
@@ -47,13 +49,21 @@ export const shipCycle = Effect.fn("Ship.cycle")(function* shipCycle<R>(
   snapshot: ShipSnapshot,
   ports: ShipPorts<R>
 ) {
-  let current = advance(snapshot, { type: "tick" });
+  const tickedAt = (yield* Clock.currentTimeMillis) / 1000;
+  let current = advance(snapshot, { now: tickedAt, type: "tick" });
+
+  if (current.matches("fetch-error")) {
+    return current;
+  }
+
   const fetched = yield* ports.fetch.pipe(Effect.option);
 
   if (Option.isNone(fetched)) {
-    yield* Console.error("SHIP_FETCH_FAILED");
+    if (!snapshot.matches("fetch-error")) {
+      yield* Console.error("SHIP_FETCH_FAILED");
+    }
 
-    return advance(current, { type: "fetchFailed" });
+    return advance(current, { now: tickedAt, type: "fetchFailed" });
   }
 
   current = advance(current, {
@@ -105,18 +115,27 @@ export const shipCycle = Effect.fn("Ship.cycle")(function* shipCycle<R>(
     start,
   };
 
+  const gated =
+    deployed.result === "failed" ? { ...finished, gate: "deploy" } : finished;
+
   const receipt =
     recovery === "running"
-      ? finished
-      : { ...finished, recovered: recovery === "recovered" };
+      ? gated
+      : { ...gated, recovered: recovery === "recovered" };
 
   yield* ports.record(receipt);
-  current =
-    deployed.result === "deferred"
-      ? advance(current, { retryAt: deployed.retryAt ?? 0, type: "deferred" })
-      : advance(current, {
-          type: deployed.result === "failed" ? "failure" : "success",
-        });
+
+  if (deployed.result === "deferred") {
+    current = advance(current, {
+      retryAt: deployed.retryAt ?? 0,
+      type: "deferred",
+    });
+  } else if (deployed.result === "failed") {
+    current = advance(current, { gate: "deploy", type: "failure" });
+  } else {
+    current = advance(current, { type: "success" });
+  }
+
   yield* ports.checkpoint(current.context);
   yield* ports
     .notify(receipt)
@@ -134,7 +153,9 @@ export const shipCycle = Effect.fn("Ship.cycle")(function* shipCycle<R>(
 export const shipLoop = <R>(
   ports: ShipPorts<R>,
   saved: Pick<ShipSnapshot["context"], "failed" | "successful"> &
-    Partial<Pick<ShipSnapshot["context"], "deferred" | "retryAt">>,
+    Partial<
+      Pick<ShipSnapshot["context"], "deferred" | "failedGate" | "retryAt">
+    >,
   intervalSeconds: number,
   drifted: Effect.Effect<boolean, never, R>
 ) =>

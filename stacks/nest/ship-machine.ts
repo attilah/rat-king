@@ -2,9 +2,16 @@ import { Schema } from "effect";
 import type { EventFromLogic } from "xstate";
 import { setup } from "xstate";
 
+const backoffBase = 60;
+
+const backoffCap = 3600;
+
 const Context = Schema.Struct({
   deferred: Schema.String,
   failed: Schema.String,
+  failedGate: Schema.String,
+  fetchFailures: Schema.Int,
+  fetchRetryAt: Schema.Number,
   retryAt: Schema.Number,
   sha: Schema.String,
   successful: Schema.String,
@@ -19,20 +26,25 @@ export const shipMachine = setup({
       deferred: Schema.toStandardSchemaV1(
         Schema.Struct({ retryAt: Schema.Number })
       ),
-      failure: Empty,
-      fetchFailed: Empty,
+      failure: Schema.toStandardSchemaV1(
+        Schema.Struct({ gate: Schema.String })
+      ),
+      fetchFailed: Schema.toStandardSchemaV1(
+        Schema.Struct({ now: Schema.Number })
+      ),
       observed: Schema.toStandardSchemaV1(
         Schema.Struct({ now: Schema.Number, sha: Schema.String })
       ),
       pending: Empty,
       ready: Empty,
       success: Empty,
-      tick: Empty,
+      tick: Schema.toStandardSchemaV1(Schema.Struct({ now: Schema.Number })),
     },
     input: Schema.toStandardSchemaV1(
       Schema.Struct({
         deferred: Schema.optionalKey(Schema.String),
         failed: Schema.String,
+        failedGate: Schema.optionalKey(Schema.String),
         retryAt: Schema.optionalKey(Schema.Number),
         successful: Schema.String,
       })
@@ -42,6 +54,9 @@ export const shipMachine = setup({
   context: ({ input }) => ({
     ...input,
     deferred: input.deferred ?? "",
+    failedGate: input.failedGate ?? "",
+    fetchFailures: 0,
+    fetchRetryAt: 0,
     retryAt: input.retryAt ?? 0,
     sha: "",
   }),
@@ -59,11 +74,12 @@ export const shipMachine = setup({
           },
           target: "deferred",
         }),
-        failure: ({ context }) => ({
+        failure: ({ context, event }) => ({
           context: {
             ...context,
             deferred: "",
             failed: context.sha,
+            failedGate: event.gate,
             retryAt: 0,
           },
           target: "failed",
@@ -73,6 +89,7 @@ export const shipMachine = setup({
             ...context,
             deferred: "",
             failed: "",
+            failedGate: "",
             retryAt: 0,
             successful: context.sha,
           },
@@ -81,10 +98,33 @@ export const shipMachine = setup({
       },
     },
     failed: { on: { tick: { target: "fetching" } } },
+    "fetch-error": {
+      on: {
+        tick: ({ context, event }) => ({
+          context,
+          target: event.now < context.fetchRetryAt ? "fetch-error" : "fetching",
+        }),
+      },
+    },
     fetching: {
       on: {
-        fetchFailed: { target: "failed" },
-        observed: ({ context, event }) => {
+        fetchFailed: ({ context, event }) => {
+          const fetchFailures = context.fetchFailures + 1;
+
+          return {
+            context: {
+              ...context,
+              fetchFailures,
+              fetchRetryAt:
+                event.now +
+                Math.min(backoffCap, backoffBase * 2 ** (fetchFailures - 1)),
+            },
+            target: "fetch-error",
+          };
+        },
+        observed: ({ context: prior, event }) => {
+          const context = { ...prior, fetchFailures: 0, fetchRetryAt: 0 };
+
           if (event.sha === context.failed) {
             return {
               context: { ...context, sha: event.sha },

@@ -82,6 +82,7 @@ export const RestartEvent = Schema.Struct({
 export const ShipReceipt = Schema.Struct({
   celldRestarted: Schema.NullOr(Schema.Boolean),
   end: Schema.Number,
+  gate: Schema.optionalKey(Text),
   recovered: Schema.optionalKey(Schema.Boolean),
   restartSeconds: Schema.NullOr(Schema.Number),
   result: Schema.Literals(["success", "failed", "deferred"]),
@@ -94,6 +95,7 @@ export const ShipReceipt = Schema.Struct({
 export const ShipCheckpoint = Schema.Struct({
   deferred: Schema.optionalKey(Schema.Union([Schema.Literal(""), Sha])),
   failed: Schema.Union([Schema.Literal(""), Sha]),
+  failedGate: Schema.optionalKey(Schema.String),
   retryAt: Schema.optionalKey(Schema.Number),
   successful: Schema.Union([Schema.Literal(""), Sha]),
 });
