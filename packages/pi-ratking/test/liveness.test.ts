@@ -21,7 +21,12 @@ import { expect } from "vitest";
 
 import { executeToolWithLiveness } from "../src/extension.ts";
 import { callView, resultView } from "../src/tool-view.ts";
-import { Action, toolProgress, withToolLiveness } from "../src/tool.ts";
+import {
+  Action,
+  initialPhase,
+  toolProgress,
+  withToolLiveness,
+} from "../src/tool.ts";
 import type { ToolText } from "../src/tool.ts";
 import { ansiTheme } from "./view-arbitraries.ts";
 
@@ -99,22 +104,23 @@ it.effect.prop(
           const order: string[] = [];
 
           const promise = executeToolWithLiveness(
-            { action, to: "peer" },
-            Effect.sync(() => {
-              order.push("action");
+            initialPhase({ action, to: "peer" }),
+            () =>
+              Effect.sync(() => {
+                order.push("action");
 
-              return {
-                details: {},
-                isError: sample.isError,
-                text: sample.text,
-              };
-            }),
+                return {
+                  details: {},
+                  isError: sample.isError,
+                  text: sample.text,
+                };
+              }),
             (progress) => {
               order.push("update");
-              expect(progress.details.progress).toBe(
-                action === "ask" ? "asking" : "sending"
+              expect(progress.details.phase).toBe(
+                initialPhase({ action, to: "peer" })
               );
-              expect(progress.text).toBe("");
+              expect(progress.text).toBe(progress.details.phase);
             }
           );
 
@@ -169,12 +175,13 @@ it.effect.prop(
       };
 
       const fiber = yield* withToolLiveness(
-        { action: sample.action, to: "peer", wait: true },
-        Effect.gen(function* fakeAction() {
-          yield* Deferred.succeed(ready, true);
+        initialPhase({ action: sample.action, to: "peer" }),
+        () =>
+          Effect.gen(function* fakeAction() {
+            yield* Deferred.succeed(ready, true);
 
-          return yield* Deferred.await(done);
-        }),
+            return yield* Deferred.await(done);
+          }),
         (update) => {
           updates.push(update);
         }
@@ -310,27 +317,25 @@ it.effect.prop(
 );
 
 const Progress = Schema.Struct({
-  action: Action,
   elapsedMs: Schema.Int.check(
     Schema.isBetween({ maximum: 600_000, minimum: 0 })
   ),
-  wait: Schema.Boolean,
+  phase: Schema.String.check(
+    Schema.isPattern(/^[a-z][a-z (),0-9]{0,28}[a-z)]$/u)
+  ),
 });
 
 it.effect.prop(
-  "progress shows the party and elapsed waiting time; final timing stays out of text",
+  "progress names its phase in the view and in plain text, with whole elapsed seconds once a second has passed",
   [Arbitrary.schema(Progress)],
   ([sample]) =>
     Effect.sync(() => {
-      const progress = toolProgress(
-        { action: sample.action, to: "peer", wait: sample.wait },
-        sample.elapsedMs
-      );
+      const progress = toolProgress(sample.phase, sample.elapsedMs);
 
       const output = plain(
         resultView(
           {
-            action: sample.action,
+            action: "send",
             details: progress.details,
             expanded: false,
             isError: false,
@@ -338,22 +343,16 @@ it.effect.prop(
             text: progress.text,
           },
           ansiTheme
-        ).render(60)
+        ).render(80)
       );
 
-      const waiting =
-        sample.elapsedMs >= 2000 ||
-        (sample.action === "ask" && sample.wait && sample.elapsedMs > 0);
+      const seconds = `${Math.floor(sample.elapsedMs / 1000)}s`;
 
-      expect(output).toContain("peer");
-      const initial = sample.action === "ask" ? "asking" : "sending";
-
-      expect(output).toContain(waiting ? "waiting" : initial);
-
-      if (waiting) {
-        expect(output).toContain(`${Math.floor(sample.elapsedMs / 1000)}s`);
-      }
-
-      expect(progress.text).toBe("");
+      expect(output).toContain(sample.phase);
+      expect(progress.text.startsWith(sample.phase)).toBe(true);
+      expect(output.includes(` · ${seconds}`)).toBe(sample.elapsedMs >= 1000);
+      expect(progress.text.endsWith(` · ${seconds}`)).toBe(
+        sample.elapsedMs >= 1000
+      );
     })
 );

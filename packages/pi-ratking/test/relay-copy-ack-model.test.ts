@@ -29,6 +29,7 @@ import { document, identity } from "../../mailbox-client/test/identity.ts";
 import { ratkingExtension } from "../src/extension.ts";
 import type { PiHost, SessionStart } from "../src/extension.ts";
 import { harness } from "./harness.ts";
+import { startSession } from "./start-session.ts";
 
 const ENDPOINT = "https://mailbox.example.invalid";
 
@@ -387,7 +388,7 @@ it.live.prop(
               layer,
               tool: Effect.succeed("ratking"),
             })(pi);
-            await hooks.start({ session: "ea", warn: () => {} });
+            await startSession(hooks.start, { session: "ea", warn: () => {} });
           });
 
           return hooks.end;

@@ -30,6 +30,7 @@ import type { PiHost, SessionStart } from "../src/extension.ts";
 import { heldNotice, heldReason } from "../src/name.ts";
 import { quietSocket } from "./fake-mailbox.ts";
 import { harness } from "./harness.ts";
+import { startSession } from "./start-session.ts";
 
 const Pids = Schema.Array(
   Schema.Int.check(Schema.isBetween({ maximum: 99, minimum: 1 }))
@@ -309,7 +310,7 @@ it.live(
           tool: Effect.succeed("ratking"),
         })(pi);
 
-        await started({
+        await startSession(started, {
           interactive: true,
           session: "s",
           status: (text) => {

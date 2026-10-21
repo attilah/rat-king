@@ -11,6 +11,7 @@ import { ratkingExtension } from "../src/extension.ts";
 import type { PiHost, SessionStart } from "../src/extension.ts";
 import { shownIds } from "../src/pending.ts";
 import { harness } from "./harness.ts";
+import { startSession } from "./start-session.ts";
 
 const nothing = () => {};
 
@@ -108,7 +109,7 @@ it.effect.prop(
         })(pi);
       });
       yield* Effect.promise(async () => {
-        await start({ session: "wake-header", warn: nothing });
+        await startSession(start, { session: "wake-header", warn: nothing });
       });
       yield* Effect.addFinalizer(() => Effect.promise(stop));
       before();

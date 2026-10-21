@@ -15,6 +15,7 @@ import type { PiHost, SessionStart } from "../src/extension.ts";
 import { shownIds, shownInHistory } from "../src/pending.ts";
 import type { HistoryEntry } from "../src/pending.ts";
 import { harness } from "./harness.ts";
+import { startSession } from "./start-session.ts";
 
 type Message = Parameters<PiHost["sendMessage"]>[0];
 
@@ -112,7 +113,7 @@ const reader = async () => {
     ),
     tool: Effect.succeed("ratking"),
   })(pi);
-  await start({
+  await startSession(start, {
     isIdle: () => !streaming,
     session: "quiet-display",
     warn: nothing,

@@ -22,6 +22,7 @@ import { ratkingExtension } from "../src/extension.ts";
 import type { PiHost, SessionStart } from "../src/extension.ts";
 import { shownIds } from "../src/pending.ts";
 import { harness } from "./harness.ts";
+import { startSession } from "./start-session.ts";
 
 type Arbiter = "accept" | "decline";
 
@@ -172,7 +173,7 @@ const reader = (box: Mailbox, arbiter: Arbiter) =>
         layer: Layer.merge(layer, Layer.succeed(Clock.Clock, clock)),
         tool: Effect.succeed("ratking"),
       })(pi);
-      await start({ session: "ack-paths", warn: nothing });
+      await startSession(start, { session: "ack-paths", warn: nothing });
     });
     yield* Effect.addFinalizer(() => Effect.promise(stop));
 

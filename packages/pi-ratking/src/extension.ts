@@ -54,7 +54,11 @@ import {
   RatKing,
   ratKingLayer,
 } from "@rat-king/ratking-client/ratking";
-import type { Deliver, SendOptions } from "@rat-king/ratking-client/ratking";
+import type {
+  Deliver,
+  ReaderState,
+  SendOptions,
+} from "@rat-king/ratking-client/ratking";
 import {
   CONTROL_RECORD_TYPES,
   recordNotice,
@@ -68,6 +72,7 @@ import {
   Cause,
   Clock,
   Config,
+  Deferred,
   Duration,
   DateTime,
   Effect,
@@ -132,17 +137,23 @@ import { callView, resultView } from "./tool-view.ts";
 import {
   cancelledText,
   description,
+  IDENTITY_FOOTER,
   idleDispatch,
+  initialPhase,
   notConfiguredText,
   notDeliveredText,
+  offFooter,
+  phaseText,
   promptSnippet,
   readerFooter,
   runAction,
+  STARTING_FOOTER,
+  STARTING_PHASE,
   ToolParams,
   toolProgress,
   withToolLiveness,
 } from "./tool.ts";
-import type { ToolProgressParams, ToolText } from "./tool.ts";
+import type { ProgressReport, ToolText } from "./tool.ts";
 import type { Labels } from "./tui.ts";
 import { stopReason, turnReporter } from "./turn-record.ts";
 import type { TurnReporter } from "./turn-record.ts";
@@ -470,13 +481,13 @@ const toolResult = (result: ToolText) => {
 };
 
 export const executeToolWithLiveness = async (
-  params: ToolProgressParams,
-  action: Effect.Effect<ToolText>,
+  initial: string,
+  action: (report: ProgressReport) => Effect.Effect<ToolText>,
   update: (progress: ToolText) => void
 ): Promise<ToolText> => {
-  update(toolProgress(params));
+  update(toolProgress(initial));
 
-  return await Effect.runPromise(withToolLiveness(params, action, update));
+  return await Effect.runPromise(withToolLiveness(initial, action, update));
 };
 
 type Services = Layer.Success<typeof appLayer>;
@@ -485,6 +496,7 @@ type Runtime = ManagedRuntime.ManagedRuntime<Services, NotConfigured>;
 
 export interface SessionStart {
   readonly isIdle?: () => boolean;
+  readonly onStarted?: () => void;
   readonly turnCount?: number;
   readonly rememberTurn?: (n: number) => void;
   readonly interactive?: boolean;
@@ -994,23 +1006,34 @@ export const ratkingExtension = (options: ExtensionOptions) =>
     );
 
     let runtime = Option.none<Runtime>();
+    let starts = 0;
     let turns: TurnReporter | undefined;
+    let turnSource = Deferred.makeUnsafe<Option.Option<TurnReporter>>();
+
+    Deferred.doneUnsafe(turnSource, Exit.succeed(Option.none()));
     let passLauncher: PassLauncher["Service"] | undefined;
     let passScope: Scope.Closeable | undefined;
     const passGate = Semaphore.makeUnsafe(1);
 
+    const ready = () =>
+      Option.isSome(runtime) && runtime.value.cachedContext !== undefined;
+
     const reportTurn = async (
-      effect: Effect.Effect<void, never, RatKing | Settings> | undefined
+      select: (
+        reporter: TurnReporter
+      ) => Effect.Effect<void, never, RatKing | Settings>
     ) => {
-      if (effect !== undefined && Option.isSome(runtime)) {
-        await runtime.value.runPromiseExit(effect);
+      const reporter = await Effect.runPromise(Deferred.await(turnSource));
+
+      if (Option.isSome(reporter) && Option.isSome(runtime)) {
+        await runtime.value.runPromiseExit(select(reporter.value));
       }
     };
 
     let busy = false;
 
     pi.onApproval?.(async () => {
-      await reportTurn(turns?.approval());
+      await reportTurn((reporter) => reporter.approval());
     });
     const acknowledgments = new Map<string, Effect.Effect<void>>();
     const controlRecords = new Map<string, string>();
@@ -1180,14 +1203,14 @@ export const ratkingExtension = (options: ExtensionOptions) =>
         flushing = false;
       }
 
-      await reportTurn(turns?.working());
+      await reportTurn((reporter) => reporter.working());
     });
 
     pi.onAgentEnd?.(async (messages) => {
       sweep();
       busy = false;
       wakes.flushNext();
-      await reportTurn(turns?.done(stopReason(messages)));
+      await reportTurn((reporter) => reporter.done(stopReason(messages)));
     });
 
     pi.onBeforeAgentStart?.(() => {
@@ -1513,6 +1536,10 @@ export const ratkingExtension = (options: ExtensionOptions) =>
     };
 
     const stop = async () => {
+      const previous = runtime;
+
+      runtime = Option.none();
+
       await Effect.runPromise(
         passGate.withPermit(
           Effect.gen(function* stopPassServer() {
@@ -1526,9 +1553,6 @@ export const ratkingExtension = (options: ExtensionOptions) =>
           })
         )
       );
-      const previous = runtime;
-
-      runtime = Option.none();
 
       if (Option.isSome(previous)) {
         await Effect.runPromise(
@@ -1571,64 +1595,70 @@ export const ratkingExtension = (options: ExtensionOptions) =>
         const phase = idleDispatch();
 
         const result = await executeToolWithLiveness(
-          params,
-          Effect.promise(async () => {
-            const outcome = await run(
-              Effect.gen(function* execute() {
-                const decoded =
-                  yield* Schema.decodeUnknownEffect(ToolParams)(params);
+          ready() ? initialPhase(params) : STARTING_PHASE,
+          (report) =>
+            Effect.promise(async () => {
+              const outcome = await run(
+                Effect.gen(function* execute() {
+                  yield* report(initialPhase(params));
 
-                const settings = yield* Settings;
-                const context = yield* Effect.context<Services>();
+                  const decoded =
+                    yield* Schema.decodeUnknownEffect(ToolParams)(params);
 
-                const status = yield* RatKing.use((ratking) => ratking.status);
+                  const settings = yield* Settings;
+                  const context = yield* Effect.context<Services>();
 
-                ownName = Option.getOrUndefined(
-                  status.self.pipe(Option.map((self) => self.name))
-                );
+                  const status = yield* RatKing.use(
+                    (ratking) => ratking.status
+                  );
 
-                return yield* withTurnWait(
-                  turns,
-                  decoded,
-                  runAction(
-                    tool,
-                    settings.askTimeoutMs,
+                  ownName = Option.getOrUndefined(
+                    status.self.pipe(Option.map((self) => self.name))
+                  );
+
+                  return yield* withTurnWait(
+                    turns,
                     decoded,
-                    phase,
-                    filterHits.pipe(Effect.provideContext(context))
-                  )
-                );
-              }).pipe(
-                Effect.orElseSucceed((): ToolText => ({
-                  details: { error: true },
-                  isError: true,
-                  text: "Invalid Rat King tool parameters",
-                }))
-              ),
-              (reason) => notConfiguredText(new NotConfigured({ reason })),
-              signal,
-              () => cancelledText(params, Ref.getUnsafe(phase))
-            );
+                    runAction(
+                      tool,
+                      settings.askTimeoutMs,
+                      decoded,
+                      phase,
+                      filterHits.pipe(Effect.provideContext(context)),
+                      (sendPhase) => report(phaseText(sendPhase))
+                    )
+                  );
+                }).pipe(
+                  Effect.orElseSucceed((): ToolText => ({
+                    details: { error: true },
+                    isError: true,
+                    text: "Invalid Rat King tool parameters",
+                  }))
+                ),
+                (reason) => notConfiguredText(new NotConfigured({ reason })),
+                signal,
+                () => cancelledText(params, Ref.getUnsafe(phase))
+              );
 
-            if (
-              !outcome.isError &&
-              Schema.is(Schema.Struct({ retired: Schema.Literal(true) }))(
-                outcome.details
-              )
-            ) {
-              await markRetired();
-            }
+              if (
+                !outcome.isError &&
+                Schema.is(Schema.Struct({ retired: Schema.Literal(true) }))(
+                  outcome.details
+                )
+              ) {
+                await markRetired();
+              }
 
-            const sentTo = Schema.decodeUnknownOption(
-              Schema.Struct({ to: Schema.String })
-            )(outcome.details);
+              const sentTo = Schema.decodeUnknownOption(
+                Schema.Struct({ to: Schema.String })
+              )(outcome.details);
 
-            if (!outcome.isError && Option.isSome(sentTo)) {
-              turnMail.addressed(sentTo.value.to);
-            }
+              if (!outcome.isError && Option.isSome(sentTo)) {
+                turnMail.addressed(sentTo.value.to);
+              }
 
-            return outcome;
-          }),
+              return outcome;
+            }),
           update
         );
 
@@ -1990,156 +2020,283 @@ export const ratkingExtension = (options: ExtensionOptions) =>
       void retire();
     });
 
+    const startup = (
+      start: SessionStart,
+      stopped: Promise<void>,
+      epoch: number,
+      settle: (reporter: Option.Option<TurnReporter>) => void
+    ) => {
+      const current = () => epoch === starts && Option.isSome(runtime);
+
+      return Layer.unwrap(
+        Effect.gen(function* bootRatKing() {
+          const began = yield* Clock.currentTimeMillis;
+
+          yield* Effect.promise(async () => {
+            await stopped;
+          }).pipe(
+            Effect.catchCause(() => Effect.void),
+            Effect.withSpan("RatKing.startup.stop")
+          );
+
+          const afterStop = yield* Clock.currentTimeMillis;
+
+          const names = start.names ?? [];
+
+          const collected = yield* options
+            .facts(
+              start.session,
+              start.sessionName,
+              start.interactive,
+              names,
+              start.parentSession
+            )
+            .pipe(
+              Effect.mapError(
+                (error) => new NotConfigured({ reason: error.message })
+              ),
+              Effect.withSpan("RatKing.startup.facts")
+            );
+
+          const afterFacts = yield* Clock.currentTimeMillis;
+
+          const source: NameSourceValue =
+            collected.source ??
+            (Option.isSome(collected.env) ? "env" : "default");
+
+          let recorded = names.at(-1);
+
+          ownName = Option.getOrUndefined(collected.env);
+          ownLabel = collected.label ?? (() => collected.pane);
+
+          turns = turnReporter(collected, start.turnCount, start.rememberTurn);
+          settle(Option.some(turns));
+
+          const remember = (name: string) => {
+            if (collected.disabled === true) {
+              return;
+            }
+
+            const entry: NameEntryValue = {
+              name,
+              session: start.session,
+              source,
+            };
+
+            if (collected.parent !== undefined) {
+              Object.assign(entry, { parent: collected.parent });
+            }
+
+            if (
+              start.rememberName !== undefined &&
+              shouldRecord(recorded, entry)
+            ) {
+              recorded = entry;
+              start.rememberName(entry);
+            }
+          };
+
+          const probeHeld = async (name: string) => {
+            if (Option.isNone(runtime)) {
+              return;
+            }
+
+            const exit = await runtime.value.runPromiseExit(
+              Inbox.use((held) => held.holder)
+            );
+
+            if (
+              Exit.isSuccess(exit) &&
+              heldElsewhere(exit.value, start.session) &&
+              degraded === undefined
+            ) {
+              degraded = heldReason(name);
+              start.status?.(heldNotice(name));
+              start.warn(heldNotice(name));
+            }
+          };
+
+          let firstState = true;
+
+          const logFirstState = (reader: ReaderState) => {
+            if (!firstState || Option.isNone(runtime)) {
+              return;
+            }
+
+            firstState = false;
+
+            void runtime.value.runPromiseExit(
+              Clock.currentTimeMillis.pipe(
+                Effect.flatMap((now) =>
+                  Effect.logInfo("Rat King first reader state").pipe(
+                    Effect.annotateLogs({
+                      reader: reader._tag,
+                      sinceStartMs: now - began,
+                    })
+                  )
+                )
+              )
+            );
+          };
+
+          const facts: SessionFacts = {
+            ...collected,
+            onState: (reader) => {
+              if (!current()) {
+                return;
+              }
+
+              logFirstState(reader);
+
+              const named = stateName(reader);
+
+              if (
+                Option.isSome(named) &&
+                !(
+                  collected.nameless === true &&
+                  (Predicate.isTagged(reader, "SendOnly") ||
+                    Predicate.isTagged(reader, "Refused"))
+                )
+              ) {
+                ownName = named.value;
+                remember(named.value);
+              }
+
+              if (Predicate.isTagged(reader, "Live")) {
+                degraded = undefined;
+              }
+
+              if (
+                Predicate.isTagged(reader, "SendOnly") &&
+                reader.reason === heldReason(reader.name)
+              ) {
+                start.status?.(heldNotice(reader.name));
+
+                if (degraded !== heldReason(reader.name)) {
+                  start.warn(heldNotice(reader.name));
+                }
+
+                degraded = heldReason(reader.name);
+              } else if (degraded === undefined) {
+                start.status?.(readerFooter(reader));
+              }
+
+              if (
+                Predicate.isTagged(reader, "Acquiring") &&
+                source === "restored"
+              ) {
+                void probeHeld(reader.name);
+              }
+
+              if (Predicate.isTagged(reader, "Live")) {
+                void reportTurn((reporter) => reporter.idle());
+              }
+            },
+          };
+
+          if (current()) {
+            start.status?.(IDENTITY_FOOTER);
+          }
+
+          return Layer.effectDiscard(
+            Effect.gen(function* startReader() {
+              const context = yield* Effect.context<Services>();
+              const built = yield* Clock.currentTimeMillis;
+
+              yield* Effect.logInfo("Rat King startup timings").pipe(
+                Effect.annotateLogs({
+                  factsMs: afterFacts - afterStop,
+                  layerMs: built - afterFacts,
+                  stopMs: afterStop - began,
+                })
+              );
+
+              recordHit = (verdict) =>
+                countFilterHit(verdict).pipe(
+                  Effect.provideContext(context),
+                  Effect.matchEffect({
+                    onFailure: (failure) =>
+                      Effect.logWarning(
+                        "Filter hit count unavailable",
+                        failure
+                      ),
+                    onSuccess: () => Effect.void,
+                  })
+                );
+              yield* digestTicks;
+              yield* RatKing.use((ratking) => ratking.run(facts, deliver));
+            })
+          ).pipe(
+            Layer.provideMerge(
+              options.layer.pipe(Layer.withSpan("RatKing.startup.layer"))
+            )
+          );
+        })
+      );
+    };
+
+    const boot = async (
+      live: Runtime,
+      start: SessionStart,
+      epoch: number,
+      settle: (reporter: Option.Option<TurnReporter>) => void
+    ) => {
+      const exit = await live.runPromiseExit(Effect.void);
+
+      settle(Option.none());
+
+      if (
+        Exit.isFailure(exit) &&
+        epoch === starts &&
+        Option.isSome(runtime) &&
+        runtime.value === live &&
+        !Cause.hasInterruptsOnly(exit.cause)
+      ) {
+        start.status?.(offFooter(notRunning(exit.cause)));
+        start.warn(`Rat King is off: ${notRunning(exit.cause)}`);
+      }
+
+      start.onStarted?.();
+    };
+
+    // oxlint-disable-next-line eslint/require-await -- Pi awaits session_start; Rat King starts in the background so this returns at once.
     pi.onSessionStart(async (start) => {
       retired = false;
       retirement = undefined;
       isIdle = start.isIdle ?? idle;
 
-      await stop();
+      const stopped = stop();
+
+      starts += 1;
+
+      const epoch = starts;
 
       mail.clear();
       wakes.clear();
       acknowledgments.clear();
       controlRecords.clear();
+      knownLabels.clear();
       turnMail.restore(start.shownTurns ?? [], start.rememberShownTurn);
 
       degraded = undefined;
+      turns = undefined;
 
-      const names = start.names ?? [];
+      const reporter = Deferred.makeUnsafe<Option.Option<TurnReporter>>();
 
-      const collected = await Effect.runPromise(
-        options.facts(
-          start.session,
-          start.sessionName,
-          start.interactive,
-          names,
-          start.parentSession
-        )
-      );
-
-      const source: NameSourceValue =
-        collected.source ?? (Option.isSome(collected.env) ? "env" : "default");
-
-      let recorded = names.at(-1);
-
-      knownLabels.clear();
-      ownName = Option.getOrUndefined(collected.env);
-      ownLabel = collected.label ?? (() => collected.pane);
-
-      turns = turnReporter(collected, start.turnCount, start.rememberTurn);
-
-      const remember = (name: string) => {
-        if (collected.disabled === true) {
-          return;
-        }
-
-        const entry: NameEntryValue = { name, session: start.session, source };
-
-        if (collected.parent !== undefined) {
-          Object.assign(entry, { parent: collected.parent });
-        }
-
-        if (start.rememberName !== undefined && shouldRecord(recorded, entry)) {
-          recorded = entry;
-          start.rememberName(entry);
-        }
+      const settle = (value: Option.Option<TurnReporter>) => {
+        Deferred.doneUnsafe(reporter, Exit.succeed(value));
       };
 
-      const probeHeld = async (name: string) => {
-        if (Option.isNone(runtime)) {
-          return;
-        }
-
-        const exit = await runtime.value.runPromiseExit(
-          Inbox.use((current) => current.holder)
-        );
-
-        if (
-          Exit.isSuccess(exit) &&
-          heldElsewhere(exit.value, start.session) &&
-          degraded === undefined
-        ) {
-          degraded = heldReason(name);
-          start.status?.(heldNotice(name));
-          start.warn(heldNotice(name));
-        }
-      };
-
-      const facts: SessionFacts = {
-        ...collected,
-        onState: (reader) => {
-          const named = stateName(reader);
-
-          if (
-            Option.isSome(named) &&
-            !(
-              collected.nameless === true &&
-              (Predicate.isTagged(reader, "SendOnly") ||
-                Predicate.isTagged(reader, "Refused"))
-            )
-          ) {
-            ownName = named.value;
-            remember(named.value);
-          }
-
-          if (Predicate.isTagged(reader, "Live")) {
-            degraded = undefined;
-          }
-
-          if (
-            Predicate.isTagged(reader, "SendOnly") &&
-            reader.reason === heldReason(reader.name)
-          ) {
-            start.status?.(heldNotice(reader.name));
-
-            if (degraded !== heldReason(reader.name)) {
-              start.warn(heldNotice(reader.name));
-            }
-
-            degraded = heldReason(reader.name);
-          } else if (degraded === undefined) {
-            start.status?.(readerFooter(reader));
-          }
-
-          if (
-            Predicate.isTagged(reader, "Acquiring") &&
-            source === "restored"
-          ) {
-            void probeHeld(reader.name);
-          }
-
-          if (Predicate.isTagged(reader, "Live")) {
-            void reportTurn(turns?.idle());
-          }
-        },
-      };
+      turnSource = reporter;
+      start.status?.(STARTING_FOOTER);
 
       const live: Runtime = ManagedRuntime.make(
-        Layer.effectDiscard(
-          Effect.gen(function* startReader() {
-            const context = yield* Effect.context<Services>();
-            recordHit = (verdict) =>
-              countFilterHit(verdict).pipe(
-                Effect.provideContext(context),
-                Effect.matchEffect({
-                  onFailure: (failure) =>
-                    Effect.logWarning("Filter hit count unavailable", failure),
-                  onSuccess: () => Effect.void,
-                })
-              );
-            yield* digestTicks;
-            yield* RatKing.use((ratking) => ratking.run(facts, deliver));
-          })
-        ).pipe(Layer.provideMerge(options.layer))
+        startup(start, stopped, epoch, settle)
       );
 
       runtime = Option.some(live);
 
-      const exit = await live.runPromiseExit(Effect.void);
-
-      if (Exit.isFailure(exit)) {
-        start.warn(`Rat King is off: ${notRunning(exit.cause)}`);
-      }
+      void boot(live, start, epoch, settle);
     });
 
     pi.onSessionEnd(stop);

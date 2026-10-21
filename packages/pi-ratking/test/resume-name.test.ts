@@ -22,6 +22,7 @@ import { chooseName } from "../src/name.ts";
 import type { NameEntryValue } from "../src/name.ts";
 import { quietSocket } from "./fake-mailbox.ts";
 import { harness } from "./harness.ts";
+import { startSession } from "./start-session.ts";
 
 interface Hooks {
   started?: (start: SessionStart) => Promise<void>;
@@ -188,7 +189,13 @@ it.live(
           tool: Effect.succeed("ratking"),
         })(pi);
 
-        await hooks.started?.({
+        const { started } = hooks;
+
+        if (started === undefined) {
+          throw new Error("session_start was not registered");
+        }
+
+        await startSession(started, {
           interactive: true,
           names: [{ name: "muster/desk", source: "env" }],
           parentSession: "parent-1",

@@ -23,6 +23,7 @@ import {
   RatKing,
   ReaderControl,
   ReaderState,
+  SendPhase,
 } from "@rat-king/ratking-client/ratking";
 import type {
   AskOptions,
@@ -172,9 +173,19 @@ export const cancelledText = (
       };
 };
 
-const dispatching = <T extends object>(options: T, dispatch?: Dispatch): T => {
+export type PhaseReport = (phase: SendPhase) => Effect.Effect<void>;
+
+const dispatching = <T extends object>(
+  options: T,
+  dispatch?: Dispatch,
+  onPhase?: PhaseReport
+): T => {
   if (dispatch !== undefined) {
     Object.assign(options, { onDispatch: Ref.set(dispatch, "issued") });
+  }
+
+  if (onPhase !== undefined) {
+    Object.assign(options, { onPhase });
   }
 
   return options;
@@ -208,48 +219,94 @@ const tracked = (
 export interface ToolProgressParams {
   readonly action: string;
   readonly to?: string | undefined;
-  readonly wait?: boolean | undefined;
 }
 
-export const toolProgress = (
-  params: ToolProgressParams,
-  elapsedMs = 0
-): ToolText => {
-  let progress = params.action === "ask" ? "asking" : "sending";
+export const STARTING_PHASE = "starting Rat King";
 
-  if (
-    elapsedMs >= 2000 ||
-    (params.action === "ask" && params.wait === true && elapsedMs > 0)
-  ) {
-    progress = "waiting";
-  }
+export const phaseText = (phase: SendPhase) =>
+  SendPhase.$match(phase, {
+    AwaitingReply: ({ from }) => `awaiting reply from ${from}`,
+    Identity: () => "waiting for identity",
+    Reader: () => "waiting for reader",
+    Resolving: ({ name }) => `resolving ${name}`,
+    Retrying: ({ attempt, reason }) =>
+      `retrying (${reason}, attempt ${attempt})`,
+    Sealing: () => "sealing",
+    Sending: () => "sending",
+  });
 
-  return {
-    details: { elapsedMs, progress, to: params.to ?? "" },
-    isError: false,
-    text: "",
-  };
+export const initialPhase = (params: ToolProgressParams) => {
+  const to = params.to?.trim() ?? "";
+
+  return Match.value(params.action).pipe(
+    Match.whenOr("send", "ask", "record", () =>
+      to === "" ? params.action : `resolving ${to}`
+    ),
+    Match.when("reply", () => "finding the thread"),
+    Match.whenOr("list", "list-cwd", () => "reading the directory"),
+    Match.when("pending", () => "reading asks"),
+    Match.when("status", () => "reading status"),
+    Match.orElse((action) => action)
+  );
 };
 
+export const toolProgress = (phase: string, elapsedMs = 0): ToolText => ({
+  details: { elapsedMs, phase },
+  isError: false,
+  text:
+    elapsedMs < 1000 ? phase : `${phase} · ${Math.floor(elapsedMs / 1000)}s`,
+});
+
+export type ProgressReport = (phase: string) => Effect.Effect<void>;
+
 export const withToolLiveness = <E, R>(
-  params: ToolProgressParams,
-  action: Effect.Effect<ToolText, E, R>,
+  initial: string,
+  action: (report: ProgressReport) => Effect.Effect<ToolText, E, R>,
   update: (progress: ToolText) => void
 ): Effect.Effect<ToolText, E, R> =>
   Effect.gen(function* toolLiveness() {
     const started = yield* Clock.currentTimeMillis;
+    const shown = yield* Ref.make({ elapsedMs: 0, phase: initial });
+
+    const report: ProgressReport = (phase) =>
+      Ref.modify(shown, (current) =>
+        current.phase === phase
+          ? [Option.none<ToolText>(), current]
+          : [
+              Option.some(toolProgress(phase, current.elapsedMs)),
+              { ...current, phase },
+            ]
+      ).pipe(
+        Effect.flatMap(
+          Option.match({
+            onNone: () => Effect.void,
+            onSome: (progress) =>
+              Effect.sync(() => {
+                update(progress);
+              }),
+          })
+        )
+      );
 
     const ticker = yield* Effect.gen(function* toolTick() {
       const now = yield* Clock.currentTimeMillis;
 
-      update(toolProgress(params, now - started));
+      const current = yield* Ref.updateAndGet(shown, (value) => ({
+        ...value,
+        elapsedMs: now - started,
+      }));
+
+      update(toolProgress(current.phase, current.elapsedMs));
     }).pipe(
       Effect.repeat(Schedule.spaced("1 second")),
       Effect.delay("1 second"),
       Effect.forkChild
     );
 
-    const result = yield* action.pipe(Effect.ensuring(Fiber.interrupt(ticker)));
+    const result = yield* action(report).pipe(
+      Effect.ensuring(Fiber.interrupt(ticker))
+    );
+
     const ended = yield* Clock.currentTimeMillis;
 
     return {
@@ -349,10 +406,28 @@ const readerText = (reader: ReaderState) =>
     Starting: () => "starting",
   });
 
+export const STARTING_FOOTER = "🐀 starting";
+
+export const IDENTITY_FOOTER = "🐀 identity";
+
+export const offFooter = (reason: string) => `🐀 off · ${reason}`;
+
+const footerText = (reader: ReaderState) =>
+  ReaderState.$match(reader, {
+    Acquiring: ({ name }) => `🐀 acquiring ${name}`,
+    Live: ({ name }) => `🐀 live ${name}`,
+    Minting: ({ name }) => `🐀 minting ${name}`,
+    Refused: ({ reason }) => offFooter(`REFUSED: ${reason}`),
+    Retrying: ({ attempt, reason }) =>
+      `🐀 retrying (attempt ${attempt}): ${reason}`,
+    SendOnly: ({ reason }) => `🐀 send-only · ${reason}`,
+    Starting: () => IDENTITY_FOOTER,
+  });
+
 export const readerFooter = (reader: ReaderState) =>
   ReaderState.$is("Live")(reader) || ReaderState.$is("SendOnly")(reader)
     ? undefined
-    : `Rat King reader ${readerText(reader)}`;
+    : footerText(reader);
 
 export const statusText = (_tool: string, status: Status) => {
   const self = Option.match(status.self, {
@@ -420,7 +495,8 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
   localHits: Effect.Effect<
     Readonly<Record<string, number>>,
     PlatformError | Schema.SchemaError
-  > = Effect.succeed({})
+  > = Effect.succeed({}),
+  onPhase?: PhaseReport
 ) {
   const ratking = tracked(yield* RatKing, dispatch);
 
@@ -608,7 +684,8 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
               replyAll: params.replyAll ?? true,
               to: params.to,
             },
-            dispatch
+            dispatch,
+            onPhase
           )
         );
 
@@ -650,7 +727,8 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
               kind: "data",
               summary: params.summary ?? recordSummary(value),
             },
-            dispatch
+            dispatch,
+            onPhase
           )
         );
 
@@ -668,7 +746,7 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
         const delivered = yield* ratking.send(
           to,
           message,
-          dispatching({ ...encryption, cc: params.cc ?? [] }, dispatch)
+          dispatching({ ...encryption, cc: params.cc ?? [] }, dispatch, onPhase)
         );
 
         return ok(
@@ -690,7 +768,8 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
 
         const askOptions: AskOptions = dispatching(
           { ...encryption, cc: params.cc ?? [] },
-          dispatch
+          dispatch,
+          onPhase
         );
 
         if (params.dueBy !== undefined) {

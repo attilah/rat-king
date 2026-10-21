@@ -33,6 +33,7 @@ import type { NameEntryValue } from "../src/name.ts";
 import type { ToolParamsValue } from "../src/tool.ts";
 import { quietSocket } from "./fake-mailbox.ts";
 import { harness } from "./harness.ts";
+import { startSession } from "./start-session.ts";
 
 const Entries = Schema.Array(NameEntry);
 
@@ -153,7 +154,7 @@ const isExecutable = (value: unknown): value is ExecutableTool =>
   Predicate.isFunction(value.execute);
 
 const session = (script: Script) =>
-  Effect.gen(function* startSession() {
+  Effect.gen(function* restoreSession() {
     const fs = yield* FileSystem.FileSystem;
     const state = yield* fs.makeTempDirectoryScoped();
     const notices: string[] = [];
@@ -224,7 +225,7 @@ const session = (script: Script) =>
         tool: Effect.succeed("ratking"),
       })(pi);
 
-      await started({
+      await startSession(started, {
         interactive: true,
         names: [...script.store],
         rememberName: (entry) => {

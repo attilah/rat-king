@@ -27,6 +27,7 @@ import {
 import type { PiHost, SessionStart } from "../src/extension.ts";
 import { RETIRE_COMMAND, retiredLine } from "../src/retire.ts";
 import { harness } from "./harness.ts";
+import { startSession } from "./start-session.ts";
 
 const OWN = "rats-nest/nameless";
 
@@ -147,7 +148,7 @@ const boot = (
 
     if (started) {
       yield* Effect.promise(async () => {
-        await start({ session: "test-session", warn: () => {} });
+        await startSession(start, { session: "test-session", warn: () => {} });
       });
     }
 
