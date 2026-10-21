@@ -97,7 +97,7 @@ export const deployOutcome = (
   events: readonly (typeof RestartEvent.Type)[]
 ): Pick<
   typeof ShipReceipt.Type,
-  "result" | "celldRestarted" | "restartSeconds" | "retryAt"
+  "result" | "celldRestarted" | "restartSeconds" | "retryAt" | "override"
 > => {
   const lastGate = events.at(-1);
   const deferral = events.findLast((event) => event.phase === "deferred");
@@ -109,7 +109,17 @@ export const deployOutcome = (
     result = "deferred";
   }
 
-  const verdict = { ...restartOutcome(events), result };
+  const override = events.findLast(
+    (event) => event.override !== undefined
+  )?.override;
+
+  const outcome = restartOutcome(events);
+
+  const verdict =
+    override === undefined
+      ? { ...outcome, result }
+      : { ...outcome, override, result };
+
   const retryAt = result === "deferred" ? deferral?.retryAt : lastGate?.retryAt;
 
   return retryAt === undefined ? verdict : { ...verdict, retryAt };

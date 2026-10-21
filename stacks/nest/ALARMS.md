@@ -29,6 +29,7 @@ Use a fresh copy of the live stage config. Do not promote an older proposal that
 ## Sources
 
 - `ship.failed`: latest failed receipt; public SHA and sanitized cause. Missing/unreadable receipt history is unknown, not recovery.
+- `ship.churn`: warn when more than `ship.restart.churnLimit` (default 3) ship receipts report a celld restart within the last 24 hours. It never blocks a restart. Missing receipt history is unknown.
 - `celld.down`: two failed health checks outside a fresh `restarting` marker's 180-second window. The marker is read on the configured live node, not from the alarm host's filesystem. Unknown marker readback cannot prove that a restart window has ended.
 - `celld.restarted`: ActiveEnter moves after the initial baseline without a receipt that reports a real restart spanning that instant. It remains firing until an explaining receipt appears. Deploy-time observations wait for receipt/window resolution. A maintenance window run by `celld-window.sh` appends a window receipt (`kind: "window"`, epoch-second `start`/`end`, reason, approval, result, before/after celld PID and ActiveEnterTimestamp) to `window-receipts.jsonl` beside the deploy marker on the live node; the alarm reads it there like the marker, skipping malformed lines; a restart inside `[start, end]` is explained. Window receipts are separate from ship receipts, so the ship judge never reads them. A missing or unreadable window file explains nothing.
 - `issuer.broken`: failed or unavailable configuration doctor.

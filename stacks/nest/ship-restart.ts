@@ -13,8 +13,8 @@ import datetime, fcntl, json, os, pathlib, subprocess, sys, tempfile, time
 settings = json.loads(sys.argv[1])
 mode = sys.argv[2]
 policy = settings['restart']
-def defer(at):
-    print(json.dumps(dict(retryAt=at)), flush=True)
+def defer(at, reason=None):
+    print(json.dumps(dict(retryAt=at) if reason is None else dict(retryAt=at, reason=reason)), flush=True)
     sys.exit(75)
 def state():
     result = subprocess.run(['systemctl','--user','show',policy['unit'],'-p','ActiveState','-p','InvocationID','-p','ActiveEnterTimestampMonotonic','-p','ActiveExitTimestampMonotonic','-p','Requires'], capture_output=True, text=True)
@@ -48,10 +48,14 @@ try:
         previous = json.loads(marker.read_text()) if marker.exists() else None
         if previous is not None and (not isinstance(previous.get('started'),(int,float)) or previous['started'] < 0 or previous.get('phase') not in ['restarting','done']): sys.exit(2)
         at = now
-        if previous is not None and previous.get('sha') != settings['sha']:
-            at = max(at,previous['started']+policy.get('minIntervalHours',6)*3600)
         if previous is None or previous.get('sha') != settings['sha']: at = window(at)
         if at > now: defer(at)
+        backup = policy.get('backupUnit','rat-king-mailbox-backup.service')
+        live = subprocess.run(['systemctl','--user','show',backup,'-p','ActiveState','--value'],capture_output=True,text=True)
+        if live.returncode != 0 or live.stdout.strip() not in ['inactive','failed','active','activating','deactivating']: sys.exit(2)
+        override = settings.get('override')
+        if live.stdout.strip() in ['active','activating'] and override is None:
+            defer(now+60, 'Restart deferred: a backup is running ('+backup+'), and a celld restart mid-backup loses mail. Retry in 60 s, or set RAT_KING_SHIP_RESTART_OVERRIDE=<reason> to restart anyway.')
         for unit in policy['units']:
             check = subprocess.run(['systemctl','--user','show',unit,'-p','ActiveState','--value'],capture_output=True,text=True)
             if check.returncode != 0 or check.stdout.strip() not in ['inactive','failed','active','activating','deactivating']: sys.exit(2)
@@ -77,7 +81,9 @@ try:
             if previous is None: marker.unlink()
             else: mark(previous['phase'],previous['started'],previous['sha'])
         else: mark('done' if active or result.returncode != 0 else 'restarting',started)
-        print(json.dumps(dict(code=result.returncode,durationSeconds=duration,restarted=changed if result.returncode == 0 and active else None)),flush=True)
+        outcome = dict(code=result.returncode,durationSeconds=duration,restarted=changed if result.returncode == 0 and active else None)
+        if override is not None: outcome['override'] = override
+        print(json.dumps(outcome),flush=True)
         sys.exit(result.returncode)
 except Exception:
     sys.exit(2)
@@ -119,11 +125,15 @@ const readProcessStart = Effect.fn("Ship.readProcessStart")(
     )
 );
 
-const DeferredResult = Schema.Struct({ retryAt: Schema.Number });
+const DeferredResult = Schema.Struct({
+  reason: Schema.optionalKey(Schema.NonEmptyString),
+  retryAt: Schema.Number,
+});
 
 const RestartResult = Schema.Struct({
   code: Schema.Int,
   durationSeconds: Schema.Number,
+  override: Schema.optionalKey(Schema.NonEmptyString),
   restarted: Schema.NullOr(Schema.Boolean),
 });
 
@@ -198,16 +208,27 @@ const deferred = Effect.fn("Ship.recordDeferred")(function* recordDeferred(
     )
   );
 
-  yield* appendRestartEvent(settings, {
-    durationSeconds: 0,
-    phase: "deferred",
-    restarted: false,
-    retryAt: decoded.retryAt,
-  });
+  yield* appendRestartEvent(
+    settings,
+    decoded.reason === undefined
+      ? {
+          durationSeconds: 0,
+          phase: "deferred",
+          restarted: false,
+          retryAt: decoded.retryAt,
+        }
+      : {
+          durationSeconds: 0,
+          phase: "deferred",
+          reason: decoded.reason,
+          restarted: false,
+          retryAt: decoded.retryAt,
+        }
+  );
 
   return yield* new HostError({
     operation: "ship",
-    reason: "Restart policy excludes this attempt",
+    reason: decoded.reason ?? "Restart policy excludes this attempt",
   });
 });
 
@@ -302,11 +323,21 @@ export const guardedShell = Effect.fn("Ship.guardedShell")(
             )
           );
 
-          yield* appendRestartEvent(target, {
-            durationSeconds: observed.durationSeconds,
-            phase: "completed",
-            restarted: observed.restarted,
-          });
+          yield* appendRestartEvent(
+            target,
+            observed.override === undefined
+              ? {
+                  durationSeconds: observed.durationSeconds,
+                  phase: "completed",
+                  restarted: observed.restarted,
+                }
+              : {
+                  durationSeconds: observed.durationSeconds,
+                  override: observed.override,
+                  phase: "completed",
+                  restarted: observed.restarted,
+                }
+          );
 
           return { code: observed.code, stdout: "" };
         },
