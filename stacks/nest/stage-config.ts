@@ -1,4 +1,11 @@
-import { Config, ConfigProvider, Effect, FileSystem, Schema } from "effect";
+import {
+  Config,
+  ConfigProvider,
+  Effect,
+  FileSystem,
+  Schema,
+  SchemaIssue,
+} from "effect";
 
 import { AlarmSettings } from "./alarm-config.ts";
 import { ShipAttempt, ShipSettings } from "./ship-config.ts";
@@ -91,6 +98,13 @@ export class FleetError extends Schema.TaggedError<FleetError>()("FleetError", {
   reason: Schema.String,
 }) {}
 
+const formatIssue = SchemaIssue.makeFormatterDefault();
+
+export const causeDetail = (cause: { readonly _tag: string }): string =>
+  Schema.isSchemaError(cause)
+    ? formatIssue(cause.issue).replaceAll(/\s*\n\s*/gu, " ")
+    : cause._tag;
+
 export const loadStageConfig = Effect.gen(function* loadStageConfig() {
   const location = yield* Config.String("RAT_KING_STAGE_CONFIG");
   const fs = yield* FileSystem.FileSystem;
@@ -100,7 +114,10 @@ export const loadStageConfig = Effect.gen(function* loadStageConfig() {
     { onExcessProperty: "error" }
   ).pipe(
     Effect.mapError(
-      () => new FleetError({ reason: "Invalid stage configuration" })
+      (cause) =>
+        new FleetError({
+          reason: `Invalid stage configuration: ${causeDetail(cause)}`,
+        })
     )
   );
 });
