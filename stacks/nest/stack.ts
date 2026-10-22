@@ -311,6 +311,7 @@ export const nestStack = (restore?: RestoreRequest) =>
       const bucket = yield* ObjectStore.Bucket("store", {
         ...(yield* fleetStoreCredentials()),
         host: node,
+        memoryMax: "4608M",
         name: yield* Config.String("RAT_KING_BUCKET").pipe(
           Config.withDefault("rat-king-cells")
         ),
@@ -325,9 +326,10 @@ export const nestStack = (restore?: RestoreRequest) =>
         binary: fleetCelldBinary(node.home),
         bucket,
         host: node,
+        memoryMax: "4608M",
         prepared: staged,
         purgeOnDelete: !recoverState,
-        tuning: { CELLD_LTX_LOCAL_L0_KEEP: "1000" },
+        tuning: { CELLD_LTX_LOCAL_L0_KEEP: "32" },
         workerIPv4,
       });
 
