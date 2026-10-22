@@ -5,7 +5,6 @@ import {
   Option,
   Path,
   Schema,
-  SchemaIssue,
   Stream,
 } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
@@ -55,20 +54,11 @@ const git = Effect.fn("fence.git")(function* git({
   readonly args: readonly string[];
   readonly root: string;
 }) {
-  const subcommand = args[0] ?? "";
-
-  const result = yield* execute({ args, cwd: root, executable: "git" }).pipe(
-    Effect.mapError(
-      () =>
-        new FenceError({
-          reason: `Git unavailable: could not run \`git ${subcommand}\`. Next: install Git and put it on PATH, then retry. Output redacted.`,
-        })
-    )
-  );
+  const result = yield* execute({ args, cwd: root, executable: "git" });
 
   if (result.code !== 0) {
     return yield* new FenceError({
-      reason: `Git failed: \`git ${subcommand}\` exited ${result.code}. Next: run it by hand in the repository root to see why. Output redacted.`,
+      reason: "Git read failed; values redacted.",
     });
   }
 
@@ -94,64 +84,17 @@ export const loadInstance = Effect.fn("fence.loadInstance")(
       )
     );
 
-    const present = yield* fs
-      .exists(location)
-      .pipe(Effect.orElseSucceed(() => false));
+    const stat = yield* fs.stat(location);
 
-    if (!present) {
+    if (stat.mode % 0o1000 !== 0o600) {
       return yield* new FenceError({
-        reason: `Private instance missing at ${location} (from RATS_NEST_INSTANCE, else $HOME/.config/rats-nest/instance.json). Next: copy the private instance there with mode 600 or point RATS_NEST_INSTANCE at it. \`--generic\` runs generic rules only and does not satisfy the commit hook, which never passes it.`,
+        reason: "Private instance must have mode 600.",
       });
     }
-
-    const stat = yield* fs.stat(location).pipe(
-      Effect.mapError(
-        () =>
-          new FenceError({
-            reason: `Private instance at ${location} could not be read. Next: check the path and its permissions.`,
-          })
-      )
-    );
-
-    const mode = stat.mode % 0o1000;
-
-    if (mode !== 0o600) {
-      return yield* new FenceError({
-        reason: `Private instance at ${location} has mode ${mode.toString(8).padStart(3, "0")}, not 600. Next: run \`chmod 600 ${location}\`.`,
-      });
-    }
-
-    const text = yield* fs.readFileString(location).pipe(
-      Effect.mapError(
-        () =>
-          new FenceError({
-            reason: `Private instance at ${location} could not be read. Next: check the path and its permissions.`,
-          })
-      )
-    );
 
     return yield* Schema.decodeEffect(Schema.fromJsonString(Instance), {
-      errors: "all",
       onExcessProperty: "error",
-    })(text).pipe(
-      Effect.mapError(
-        (error) =>
-          new FenceError({
-            reason: `Private instance at ${location} is invalid: ${
-              [
-                ...new Set(
-                  SchemaIssue.makeFormatterStandardSchemaV1()(
-                    error.issue
-                  ).issues.map(
-                    (issue) =>
-                      (issue.path ?? []).map(String).join(".") || "(root)"
-                  )
-                ),
-              ].join(", ") || "(root)"
-            } (paths only; values redacted). Next: fix those entries against tools/fence/instance.schema.json.`,
-          })
-      )
-    );
+    })(yield* fs.readFileString(location));
   }
 );
 
@@ -314,15 +257,7 @@ export const scan = Effect.fn("fence.scan")(function* scan({
     ],
     cwd: root,
     executable: "gitleaks",
-  }).pipe(
-    Effect.mapError(
-      () =>
-        new FenceError({
-          reason:
-            "Gitleaks unavailable: could not run `gitleaks dir`. Next: install gitleaks (`brew install gitleaks` on macOS; see tools/fence/README.md) and put it on PATH. Output redacted.",
-        })
-    )
-  );
+  });
 
   if (leaks.code === 1) {
     const detected = yield* Schema.decodeUnknownEffect(
@@ -349,7 +284,7 @@ export const scan = Effect.fn("fence.scan")(function* scan({
     }
   } else if (leaks.code !== 0) {
     return yield* new FenceError({
-      reason: `Gitleaks failed: \`gitleaks dir\` exited ${leaks.code}. Next: run \`gitleaks version\` to check the install (see tools/fence/README.md). Output redacted.`,
+      reason: "Gitleaks failed; refusing publication. Values redacted.",
     });
   }
 
