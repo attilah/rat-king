@@ -1,5 +1,5 @@
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
-import { Console, Effect } from "effect";
+import { Console, Effect, Predicate } from "effect";
 import { Command, Flag } from "effect/cli";
 
 import { scan } from "./scan.ts";
@@ -28,9 +28,9 @@ const command = Command.make(
         )
       ),
       Effect.catchTag("FenceError", (error) => failure(error.reason)),
-      Effect.catch(() =>
+      Effect.catch((error) =>
         failure(
-          "Fence failed closed: instance, Git, filesystem or gitleaks unavailable or invalid. Values redacted."
+          `Fence failed closed on an unclassified error (${Predicate.hasProperty(error, "_tag") ? error._tag : "untagged"}). Values redacted.`
         )
       )
     );
