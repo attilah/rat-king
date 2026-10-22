@@ -32,6 +32,7 @@ import type { ToolParamsValue } from "../src/tool.ts";
 import { fakeMailbox, quietSocket } from "./fake-mailbox.ts";
 import type { MailboxMode } from "./fake-mailbox.ts";
 import { harness } from "./harness.ts";
+import { startSession } from "./start-session.ts";
 import { ansiTheme } from "./view-arbitraries.ts";
 
 const idle = async () => {};
@@ -202,7 +203,7 @@ const startedTool = (layer: ExtensionOptions["layer"]) =>
       tool: Effect.succeed("ratking"),
     })(pi);
 
-    await started({ session: "abort-test", warn: () => {} });
+    await startSession(started, { session: "abort-test", warn: () => {} });
 
     if (tool === undefined) {
       throw new Error("tool not registered");

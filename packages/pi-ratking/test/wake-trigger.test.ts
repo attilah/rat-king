@@ -25,6 +25,7 @@ import {
   shownIds,
 } from "../src/pending.ts";
 import { harness } from "./harness.ts";
+import { startSession } from "./start-session.ts";
 
 const idle = async () => {};
 
@@ -152,7 +153,7 @@ it.effect.prop(
           ),
           tool: Effect.succeed("ratking"),
         })(pi);
-        await start({
+        await startSession(start, {
           isIdle: () => !sample.busy,
           session: "mail-trigger",
           warn: nothing,

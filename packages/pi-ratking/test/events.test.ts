@@ -56,6 +56,7 @@ import {
 } from "../src/extension.ts";
 import { shownIds } from "../src/pending.ts";
 import { harness } from "./harness.ts";
+import { startSession } from "./start-session.ts";
 
 const idle = async () => {};
 
@@ -100,7 +101,7 @@ const fakePi = () => {
   };
 
   const start = Effect.promise(async () => {
-    await started({ session: "test-session", warn: () => {} });
+    await startSession(started, { session: "test-session", warn: () => {} });
   });
 
   const end = Effect.promise(async () => {
@@ -1061,7 +1062,10 @@ it.live.prop(
         })(pi);
       });
       yield* Effect.promise(async () => {
-        await lifecycle.start({ session: "inbound", warn: () => {} });
+        await startSession(lifecycle.start, {
+          session: "inbound",
+          warn: () => {},
+        });
       });
       yield* Deferred.await(taken).pipe(Effect.timeout("5 seconds"));
       display();
@@ -1319,7 +1323,10 @@ it.live.prop(
         })(pi);
       });
       yield* Effect.promise(async () => {
-        await lifecycle.start({ session: "record-send", warn: () => {} });
+        await startSession(lifecycle.start, {
+          session: "record-send",
+          warn: () => {},
+        });
       });
       const result = yield* Deferred.make<unknown>();
       pi.events.on(SEND_RESULT_EVENT, (value) => {
@@ -1443,7 +1450,10 @@ it.live.prop(
         })(pi);
       });
       yield* Effect.promise(async () => {
-        await lifecycle.start({ session: "record-status", warn: () => {} });
+        await startSession(lifecycle.start, {
+          session: "record-status",
+          warn: () => {},
+        });
       });
       const started = yield* Deferred.make<unknown>();
       pi.events.on(SEND_RESULT_EVENT, (data) => {

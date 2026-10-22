@@ -320,8 +320,7 @@ const cancelledLines = (
 
 const ProgressDetails = Schema.Struct({
   elapsedMs: Schema.Finite,
-  progress: Schema.Literals(["asking", "sending", "waiting"]),
-  to: Schema.String,
+  phase: Schema.String,
 });
 
 const receiptFooter = (details: ReceiptDetailsValue, text: string) =>
@@ -476,40 +475,25 @@ const statusLines = (
   });
 };
 
-const progressLines = (
-  input: ResultInput,
-  theme: Paint,
-  width: number,
-  labels: Labels
-) => {
+const progressLines = (input: ResultInput, theme: Paint, width: number) => {
   const progress = Schema.is(ProgressDetails)(input.details)
     ? input.details
     : undefined;
 
-  const waiting = progress?.progress === "waiting";
+  const text = clean(input.text).trim();
+  const phase = progress?.phase ?? (text === "" ? input.action : text);
 
-  let headline =
-    progress?.progress ??
-    (input.action === "ask" ? "waiting for the reply" : "sending");
+  const elapsed =
+    progress === undefined || progress.elapsedMs < 1000
+      ? ""
+      : theme.fg("dim", ` · ${Math.floor(progress.elapsedMs / 1000)}s`);
 
-  if (waiting && input.action === "ask") {
-    headline = "waiting for the reply";
-  }
-
-  const target = progress?.to;
-
-  if (target !== undefined && target !== "") {
-    headline += ` → ${party(theme, target, labels(target))}`;
-  }
-
-  if (waiting) {
-    headline += theme.fg(
-      "dim",
-      ` · ${Math.floor((progress?.elapsedMs ?? 0) / 1000)}s`
-    );
-  }
-
-  return Block({ glyph: theme.fg("warning", "⋯"), headline, theme, width });
+  return Block({
+    glyph: theme.fg("warning", "⋯"),
+    headline: `${clean(phase)}${elapsed}`,
+    theme,
+    width,
+  });
 };
 
 export const resultLines = (
@@ -520,7 +504,7 @@ export const resultLines = (
   call?: CallArgs
 ): readonly string[] => {
   if (input.isPartial) {
-    return progressLines(input, theme, width, labels);
+    return progressLines(input, theme, width);
   }
 
   if (Schema.is(CancelledDetails)(input.details)) {

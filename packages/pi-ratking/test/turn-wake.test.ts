@@ -50,6 +50,7 @@ import {
   TURN_SHOWN_ENTRY,
 } from "../src/wake-record.ts";
 import { harness } from "./harness.ts";
+import { startSession } from "./start-session.ts";
 import { plainTheme } from "./view-arbitraries.ts";
 
 const State = Schema.Literals([
@@ -233,7 +234,7 @@ const reader = (
       },
       start: (isIdle: boolean) =>
         Effect.promise(async () => {
-          await start({
+          await startSession(start, {
             isIdle: () => isIdle,
             rememberShownTurn: (key) => {
               keys.push(key);

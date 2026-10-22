@@ -336,11 +336,34 @@ const observed = (name: string, hook: Effect.Effect<void> | undefined) =>
         Effect.uninterruptible
       );
 
+const reportPhase = (
+  options: Pick<SendOptions, "onPhase"> | undefined,
+  phase: SendPhase
+) => observed("phase", options?.onPhase?.(phase));
+
 const oneLineSummary = (text: string) =>
   text.replaceAll(/\s+/gu, " ").trim().slice(0, SUMMARY_MAX);
 
 const NAMELESS_REASON =
   "This Pi has no Rat King name. Nameless Pis don't register, to stop dead mailboxes, and workers never hold their desk's key. Set RATKING_PRINT_NAME or RATKING_NAME";
+
+/* oxlint-disable typescript/no-generated-empty-object-type -- Effect TaggedEnum requires an intentionally empty payload for tag-only variants. */
+export type SendPhase = Data.TaggedEnum<{
+  Identity: Readonly<Record<never, never>>;
+  Reader: Readonly<Record<never, never>>;
+  Resolving: { readonly name: string };
+  Sealing: Readonly<Record<never, never>>;
+  Sending: Readonly<Record<never, never>>;
+  Retrying: { readonly attempt: number; readonly reason: string };
+  AwaitingReply: { readonly from: string };
+}>;
+
+/* oxlint-enable typescript/no-generated-empty-object-type */
+
+export const SendPhase = Data.taggedEnum<SendPhase>();
+
+const sealingPhase = (encrypt: boolean) =>
+  encrypt ? SendPhase.Sealing() : SendPhase.Sending();
 
 export interface SendOptions {
   readonly ccOnPurpose?: boolean;
@@ -349,6 +372,7 @@ export interface SendOptions {
   readonly encrypt?: boolean;
   readonly kind?: KindValue;
   readonly onDispatch?: Effect.Effect<void>;
+  readonly onPhase?: (phase: SendPhase) => Effect.Effect<void>;
   readonly quiet?: true;
   readonly replyTo?: { readonly messageId: string; readonly senderDid: string };
   readonly summary?: string;
@@ -396,6 +420,7 @@ export type AskOptions = Pick<
   | "encrypt"
   | "cc"
   | "onDispatch"
+  | "onPhase"
   | "quiet"
   | "summary"
 > & {
@@ -459,7 +484,13 @@ export class RatKing extends Context.Service<
       body: string | LexiconRecordValue,
       options?: Pick<
         SendOptions,
-        "ccOnPurpose" | "encrypt" | "kind" | "onDispatch" | "quiet" | "summary"
+        | "ccOnPurpose"
+        | "encrypt"
+        | "kind"
+        | "onDispatch"
+        | "onPhase"
+        | "quiet"
+        | "summary"
       > & {
         readonly replyAll?: boolean;
         readonly to?: string | undefined;
@@ -1339,6 +1370,10 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
     options: SendOptions,
     before: (id: string, did: string) => Effect.Effect<B, NotDelivered>
   ) {
+    if (!(yield* Deferred.isDone(self))) {
+      yield* reportPhase(options, SendPhase.Identity());
+    }
+
     const own = yield* awaitSelf;
 
     if (
@@ -1366,6 +1401,8 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       Option.isSome(Schema.decodeUnknownOption(Wake.Main)(body));
 
     for (const name of names) {
+      yield* reportPhase(options, SendPhase.Resolving({ name }));
+
       const target = yield* directory
         .resolve(name)
         .pipe(
@@ -1456,6 +1493,8 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
 
       const encrypt =
         options.encrypt ?? (Option.isSome(textBody) ? settings.encrypt : true);
+
+      yield* reportPhase(options, sealingPhase(encrypt));
 
       const replyTo =
         options.replyTo === undefined
@@ -1554,6 +1593,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
 
       const extra = yield* before(first.aad.messageId, primary.did);
 
+      yield* reportPhase(options, SendPhase.Sending());
       yield* observed("dispatch", options.onDispatch);
 
       for (const envelope of envelopes) {
@@ -1625,6 +1665,13 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
                 ? Effect.gen(function* retryAdmission() {
                     const delay = yield* AdmissionBackoff;
 
+                    yield* reportPhase(
+                      options,
+                      SendPhase.Retrying({
+                        attempt: count + 1,
+                        reason: outcome.error.error ?? outcome._tag,
+                      })
+                    );
                     yield* Effect.sleep(delay(count));
 
                     return yield* attempt(count + 1);
@@ -2780,6 +2827,10 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
         return yield* quietAsk();
       }
 
+      if (!(yield* Ref.get(attached))) {
+        yield* reportPhase(options, SendPhase.Reader());
+      }
+
       yield* awaitLive;
 
       const pending = yield* Ref.make(Option.none<string>());
@@ -2824,6 +2875,11 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
         if (Option.isNone(extra)) {
           return { delivered };
         }
+
+        yield* reportPhase(
+          options,
+          SendPhase.AwaitingReply({ from: delivered.to })
+        );
 
         const bound = Duration.millis(
           Math.min(

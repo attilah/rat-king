@@ -22,6 +22,7 @@ import { ratkingExtension } from "../src/extension.ts";
 import type { PiHost, SessionStart } from "../src/extension.ts";
 import { shownIds } from "../src/pending.ts";
 import { harness } from "./harness.ts";
+import { startSession } from "./start-session.ts";
 
 const idle = async () => {};
 
@@ -106,7 +107,7 @@ it.effect.prop(
           layer,
           tool: Effect.succeed("ratking"),
         })(pi);
-        await start({ session: "display", warn: () => {} });
+        await startSession(start, { session: "display", warn: () => {} });
       });
 
       const inbound: Inbound = {

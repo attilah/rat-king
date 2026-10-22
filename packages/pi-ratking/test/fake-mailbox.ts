@@ -32,10 +32,11 @@ export const quietSocket = Layer.succeed(WebSocketPort, {
   },
 });
 
-export type MailboxMode = "accept" | "hold" | "reject";
+export type MailboxMode = "accept" | "flaky" | "hold" | "reject";
 
 export interface FakeMailbox {
   readonly accepted: Deferred.Deferred<boolean>;
+  readonly calls: string[];
   readonly http: HttpClient.HttpClient;
   readonly requests: Defs.EncryptedEnvelopeValue[];
   readonly seen: Deferred.Deferred<boolean>;
@@ -43,6 +44,7 @@ export interface FakeMailbox {
 
 export const fakeMailbox = (mode: MailboxMode): FakeMailbox => {
   const requests: Defs.EncryptedEnvelopeValue[] = [];
+  const calls: string[] = [];
   const seen = Deferred.makeUnsafe<boolean>();
   const accepted = Deferred.makeUnsafe<boolean>();
 
@@ -51,6 +53,8 @@ export const fakeMailbox = (mode: MailboxMode): FakeMailbox => {
   const http = HttpClient.make((request) =>
     Effect.gen(function* mailbox() {
       const nsid = new URL(request.url).pathname.replace("/xrpc/", "");
+
+      calls.push(nsid);
 
       if (
         nsid.endsWith(".acquireLease") &&
@@ -113,6 +117,13 @@ export const fakeMailbox = (mode: MailboxMode): FakeMailbox => {
       requests.push(input.envelope);
       Deferred.doneUnsafe(seen, Effect.succeed(true));
 
+      if (mode === "flaky" && requests.length === 1) {
+        return HttpClientResponse.fromWeb(
+          request,
+          Response.json({ error: "MailboxUnavailable" }, { status: 503 })
+        );
+      }
+
       if (mode === "hold") {
         return yield* Effect.never;
       }
@@ -143,5 +154,5 @@ export const fakeMailbox = (mode: MailboxMode): FakeMailbox => {
     })
   );
 
-  return { accepted, http, requests, seen };
+  return { accepted, calls, http, requests, seen };
 };

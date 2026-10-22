@@ -30,6 +30,7 @@ import { DIGEST_MESSAGE, inbox, shownIds } from "../src/pending.ts";
 import type { PendingMail } from "../src/pending.ts";
 import { harness } from "./harness.ts";
 import { mail, themes } from "./inline-fixtures.ts";
+import { startSession } from "./start-session.ts";
 
 const idle = async () => {};
 
@@ -175,7 +176,7 @@ it.effect.prop(
           layer,
           tool: Effect.succeed("ratking"),
         })(pi);
-        await start({ session: "wake-digest", warn: nothing });
+        await startSession(start, { session: "wake-digest", warn: nothing });
       });
       yield* Effect.addFinalizer(() => Effect.promise(end));
 

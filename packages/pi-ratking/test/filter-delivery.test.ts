@@ -12,6 +12,7 @@ import { defaultPreferences } from "../../mailbox-client/src/attention.ts";
 import { ratkingExtension, RECORD_EVENT } from "../src/extension.ts";
 import type { PiHost, SessionStart } from "../src/extension.ts";
 import { harness } from "./harness.ts";
+import { startSession } from "./start-session.ts";
 
 const Scenario = Schema.Struct({
   expired: Schema.Boolean,
@@ -163,7 +164,7 @@ it.effect.prop(
 
       yield* Effect.promise(init.bind(undefined, pi));
       yield* Effect.promise(async () => {
-        await start({
+        await startSession(start, {
           isIdle: () => true,
           session: "receiver",
           warn: nothing,

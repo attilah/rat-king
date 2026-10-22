@@ -19,6 +19,7 @@ import { expect } from "vitest";
 import { ratkingExtension } from "../src/extension.ts";
 import type { PiHost, SessionStart } from "../src/extension.ts";
 import { harness } from "./harness.ts";
+import { startSession } from "./start-session.ts";
 
 const idle = async () => {};
 
@@ -120,7 +121,10 @@ it.effect.prop(
           ),
           tool: Effect.succeed("ratking"),
         })(pi);
-        await start({ session: "control-custody", warn: nothing });
+        await startSession(start, {
+          session: "control-custody",
+          warn: nothing,
+        });
       });
       yield* Effect.addFinalizer(() => Effect.promise(end));
       const value = record(kind);

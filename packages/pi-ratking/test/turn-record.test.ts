@@ -25,6 +25,7 @@ import { expect } from "vitest";
 import { ratkingExtension, RECORD_EVENT } from "../src/extension.ts";
 import type { PiHost, SessionStart } from "../src/extension.ts";
 import { harness } from "./harness.ts";
+import { startSession } from "./start-session.ts";
 
 const Case = Schema.Struct({
   fail: Schema.Boolean,
@@ -192,7 +193,7 @@ it.effect.prop(
         })(pi);
       });
       yield* Effect.promise(async () => {
-        await start({
+        await startSession(start, {
           rememberTurn: (n) => {
             remembered.push(n);
           },

@@ -19,6 +19,7 @@ import { ratkingExtension, RECORD_EVENT } from "../src/extension.ts";
 import type { PiHost, SessionStart } from "../src/extension.ts";
 import { turnInbox, turnKey, turnWake } from "../src/wake-record.ts";
 import { harness } from "./harness.ts";
+import { startSession } from "./start-session.ts";
 
 const Name = Schema.Literals([
   "fleet/desk",
@@ -191,7 +192,7 @@ it.effect.prop(
           ),
           tool: Effect.succeed("ratking"),
         })(pi);
-        await start({
+        await startSession(start, {
           isIdle: () => true,
           session: "receiver-session",
           shownTurns: input.seen ? [turnKey(arrival(input).record)] : [],
