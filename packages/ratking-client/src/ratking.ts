@@ -70,6 +70,7 @@ import type { QuietAsk } from "./errors.ts";
 import { claimName, ensureIdentity } from "./identity.ts";
 import type { SessionFacts } from "./identity.ts";
 import { Issuer } from "./issuer.ts";
+import { recoverHeld } from "./lease-recovery.ts";
 import {
   AgentName,
   addressedElsewhere,
@@ -1980,6 +1981,52 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
     });
   };
 
+  type Prepared = Effect.Success<ReturnType<typeof prepare>>;
+
+  const unreachable = (error: { readonly _tag: string }) =>
+    refused("Uncertain")(`Mailbox unreachable: ${reasonOf(error)}`);
+
+  const withClient = <A, E>(
+    own: Self,
+    peers: readonly PeerDocument[],
+    use: (client: Prepared) => Effect.Effect<A, E>
+  ) =>
+    Effect.gen(function* clientScope() {
+      const client = yield* prepare({
+        endpoint: settings.endpoint,
+        own: yield* ownIdentity(own.identity),
+        peers,
+        serviceDid: settings.serviceDid,
+      });
+
+      return yield* use(client);
+    }).pipe(Effect.scoped, Effect.provideService(HttpClient.HttpClient, http));
+
+  const holderOf = (client: Prepared, did: string) =>
+    Effect.gen(function* resolveHolder() {
+      const found = yield* client.resolveLease(did).pipe(
+        Effect.map(Option.some),
+        Effect.catchIf(
+          (failure) => failure.error === "LeaseNotFound",
+          () => Effect.succeed(Option.none<Lease.MainValue>())
+        )
+      );
+
+      const now = yield* Clock.currentTimeMillis;
+
+      return found.pipe(
+        Option.map((lease): LeaseHolder => ({
+          expiresAt: lease.expiresAt,
+          generation: lease.generation,
+          harness: lease.harness.$type.split("#")[1] ?? lease.harness.$type,
+          live: Date.parse(lease.expiresAt) > now,
+          session: Schema.is(Schema.String)(lease.harness.sessionId)
+            ? lease.harness.sessionId
+            : "unknown",
+        }))
+      );
+    });
+
   const waitForClaim = (name: string) =>
     Effect.gen(function* awaitClaim() {
       const gate = yield* Deferred.make<boolean>();
@@ -2267,7 +2314,16 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
           () =>
             facts.successor === true
               ? awaitSuccession(own.name, startedAt)
-              : waitForClaim(own.name)
+              : recoverHeld({
+                  park: waitForClaim(own.name),
+                  resolve: withClient(own, [], (client) =>
+                    holderOf(client, own.did)
+                  ).pipe(Effect.mapError(unreachable)),
+                  retrying: setState(
+                    ReaderState.Acquiring({ did: own.did, name: own.name })
+                  ),
+                  session: facts.session,
+                })
         )
       )
     ).pipe(Effect.forever);
@@ -2299,52 +2355,6 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       );
 
       return yield* Effect.addFinalizer(() => retireHeartbeat);
-    });
-
-  type Prepared = Effect.Success<ReturnType<typeof prepare>>;
-
-  const unreachable = (error: { readonly _tag: string }) =>
-    refused("Uncertain")(`Mailbox unreachable: ${reasonOf(error)}`);
-
-  const withClient = <A, E>(
-    own: Self,
-    peers: readonly PeerDocument[],
-    use: (client: Prepared) => Effect.Effect<A, E>
-  ) =>
-    Effect.gen(function* clientScope() {
-      const client = yield* prepare({
-        endpoint: settings.endpoint,
-        own: yield* ownIdentity(own.identity),
-        peers,
-        serviceDid: settings.serviceDid,
-      });
-
-      return yield* use(client);
-    }).pipe(Effect.scoped, Effect.provideService(HttpClient.HttpClient, http));
-
-  const holderOf = (client: Prepared, did: string) =>
-    Effect.gen(function* resolveHolder() {
-      const found = yield* client.resolveLease(did).pipe(
-        Effect.map(Option.some),
-        Effect.catchIf(
-          (failure) => failure.error === "LeaseNotFound",
-          () => Effect.succeed(Option.none<Lease.MainValue>())
-        )
-      );
-
-      const now = yield* Clock.currentTimeMillis;
-
-      return found.pipe(
-        Option.map((lease): LeaseHolder => ({
-          expiresAt: lease.expiresAt,
-          generation: lease.generation,
-          harness: lease.harness.$type.split("#")[1] ?? lease.harness.$type,
-          live: Date.parse(lease.expiresAt) > now,
-          session: Schema.is(Schema.String)(lease.harness.sessionId)
-            ? lease.harness.sessionId
-            : "unknown",
-        }))
-      );
     });
 
   const classify = Effect.fn("RatKing.classify")(function* classify(

@@ -166,6 +166,30 @@ it.live.prop(
             );
           }
 
+          if (nsid.endsWith(".resolveLease")) {
+            const holder = new URL(request.url).searchParams.get("did") ?? "";
+
+            return HttpClientResponse.fromWeb(
+              request,
+              Response.json({
+                lease: {
+                  did: holder,
+                  expiresAt: DateTime.formatIso(
+                    DateTime.makeUnsafe(
+                      (yield* Clock.currentTimeMillis) + 300_000
+                    )
+                  ),
+                  generation: 1,
+                  harness: {
+                    $type: "sh.mschf.ratking.runtime.lease#pi",
+                    sessionId: "parent",
+                  },
+                  leaseId: "3mxcx45mn7sey",
+                },
+              })
+            );
+          }
+
           return HttpClientResponse.fromWeb(
             request,
             Response.json(
