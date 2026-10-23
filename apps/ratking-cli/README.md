@@ -26,6 +26,7 @@ ratking filter remove <id>
 ratking filter list
 ratking identity | provision | retire | unretire | retired | traffic
 ratking snapshot --out <new-directory>
+ratking resolve --names <file> --out <new-file>
 ```
 
 Client commands take `--as <name>` (default `RATKING_NAME`) and `--json`. `health` defaults its signer to `operator`, not the inspected name.
@@ -75,6 +76,30 @@ The output parent must exist and be writable. The output directory must not exis
 The command stages `names.json`, `retired.json` and `issuers.json` beside the destination, then publishes the directory with one rename. Files use mode `0600`; the directory uses `0700`. The two list files share a fresh `snapshot` run id, `complete: true` and exact `total` values. Neither contains a remaining cursor. `issuers.json` maps live names to the configured placement label. Collection rejects conflicting documents for the same name; identical duplicates retain the first configured placement.
 
 Success prints one JSON receipt containing `snapshot`, `totals`, per-issuer `pages` and file `sha256` hashes. Failure prints a JSON diagnostic on stderr with `error`, `failed`, `why` and `next`, exits nonzero and does not publish a bundle. Existing output stays unchanged. Use a new output directory when retrying an `OutputExists` error. These exports are complete traversals, not an issuer-wide transactional read: names can change while pages are fetched.
+
+### Per-name resolution
+
+`ratking resolve --names <file> --out <new-file>` reads a JSON array of unique, nonempty names. It tries the local directory first, then canonicalizes aliases and refreshes the derived DID through the operator's signed mailbox client. It never sends mail, mints identities or updates the local directory.
+
+Load the same four `RAT_KING_*` operator settings used by `snapshot`. The local directory, reserved names, configured documents and DID template come from `RATKING_CONFIG` (otherwise `~/.config/rat-king/pi.json`). The operator endpoint and service DID, not the Pi endpoint, own the refresh requests.
+
+Run from the repository root with that environment loaded:
+
+```sh
+node apps/ratking-cli/bin/ratking.ts resolve --names "$SYNC_INPUTS/selected-names.json" --out "$SYNC_INPUTS/resolve-run.json"
+```
+
+The output is `{resolved: {name: {did, document}}, unresolved: [{name, reason}], total, run}`. Keys retain the requested names, including aliases. Each lookup has a ten-second deadline, with at most four in flight. A failed or timed-out lookup does not abort the rest. Reasons are only `unknown-name`, `refresh-failed`, `invalid-document` or `did-mismatch`, never exception text. A timeout uses `refresh-failed`. Documents pass the mailbox client's public-document schema; private JWK fields refuse and unknown fields are not exported.
+
+The output parent must exist and support hard links. The command stages a `0600` file beside the destination and atomically links it into place without overwriting another writer. Success, including partial resolution, prints one JSON receipt with `resolved` and `unresolved` counts, `total`, a fresh `run` and the file's `sha256`. Bad input, configuration or publication fails nonzero, prints `failed`, `why` and `next` on stderr, and does not publish a file. Existing output stays unchanged.
+
+Secret Cell's `callers_sync.py --directory` expects the **inner `resolved` map**, not this command's run envelope. Extract it into a new private file before supplying it to callers sync, and retain the envelope and unresolved list for review:
+
+```sh
+(umask 077; set -C; jq -e '.resolved' "$SYNC_INPUTS/resolve-run.json" > "$SYNC_INPUTS/resolved.json")
+```
+
+Use fresh filenames for each run. This command resolves an explicitly selected list; it does not select callers or attest issuer-snapshot completeness.
 
 ## Output
 

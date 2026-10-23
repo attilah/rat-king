@@ -2,12 +2,13 @@
 import * as Names from "@rat-king/lexicon/identity.listNames";
 import * as Retired from "@rat-king/lexicon/identity.listRetired";
 import { Transport } from "@rat-king/lexicon/transport";
-import { Identity, transportLayer } from "@rat-king/mailbox-client";
-import { Config, Console, Effect, Layer, Schema } from "effect";
+import { transportLayer } from "@rat-king/mailbox-client";
+import { Console, Effect, Layer, Schema } from "effect";
 import { Command, Flag } from "effect/cli";
 import { FetchHttpClient } from "effect/http";
 
-import { SecretStore, secretStoreLayer } from "../../mailbox/cli/secrets.ts";
+import { secretStoreLayer } from "../../mailbox/cli/secrets.ts";
+import { operatorConfig } from "./operator-config.ts";
 import { SnapshotError, writeSnapshot } from "./snapshot.ts";
 
 const page = Effect.fn("Snapshot.page")(function* page<S extends Schema.Top>(
@@ -76,25 +77,7 @@ export const snapshotWithTransport = Effect.fn("Snapshot.withTransport")(
 
 const configuredSnapshot = Effect.fn("Snapshot.configured")(
   function* configuredSnapshot(out: string) {
-    const label = yield* Config.NonEmptyString("RAT_KING_ISSUER_LABEL");
-    const endpoint = yield* Config.NonEmptyString("RAT_KING_ENDPOINT");
-    const serviceDid = yield* Config.NonEmptyString("RAT_KING_SERVICE_DID");
-    const secret = yield* Config.NonEmptyString("RAT_KING_OPERATOR_IDENTITY");
-    const store = yield* SecretStore;
-
-    const identity = yield* store.lease(secret).pipe(
-      Effect.flatMap(
-        Schema.decodeUnknownEffect(Schema.fromJsonString(Identity))
-      ),
-      Effect.mapError(
-        () =>
-          new SnapshotError({
-            code: "IdentityUnavailable",
-            reason:
-              "Could not lease or decode the operator identity; verify RAT_KING_OPERATOR_IDENTITY and access to agent-secrets",
-          })
-      )
-    );
+    const { label, endpoint, serviceDid, identity } = yield* operatorConfig;
 
     return yield* snapshotWithTransport(label, out).pipe(
       Effect.provide(
