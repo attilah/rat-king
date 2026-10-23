@@ -37,9 +37,11 @@ export const refuse = Effect.fn("RatkingCli.refuse")(function* refuse(
 ) {
   const { code, prompt } = faulted(fault, ground);
 
-  yield* json
-    ? Console.log(JSON.stringify({ command, error: prompt, ok: false }))
-    : Console.error(promptText(prompt));
+  if (json) {
+    yield* Console.log(JSON.stringify({ command, error: prompt, ok: false }));
+  }
+
+  yield* Console.error(promptText(prompt));
 
   yield* Effect.sync(() => {
     process.exitCode = code;

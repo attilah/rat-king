@@ -3,6 +3,7 @@ import {
   ConfigProvider,
   Effect,
   FileSystem,
+  Option,
   Schema,
   SchemaIssue,
 } from "effect";
@@ -96,7 +97,62 @@ export type StageConfigValue = typeof StageConfig.Type;
 
 export class FleetError extends Schema.TaggedError<FleetError>()("FleetError", {
   reason: Schema.String,
-}) {}
+}) {
+  override get message(): string {
+    return this.reason;
+  }
+}
+
+export const RETIRED_KEYS: readonly {
+  readonly key: string;
+  readonly path: readonly string[];
+}[] = [{ key: "minIntervalHours", path: ["ship", "restart"] }];
+
+const JsonObject = Schema.Record(Schema.String, Schema.Json);
+
+export type JsonDocument = typeof JsonObject.Type;
+
+const asNode = Schema.decodeUnknownOption(JsonObject);
+
+const dropKey = (
+  node: JsonDocument,
+  path: readonly string[],
+  key: string
+): Option.Option<JsonDocument> => {
+  const [head, ...rest] = path;
+
+  if (head === undefined) {
+    return key in node
+      ? Option.some(
+          Object.fromEntries(
+            Object.entries(node).filter(([name]) => name !== key)
+          )
+        )
+      : Option.none();
+  }
+
+  return Option.fromNullishOr(node[head]).pipe(
+    Option.flatMap(asNode),
+    Option.flatMap((child) => dropKey(child, rest, key)),
+    Option.map((next) => ({ ...node, [head]: next }))
+  );
+};
+
+export const dropRetiredKeys = (document: JsonDocument) => {
+  const retired: string[] = [];
+  let value = document;
+
+  for (const { key, path } of RETIRED_KEYS) {
+    const dropped = dropKey(value, path, key);
+
+    if (Option.isSome(dropped)) {
+      retired.push([...path, key].join("."));
+      ({ value } = dropped);
+    }
+  }
+
+  return { retired, value };
+};
 
 const formatIssue = SchemaIssue.makeFormatterDefault();
 
@@ -105,21 +161,30 @@ export const causeDetail = (cause: { readonly _tag: string }): string =>
     ? formatIssue(cause.issue).replaceAll(/\s*\n\s*/gu, " ")
     : cause._tag;
 
+const invalid = (cause: { readonly _tag: string }) =>
+  new FleetError({
+    reason: `Invalid stage configuration: ${causeDetail(cause)}`,
+  });
+
 export const loadStageConfig = Effect.gen(function* loadStageConfig() {
   const location = yield* Config.String("RAT_KING_STAGE_CONFIG");
   const fs = yield* FileSystem.FileSystem;
 
-  return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(StageConfig))(
-    yield* fs.readFileString(location),
-    { onExcessProperty: "error" }
-  ).pipe(
-    Effect.mapError(
-      (cause) =>
-        new FleetError({
-          reason: `Invalid stage configuration: ${causeDetail(cause)}`,
-        })
-    )
-  );
+  const document = yield* Schema.decodeUnknownEffect(
+    Schema.fromJsonString(JsonObject)
+  )(yield* fs.readFileString(location)).pipe(Effect.mapError(invalid));
+
+  const { retired, value } = dropRetiredKeys(document);
+
+  for (const key of retired) {
+    yield* Effect.logWarning(
+      `Stage configuration key ${key} is retired and ignored; remove ${key} from the stage file`
+    );
+  }
+
+  return yield* Schema.decodeUnknownEffect(StageConfig)(value, {
+    onExcessProperty: "error",
+  }).pipe(Effect.mapError(invalid));
 });
 
 export const stageProvider = (config: StageConfigValue) =>
