@@ -523,6 +523,7 @@ export interface PiHost {
   readonly onMessageShown?: (handler: (id: string) => void) => void;
   readonly onTurnEnd?: (handler: () => void) => void;
   readonly shownInSession?: () => ReadonlySet<string>;
+  readonly toolRegistered?: (name: string) => boolean;
   readonly registerMessageRenderer: ExtensionAPI["registerMessageRenderer"];
   readonly registerTool: ExtensionAPI["registerTool"];
   readonly sendMessage: ExtensionAPI["sendMessage"];
@@ -660,6 +661,13 @@ export const piHost = (pi: ExtensionAPI): PiHost => {
       pi.sendMessage(message, delivery);
     },
     shownInSession: () => shownInHistory(history()),
+    toolRegistered: (name) => {
+      try {
+        return pi.getAllTools().some((registered) => registered.name === name);
+      } catch {
+        return false;
+      }
+    },
   };
 };
 
@@ -1353,6 +1361,36 @@ export const ratkingExtension = (options: ExtensionOptions) =>
       }
     );
 
+    const dataListenersLoaded = () => pi.toolRegistered?.(tool) ?? true;
+
+    const announceArrival = (inbound: Inbound) => {
+      const notice =
+        inbound.kind === "data" ? recordNotice(inbound, false) : undefined;
+
+      const unrendered = !injects(inbound, false) && notice === undefined;
+      const claim = { taken: false };
+
+      pi.events.emit(
+        MESSAGE_EVENT,
+        unrendered
+          ? {
+              ...inboundDetails(inbound, false),
+              claim: () => {
+                claim.taken = true;
+              },
+            }
+          : inboundDetails(inbound, false)
+      );
+
+      const unclaimedWithoutListeners =
+        unrendered && !claim.taken && !dataListenersLoaded();
+
+      return {
+        notice,
+        surfaces: injects(inbound, false) || unclaimedWithoutListeners,
+      };
+    };
+
     const deliver: Deliver = (inbound, settled, ack) =>
       Effect.gen(function* deliverMail() {
         const now = yield* Clock.currentTimeMillis;
@@ -1396,7 +1434,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
           return;
         }
 
-        pi.events.emit(MESSAGE_EVENT, inboundDetails(inbound, settled));
+        const { notice, surfaces } = announceArrival(inbound);
 
         if (inbound.verified) {
           turnMail.heard(inbound.from);
@@ -1426,9 +1464,6 @@ export const ratkingExtension = (options: ExtensionOptions) =>
           return;
         }
 
-        const notice =
-          inbound.kind === "data" ? recordNotice(inbound, settled) : undefined;
-
         if (notice !== undefined) {
           dispatch.send(
             {
@@ -1441,7 +1476,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
           );
         }
 
-        if (injects(inbound, settled)) {
+        if (surfaces) {
           yield* applyDelivery(verdictToHold(verdict), {
             inject: (hold) =>
               Effect.sync(() => {
