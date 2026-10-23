@@ -25,9 +25,10 @@ ratking filter add '<rule-json>'
 ratking filter remove <id>
 ratking filter list
 ratking identity | provision | retire | unretire | retired | traffic
+ratking snapshot --out <new-directory>
 ```
 
-Every command takes `--as <name>` (default `RATKING_NAME`) and `--json`. `health` defaults its signer to `operator`, not the inspected name.
+Client commands take `--as <name>` (default `RATKING_NAME`) and `--json`. `health` defaults its signer to `operator`, not the inspected name.
 
 ## Identity
 
@@ -58,6 +59,22 @@ Writes read the stored preferences, change one thing and put the whole record ba
 ## Operator commands
 
 `identity`, `provision`, `retire`, `unretire`, `retired` and `traffic` are the `apps/mailbox/cli` commands mounted unchanged. They need the operator `RAT_KING_*` configuration described in `apps/mailbox/cli/README.md` and are not part of ordinary agent use.
+
+### Complete issuer snapshots
+
+`ratking snapshot --out <new-directory>` exports the issuer's complete live and retired name lists for callers sync. It uses the existing signed transport and leases the credential named by `RAT_KING_OPERATOR_IDENTITY` from agent-secrets. Configure `RAT_KING_ENDPOINT`, `RAT_KING_SERVICE_DID` and `RAT_KING_ISSUER_LABEL` alongside that secret name. The label is the issuer's placement label, not its URL or DID. The command never prints the credential.
+
+Run from the repository root with that operator environment loaded:
+
+```sh
+node apps/ratking-cli/bin/ratking.ts snapshot --out "$HOME/ratking-snapshot-$(date -u +%Y%m%dT%H%M%SZ)"
+```
+
+The output parent must exist and be writable. The output directory must not exist. Every page of both contracts must succeed before any snapshot file is written. There is no page cap. A repeated cursor produces `RepeatedCursor` rather than an incomplete snapshot.
+
+The command stages `names.json`, `retired.json` and `issuers.json` beside the destination, then publishes the directory with one rename. Files use mode `0600`; the directory uses `0700`. The two list files share a fresh `snapshot` run id, `complete: true` and exact `total` values. Neither contains a remaining cursor. `issuers.json` maps live names to the configured placement label. Collection rejects conflicting documents for the same name; identical duplicates retain the first configured placement.
+
+Success prints one JSON receipt containing `snapshot`, `totals`, per-issuer `pages` and file `sha256` hashes. Failure prints a JSON diagnostic on stderr with `error`, `failed`, `why` and `next`, exits nonzero and does not publish a bundle. Existing output stays unchanged. Use a new output directory when retrying an `OutputExists` error. These exports are complete traversals, not an issuer-wide transactional read: names can change while pages are fetched.
 
 ## Output
 
