@@ -1,0 +1,140 @@
+/* oxlint-disable promise/prefer-await-to-callbacks -- Effect error mapping is not a Promise callback. */
+import * as Names from "@rat-king/lexicon/identity.listNames";
+import * as Retired from "@rat-king/lexicon/identity.listRetired";
+import { Transport } from "@rat-king/lexicon/transport";
+import { Identity, transportLayer } from "@rat-king/mailbox-client";
+import { Config, Console, Effect, Layer, Schema } from "effect";
+import { Command, Flag } from "effect/cli";
+import { FetchHttpClient } from "effect/http";
+
+import { SecretStore, secretStoreLayer } from "../../mailbox/cli/secrets.ts";
+import { SnapshotError, writeSnapshot } from "./snapshot.ts";
+
+const page = Effect.fn("Snapshot.page")(function* page<S extends Schema.Top>(
+  nsid: string,
+  output: S,
+  cursor?: string
+) {
+  const response = yield* (yield* Transport)
+    .request({
+      input: undefined,
+      method: "GET",
+      nsid,
+      params: cursor === undefined ? { limit: 100 } : { cursor, limit: 100 },
+    })
+    .pipe(
+      Effect.mapError(
+        () =>
+          new SnapshotError({
+            code: "PageFailed",
+            reason: `${nsid} request failed; verify issuer reachability and signing credentials`,
+          })
+      )
+    );
+
+  if (response.status !== 200) {
+    return yield* new SnapshotError({
+      code: "PageRefused",
+      reason: `${nsid} returned HTTP ${response.status}; verify operator admission at the issuer`,
+    });
+  }
+
+  return yield* Schema.decodeUnknownEffect(output)(response.body).pipe(
+    Effect.flatMap(Schema.encodeEffect(output)),
+    Effect.mapError(
+      () =>
+        new SnapshotError({
+          code: "InvalidPage",
+          reason: `${nsid} returned an invalid page; verify issuer and CLI contract versions`,
+        })
+    )
+  );
+});
+
+export const snapshotWithTransport = Effect.fn("Snapshot.withTransport")(
+  function* snapshotWithTransport(label: string, out: string) {
+    const transport = yield* Transport;
+
+    return yield* writeSnapshot(
+      [
+        {
+          label,
+          names: (cursor) =>
+            page(Names.Method.nsid, Names.Output, cursor).pipe(
+              Effect.provideService(Transport, transport)
+            ),
+          retired: (cursor) =>
+            page(Retired.Method.nsid, Retired.Output, cursor).pipe(
+              Effect.provideService(Transport, transport)
+            ),
+        },
+      ],
+      out
+    );
+  }
+);
+
+const configuredSnapshot = Effect.fn("Snapshot.configured")(
+  function* configuredSnapshot(out: string) {
+    const label = yield* Config.NonEmptyString("RAT_KING_ISSUER_LABEL");
+    const endpoint = yield* Config.NonEmptyString("RAT_KING_ENDPOINT");
+    const serviceDid = yield* Config.NonEmptyString("RAT_KING_SERVICE_DID");
+    const secret = yield* Config.NonEmptyString("RAT_KING_OPERATOR_IDENTITY");
+    const store = yield* SecretStore;
+
+    const identity = yield* store.lease(secret).pipe(
+      Effect.flatMap(
+        Schema.decodeUnknownEffect(Schema.fromJsonString(Identity))
+      ),
+      Effect.mapError(
+        () =>
+          new SnapshotError({
+            code: "IdentityUnavailable",
+            reason:
+              "Could not lease or decode the operator identity; verify RAT_KING_OPERATOR_IDENTITY and access to agent-secrets",
+          })
+      )
+    );
+
+    return yield* snapshotWithTransport(label, out).pipe(
+      Effect.provide(
+        transportLayer(endpoint, `${serviceDid}#mailbox`, identity).pipe(
+          Layer.provide(FetchHttpClient.layer)
+        )
+      )
+    );
+  },
+  Effect.mapError((error) =>
+    Schema.is(SnapshotError)(error)
+      ? error
+      : new SnapshotError({
+          code: "SnapshotConfiguration",
+          reason:
+            "Snapshot configuration is missing or invalid; set RAT_KING_ISSUER_LABEL, RAT_KING_ENDPOINT, RAT_KING_SERVICE_DID and RAT_KING_OPERATOR_IDENTITY",
+        })
+  )
+);
+
+export const snapshotCommand = Command.make(
+  "snapshot",
+  { out: Flag.String("out") },
+  (args) =>
+    configuredSnapshot(args.out).pipe(
+      Effect.provide(secretStoreLayer()),
+      Effect.tap((receipt) => Console.log(JSON.stringify(receipt))),
+      Effect.tapError((error) =>
+        Console.error(
+          JSON.stringify({
+            error: error.code,
+            failed: "snapshot",
+            next: `ratking snapshot --out ${JSON.stringify(args.out)}`,
+            why: error.reason,
+          })
+        )
+      )
+    )
+).pipe(
+  Command.withDescription(
+    "Operator: atomically export complete names, retirements and issuer placements to a new directory."
+  )
+);

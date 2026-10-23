@@ -14,6 +14,7 @@ import {
   sendCommand,
 } from "./messaging.ts";
 import { operatorCommands } from "./operator.ts";
+import { snapshotCommand } from "./snapshot-command.ts";
 
 export const command = Command.make("ratking").pipe(
   Command.withDescription(
@@ -33,6 +34,7 @@ export const command = Command.make("ratking").pipe(
     attentionCommand,
     filterCommand,
     ...operatorCommands,
+    snapshotCommand,
   ])
 );
 
