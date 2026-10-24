@@ -167,12 +167,15 @@ export class Mailbox extends DurableObject<Bindings> {
     this.feedSockets = trafficSockets(
       ctx,
       (token) =>
-        authenticateClaims({
-          audience: `${env.SERVICE_DID}#mailbox`,
-          authorization: `Bearer ${token}`,
-          now: Effect.runSync(Clock.currentTimeMillis),
-          nsid: SubscribeTraffic.Method.nsid,
-        }).pipe(
+        Clock.currentTimeMillis.pipe(
+          Effect.flatMap((now) =>
+            authenticateClaims({
+              audience: `${env.SERVICE_DID}#mailbox`,
+              authorization: `Bearer ${token}`,
+              now,
+              nsid: SubscribeTraffic.Method.nsid,
+            })
+          ),
           Effect.provide(Layer.merge(documentsLayer(env), replayLayer(env))),
           Effect.tap((claims) =>
             storageOperation(() => {

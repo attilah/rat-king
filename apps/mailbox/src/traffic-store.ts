@@ -76,7 +76,7 @@ export const projectTraffic = (
     senderDid: receipt.message.senderDid,
     seq: event.seq,
     state: receipt.state,
-    time: DateTime.formatIso(Effect.runSync(DateTime.now)),
+    time: DateTime.formatIso(DateTime.nowUnsafe()),
   });
 };
 
@@ -144,7 +144,7 @@ export const listTraffic = (
   sql: Sql,
   params: Traffic.ParamsValue,
   delegation = false,
-  now = Effect.runSync(DateTime.now)
+  now = DateTime.nowUnsafe()
 ): Traffic.OutputValue => {
   const cursor = params.cursor ?? "0";
 
