@@ -1,0 +1,16 @@
+diff --git a/lexicons/sh/mschf/ratking/attention/prefs.json b/lexicons/sh/mschf/ratking/attention/prefs.json
+index 91bbe36..4ebfafc 100644
+--- a/lexicons/sh/mschf/ratking/attention/prefs.json
++++ b/lexicons/sh/mschf/ratking/attention/prefs.json
+@@ -2,0 +3,9 @@
++    "digest": {
++      "properties": {
++        "minutes": { "maximum": 1440, "minimum": 1, "type": "integer" },
++        "name": { "ref": "#name", "type": "ref" }
++      },
++      "required": ["minutes", "name"],
++      "type": "object",
++      "x-strict": true
++    },
+@@ -21,0 +31 @@
++        "digest": { "items": { "ref": "#digest", "type": "ref" }, "maxLength": 256, "type": "array" },

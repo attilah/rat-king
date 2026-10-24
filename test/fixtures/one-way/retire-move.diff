@@ -1,0 +1,134 @@
+diff --git a/packages/pi-ratking/src/ratking.ts b/packages/pi-ratking/src/ratking.ts
+deleted file mode 100644
+--- a/packages/pi-ratking/src/ratking.ts
++++ /dev/null
+@@ -2188,62 +0,0 @@
+-    retire: Effect.fn("RatKing.retire")(function* retire(successor) {
+-      const own = yield* awaitSelf;
+-
+-      const input = yield* Schema.decodeUnknownEffect(
+-        Schema.toEncoded(Runtime.Data)
+-      )(
+-        Option.match(successor, {
+-          onNone: () => ({ name: own.name }),
+-          onSome: (next) => ({ name: own.name, successor: next }),
+-        })
+-      ).pipe(Effect.mapError(() => refused("NotAttempted")("Invalid name")));
+-
+-      const response = yield* Transport.use((transport) =>
+-        transport.request({
+-          input,
+-          method: "POST",
+-          nsid: Retire.Method.nsid,
+-          params: undefined,
+-        })
+-      ).pipe(
+-        Effect.provide(
+-          transportLayer(
+-            settings.endpoint,
+-            `${settings.serviceDid.replace(/#mailbox$/u, "")}#mailbox`,
+-            own.identity
+-          )
+-        ),
+-        Effect.provideService(HttpClient.HttpClient, http),
+-        Effect.mapError(() =>
+-          refused("Uncertain")("Name authority is unreachable")
+-        )
+-      );
+-
+-      if (response.status !== 200) {
+-        const error = Schema.decodeUnknownOption(
+-          Schema.Struct({
+-            error: Schema.String,
+-            message: Schema.optionalKey(Schema.String),
+-          })
+-        )(response.body);
+-
+-        return yield* refused(
+-          response.status >= 500 ? "Uncertain" : "Rejected"
+-        )(
+-          Option.match(error, {
+-            onNone: () => `Name authority answered HTTP ${response.status}`,
+-            onSome: (body) =>
+-              body.message === undefined || body.message === body.error
+-                ? body.error
+-                : `${body.error}: ${body.message}`,
+-          })
+-        );
+-      }
+-
+-      return yield* Schema.decodeUnknownEffect(Retire.Output)(
+-        response.body
+-      ).pipe(
+-        Effect.mapError(() =>
+-          refused("Uncertain")("Name authority answered with an invalid body")
+-        )
+-      );
+-    }),
+diff --git a/packages/ratking-client/src/ratking.ts b/packages/ratking-client/src/ratking.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/ratking-client/src/ratking.ts
+@@ -0,0 +2677,62 @@
++    retire: Effect.fn("RatKing.retire")(function* retire(successor) {
++      const own = yield* awaitSelf;
++
++      const input = yield* Schema.decodeUnknownEffect(
++        Schema.toEncoded(Runtime.Data)
++      )(
++        Option.match(successor, {
++          onNone: () => ({ name: own.name }),
++          onSome: (next) => ({ name: own.name, successor: next }),
++        })
++      ).pipe(Effect.mapError(() => refused("NotAttempted")("Invalid name")));
++
++      const response = yield* Transport.use((transport) =>
++        transport.request({
++          input,
++          method: "POST",
++          nsid: Retire.Method.nsid,
++          params: undefined,
++        })
++      ).pipe(
++        Effect.provide(
++          transportLayer(
++            settings.endpoint,
++            `${settings.serviceDid.replace(/#mailbox$/u, "")}#mailbox`,
++            own.identity
++          )
++        ),
++        Effect.provideService(HttpClient.HttpClient, http),
++        Effect.mapError(() =>
++          refused("Uncertain")("Name authority is unreachable")
++        )
++      );
++
++      if (response.status !== 200) {
++        const error = Schema.decodeUnknownOption(
++          Schema.Struct({
++            error: Schema.String,
++            message: Schema.optionalKey(Schema.String),
++          })
++        )(response.body);
++
++        return yield* refused(
++          response.status >= 500 ? "Uncertain" : "Rejected"
++        )(
++          Option.match(error, {
++            onNone: () => `Name authority answered HTTP ${response.status}`,
++            onSome: (body) =>
++              body.message === undefined || body.message === body.error
++                ? body.error
++                : `${body.error}: ${body.message}`,
++          })
++        );
++      }
++
++      return yield* Schema.decodeUnknownEffect(Retire.Output)(
++        response.body
++      ).pipe(
++        Effect.mapError(() =>
++          refused("Uncertain")("Name authority answered with an invalid body")
++        )
++      );
++    }),
