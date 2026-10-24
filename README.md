@@ -23,6 +23,8 @@ pnpm test
 pnpm vendor:agent-sources
 ```
 
+`pnpm typecheck:fast` for the edit loop; the gate stays on patched tsc.
+
 The source mirrors are reference-only and gitignored. No apps or packages exist yet.
 
 Local commit and push hooks require a private instance denylist. See [the fence](tools/fence/README.md) and [the instance example](config/instance.example.json). CI runs generic rules only; it cannot certify a private instance.
