@@ -1,8 +1,15 @@
 {
   "name": "@rat-king/alchemy-nest",
   "version": "0.1.0",
-  "private": true,
   "license": "MIT",
+  "files": [
+    "src",
+    "README.md",
+    "DARWIN.md",
+    "STORAGE-MAINTENANCE.md",
+    "LICENSE",
+    "LICENSE-homeflare-kit"
+  ],
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
@@ -15,13 +22,13 @@
     "test": "ALCHEMY_TELEMETRY_DISABLED=1 pnpm -C ../.. exec vitest run --config packages/alchemy-nest/vitest.config.ts"
   },
   "dependencies": {
+    "@effect/platform-node": "4.0.5",
     "alchemy": "2.0.0-beta.83",
     "effect": "4.0.5",
     "esbuild": "0.28.2",
     "xstate": "6.0.0-alpha.70"
   },
   "devDependencies": {
-    "@effect/platform-node": "4.0.5",
     "@effect/vitest": "4.0.5",
     "fast-check": "4.10.2",
     "vitest": "5.0.5"
