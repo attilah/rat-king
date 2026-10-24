@@ -7,7 +7,7 @@ import { Config, Effect, Option, Schema } from "effect";
 
 import { absent } from "./absent.ts";
 import { recovering } from "./adoption.ts";
-import { refuse } from "./files.ts";
+import { refuse, textDigest } from "./files.ts";
 import { HostShell } from "./host-shell.ts";
 import { runningProcessMatches } from "./process-readback.ts";
 import {
@@ -16,6 +16,7 @@ import {
   ownedUnit,
   readUnit,
   reconcileUnit,
+  renderUnit,
   unitPath,
   validateUnit,
   withoutLegacyHelperInputs,
@@ -104,17 +105,22 @@ export const NodeProvider = () =>
             return { action: "replace", deleteFirst: true };
           }
 
+          const live = yield* readUnit(shell, operational);
+          const rendered = textDigest(renderUnit(operational));
+
           const changed =
-            needsUpdate(
-              operational,
-              previous ?? output,
-              yield* readUnit(shell, operational)
-            ) ||
+            needsUpdate(operational, previous ?? output, live) ||
             operational.publicUrl !== output.publicUrl ||
             operational.internalUrl !== output.internalUrl ||
             operational.version !== output.version;
 
-          return { action: changed ? "update" : "noop" };
+          if (!changed) {
+            return { action: "noop" };
+          }
+
+          return live?.sha256 === rendered && output.sha256 === rendered
+            ? { action: "update", stables: ["sha256"] }
+            : { action: "update" };
         }),
         list: () => Effect.succeed([]),
         read: Effect.fn("Celld.Node.read")(function* operation({
