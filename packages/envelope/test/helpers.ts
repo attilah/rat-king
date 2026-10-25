@@ -1,4 +1,4 @@
-/* oxlint-disable promise/prefer-await-to-callbacks, typescript/promise-function-async -- Effect adapters require lazy Promise thunks, not callback-style control flow. */
+/* oxlint-disable typescript/promise-function-async -- Effect adapters require lazy Promise thunks, not callback-style control flow. */
 import * as Defs from "@rat-king/lexicon/defs";
 import { Effect, Schema } from "effect";
 

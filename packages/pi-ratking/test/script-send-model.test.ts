@@ -1,4 +1,4 @@
-/* oxlint-disable typescript/promise-function-async, promise/prefer-await-to-callbacks -- fast-check commands and asyncModelRun are Promise boundaries; Effect HttpClient test adapter. */
+/* oxlint-disable typescript/promise-function-async -- fast-check commands and asyncModelRun are Promise boundaries; Effect HttpClient test adapter. */
 import { NodeServices } from "@effect/platform-node";
 import { it } from "@effect/vitest";
 import * as Defs from "@rat-king/lexicon/defs";

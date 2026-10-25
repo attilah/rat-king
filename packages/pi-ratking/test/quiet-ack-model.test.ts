@@ -1,5 +1,4 @@
 // @effect-diagnostics asyncFunction:off -- fast-check asyncModelRun drives Pi's Promise extension API.
-/* oxlint-disable typescript/promise-function-async, promise/prefer-await-to-callbacks -- fast-check asyncModelRun is the model boundary. */
 import { it } from "@effect/vitest";
 import type { Inbound } from "@rat-king/ratking-client/payload";
 import { RatKing } from "@rat-king/ratking-client/ratking";

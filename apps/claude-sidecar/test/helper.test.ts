@@ -1,4 +1,3 @@
-/* oxlint-disable typescript/promise-function-async -- Filesystem test adapters. */
 // @effect-diagnostics nodeBuiltinImport:off asyncFunction:off -- Zero-spend local credential-helper and filesystem qualification.
 import { existsSync } from "node:fs";
 import { mkdir, readFile, symlink, writeFile } from "node:fs/promises";

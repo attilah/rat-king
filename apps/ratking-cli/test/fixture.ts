@@ -1,4 +1,3 @@
-/* oxlint-disable promise/prefer-await-to-callbacks -- Effect HttpClient and Console test adapters. */
 import * as Defs from "@rat-king/lexicon/defs";
 import * as List from "@rat-king/lexicon/mailbox.list";
 import { ownIdentity, prepare } from "@rat-king/mailbox-client";

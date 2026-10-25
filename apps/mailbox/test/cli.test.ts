@@ -1,4 +1,4 @@
-/* oxlint-disable typescript/promise-function-async, promise/prefer-await-to-callbacks -- WebCrypto test boundary. */
+/* oxlint-disable typescript/promise-function-async -- WebCrypto test boundary. */
 import { it } from "@effect/vitest";
 import { seal, suite, cryptoOperation } from "@rat-king/envelope";
 import * as Defs from "@rat-king/lexicon/defs";

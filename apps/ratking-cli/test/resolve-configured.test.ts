@@ -1,4 +1,3 @@
-/* oxlint-disable promise/prefer-await-to-callbacks -- Effect HttpClient test adapter. */
 import { NodeServices } from "@effect/platform-node";
 import { it } from "@effect/vitest";
 import { settingsLayer } from "@rat-king/ratking-client/config";

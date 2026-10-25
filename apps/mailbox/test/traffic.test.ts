@@ -1,5 +1,5 @@
 // @effect-diagnostics asyncFunction:off -- fast-check AsyncCommand drives the synchronous SQL adapter.
-/* oxlint-disable promise/prefer-await-to-callbacks, typescript/promise-function-async -- Lazy Effect HTTP body reads return platform Promises. */
+/* oxlint-disable typescript/promise-function-async -- Lazy Effect HTTP body reads return platform Promises. */
 import { it } from "@effect/vitest";
 import {
   canonical,

@@ -1,5 +1,5 @@
 /* oxlint-disable effect-tests/no-manual-effect-runtime-in-tests -- Each runtime call bridges an asyncModelRun command using the test context and its TestClock. */
-/* oxlint-disable typescript/promise-function-async, promise/prefer-await-to-callbacks -- fast-check commands are Promise boundaries; the HttpClient adapter takes a callback. */
+/* oxlint-disable typescript/promise-function-async -- fast-check commands are Promise boundaries; the HttpClient adapter takes a callback. */
 import { NodeServices } from "@effect/platform-node";
 import { it } from "@effect/vitest";
 import { RatKing, ReaderState } from "@rat-king/ratking-client/ratking";

@@ -1,4 +1,4 @@
-/* oxlint-disable typescript/promise-function-async, promise/prefer-await-to-callbacks -- Private WebCrypto generation stays on this host. */
+/* oxlint-disable typescript/promise-function-async -- Private WebCrypto generation stays on this host. */
 import { cryptoOperation } from "@rat-king/envelope/webcrypto";
 import { Identity, PrivateJwk } from "@rat-king/mailbox-client";
 import type { IdentityValue, PeerDocument } from "@rat-king/mailbox-client";

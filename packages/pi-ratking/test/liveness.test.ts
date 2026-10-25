@@ -1,5 +1,4 @@
 // @effect-diagnostics asyncFunction:off -- fast-check asyncModelRun drives Effect programs.
-/* oxlint-disable typescript/promise-function-async, promise/prefer-await-to-callbacks -- fast-check asyncModelRun is the model boundary. */
 import { once } from "node:events";
 
 import { stripTerminalSequences } from "@earendil-works/pi-tui";

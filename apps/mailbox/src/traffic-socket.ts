@@ -1,4 +1,4 @@
-/* oxlint-disable promise/prefer-await-to-callbacks, typescript/promise-function-async -- Durable Object callbacks return Effect-run promises. */
+/* oxlint-disable typescript/promise-function-async -- Durable Object callbacks return Effect-run promises. */
 import * as Subscribe from "@rat-king/lexicon/mailbox.subscribeTraffic";
 import type { XrpcFailure } from "@rat-king/lexicon/xrpc-failure";
 import { Clock, Effect, Schema } from "effect";

@@ -1,4 +1,4 @@
-/* oxlint-disable promise/prefer-await-to-callbacks, typescript/promise-function-async -- Effect adapters require lazy Promise thunks, not callback-style control flow. */
+/* oxlint-disable typescript/promise-function-async -- Effect adapters require lazy Promise thunks, not callback-style control flow. */
 import { sign, verify } from "@rat-king/envelope/es256";
 import { cryptoOperation } from "@rat-king/envelope/webcrypto";
 import type { XrpcFailure } from "@rat-king/lexicon/xrpc-failure";

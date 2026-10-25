@@ -1,4 +1,4 @@
-// @effect-diagnostics asyncFunction:off
+// @effect-diagnostics asyncFunction:off -- Pi lifecycle hooks and fast-check commands are Promise boundaries.
 import { NodeServices } from "@effect/platform-node";
 import { it } from "@effect/vitest";
 import { Turn } from "@rat-king/lexicon/turns";

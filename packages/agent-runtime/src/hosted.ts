@@ -1,4 +1,4 @@
-/* oxlint-disable typescript/promise-function-async, promise/prefer-await-to-callbacks -- DO RPC, provider streams and upstream storage are Promise boundaries. */
+/* oxlint-disable typescript/promise-function-async -- DO RPC, provider streams and upstream storage are Promise boundaries. */
 // @effect-diagnostics asyncFunction:off -- Durable Object and upstream SDK adapter.
 import { createModels, createProvider } from "@earendil-works/pi-ai/models";
 import {

@@ -1,4 +1,3 @@
-/* oxlint-disable promise/prefer-await-to-callbacks -- Effect HttpClient test adapter. */
 import * as Defs from "@rat-king/lexicon/defs";
 import {
   Clock,

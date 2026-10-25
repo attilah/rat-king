@@ -1,5 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off -- Operator bundle entrypoint resolution.
-/* oxlint-disable typescript/promise-function-async, promise/prefer-await-to-callbacks -- esbuild Promise adapter. */
+/* oxlint-disable typescript/promise-function-async -- esbuild Promise adapter. */
 import { fileURLToPath } from "node:url";
 
 import { NodeRuntime, NodeServices } from "@effect/platform-node";

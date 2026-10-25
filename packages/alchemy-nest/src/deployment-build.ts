@@ -1,4 +1,4 @@
-/* oxlint-disable typescript/promise-function-async, promise/prefer-await-to-callbacks -- esbuild is an operator-machine Promise adapter. */
+/* oxlint-disable typescript/promise-function-async -- esbuild is an operator-machine Promise adapter. */
 import { Effect } from "effect";
 import { build } from "esbuild";
 

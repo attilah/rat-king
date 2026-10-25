@@ -1,4 +1,4 @@
-/* oxlint-disable typescript/promise-function-async, promise/prefer-await-to-callbacks -- esbuild Promise adapter. */
+/* oxlint-disable typescript/promise-function-async -- esbuild Promise adapter. */
 import { Effect, Option, Path } from "effect";
 import { build } from "esbuild";
 

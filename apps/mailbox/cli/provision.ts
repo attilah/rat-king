@@ -1,4 +1,4 @@
-/* oxlint-disable typescript/promise-function-async, promise/prefer-await-to-callbacks -- Private WebCrypto generation stays on the agent's machine. */
+/* oxlint-disable typescript/promise-function-async -- Private WebCrypto generation stays on the agent's machine. */
 import { cryptoOperation } from "@rat-king/envelope/webcrypto";
 import { Documents } from "@rat-king/mailbox-client";
 import { Effect, FileSystem, Path, Schema } from "effect";
