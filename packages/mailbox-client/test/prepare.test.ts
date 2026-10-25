@@ -1,4 +1,4 @@
-/* oxlint-disable typescript/promise-function-async, promise/prefer-await-to-callbacks -- Lazy WebCrypto test adapters. */
+/* oxlint-disable typescript/promise-function-async -- Lazy WebCrypto test adapters. */
 import { it } from "@effect/vitest";
 import { open } from "@rat-king/envelope";
 import type * as Defs from "@rat-king/lexicon/defs";

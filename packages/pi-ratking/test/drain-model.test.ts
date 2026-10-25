@@ -1,6 +1,6 @@
 import { NodeServices } from "@effect/platform-node";
 // @effect-diagnostics asyncFunction:off -- fast-check asyncModelRun drives Effect programs.
-/* oxlint-disable typescript/promise-function-async, promise/prefer-await-to-callbacks -- fast-check asyncModelRun is the model boundary. */
+/* oxlint-disable typescript/promise-function-async -- fast-check asyncModelRun is the model boundary. */
 import { it } from "@effect/vitest";
 import { presenceLine } from "@rat-king/ratking-client/presence";
 import {

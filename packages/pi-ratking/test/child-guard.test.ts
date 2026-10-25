@@ -1,4 +1,3 @@
-/* oxlint-disable promise/prefer-await-to-callbacks -- Effect HttpClient test adapter. */
 import { createEventBus } from "@earendil-works/pi-coding-agent";
 // @effect-diagnostics asyncFunction:off -- Pi's extension API is the Promise boundary under test.
 import { NodeServices } from "@effect/platform-node";

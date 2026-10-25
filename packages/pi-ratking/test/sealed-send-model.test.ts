@@ -1,5 +1,5 @@
 // @effect-diagnostics asyncFunction:off -- fast-check asyncModelRun drives Effect programs.
-/* oxlint-disable typescript/promise-function-async, promise/prefer-await-to-callbacks -- fast-check asyncModelRun and the Effect HTTP test adapter are Promise boundaries. */
+/* oxlint-disable typescript/promise-function-async -- fast-check asyncModelRun and the Effect HTTP test adapter are Promise boundaries. */
 import { it } from "@effect/vitest";
 import { seal } from "@rat-king/envelope";
 import { canonical, plaintextSuite } from "@rat-king/envelope/canonical";

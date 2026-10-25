@@ -1,4 +1,4 @@
-/* oxlint-disable typescript/promise-function-async, promise/prefer-await-to-callbacks -- Upstream SQLite Promise transaction adapter. */
+/* oxlint-disable typescript/promise-function-async -- Upstream SQLite Promise transaction adapter. */
 // @effect-diagnostics nodeBuiltinImport:off asyncFunction:off -- In-memory Node database and upstream Promise boundary.
 import { DatabaseSync } from "node:sqlite";
 

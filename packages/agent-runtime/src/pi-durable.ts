@@ -1,4 +1,4 @@
-/* oxlint-disable typescript/promise-function-async, promise/prefer-await-to-callbacks -- Promise thunks are the pi-durable adapter boundary. */
+/* oxlint-disable typescript/promise-function-async -- Promise thunks are the pi-durable adapter boundary. */
 // @effect-diagnostics asyncFunction:off -- Upstream Harness methods return Promises.
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { AssistantEntry, Harness } from "@earendil-works/pi-durable";

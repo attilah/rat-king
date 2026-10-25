@@ -1,5 +1,5 @@
 import { canonical } from "@rat-king/envelope/canonical";
-/* oxlint-disable promise/prefer-await-to-callbacks, typescript/promise-function-async -- Lazy DO RPC adapters. */
+/* oxlint-disable typescript/promise-function-async -- Lazy DO RPC adapters. */
 import type { XrpcFailure } from "@rat-king/lexicon/xrpc-failure";
 import { Effect, Schema } from "effect";
 

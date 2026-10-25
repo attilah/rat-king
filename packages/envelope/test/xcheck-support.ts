@@ -1,4 +1,4 @@
-/* oxlint-disable promise/prefer-await-to-callbacks, typescript/promise-function-async -- Lazy WebCrypto adapters return the provider Promise. */
+/* oxlint-disable typescript/promise-function-async -- Lazy WebCrypto adapters return the provider Promise. */
 import * as Defs from "@rat-king/lexicon/defs";
 import * as Runtime from "@rat-king/lexicon/runtime";
 import { Arbitrary, Effect, Schema } from "effect";

@@ -1,6 +1,5 @@
 import { createEventBus } from "@earendil-works/pi-coding-agent";
 // @effect-diagnostics asyncFunction:off -- Pi's extension API is the Promise boundary under test.
-/* oxlint-disable anti-slop/no-unknown-parameters -- isExecutable is the type guard that parses Pi's registered tool at the boundary. */
 import { NodeServices } from "@effect/platform-node";
 import { it } from "@effect/vitest";
 import { Inbox, RatKing, ReaderState } from "@rat-king/ratking-client/ratking";

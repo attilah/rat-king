@@ -1,4 +1,4 @@
-/* oxlint-disable typescript/promise-function-async, promise/prefer-await-to-callbacks -- Lazy WebCrypto adapter. */
+/* oxlint-disable typescript/promise-function-async -- Lazy WebCrypto adapter. */
 import { cryptoOperation } from "@rat-king/envelope/webcrypto";
 import { Schema } from "effect";
 

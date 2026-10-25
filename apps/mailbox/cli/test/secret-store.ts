@@ -1,5 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off -- Test-owned daemon, PATH discovery and temporary encrypted store.
-/* oxlint-disable typescript/promise-function-async, promise/prefer-await-to-callbacks -- Lazy Node process/filesystem adapters. */
+/* oxlint-disable typescript/promise-function-async -- Lazy Node process/filesystem adapters. */
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";

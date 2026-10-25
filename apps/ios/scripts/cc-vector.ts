@@ -1,4 +1,3 @@
-/* oxlint-disable typescript/promise-function-async, promise/prefer-await-to-callbacks -- Lazy synthetic HTTP adapter. */
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { Effect, FileSystem, Layer, Predicate, Schema } from "effect";
 import { HttpClient, HttpClientResponse } from "effect/http";

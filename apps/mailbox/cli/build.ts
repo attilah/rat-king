@@ -7,7 +7,7 @@ import { build } from "esbuild";
 
 import { CliError } from "./identity.ts";
 
-/* oxlint-disable typescript/promise-function-async, promise/prefer-await-to-callbacks -- esbuild Promise boundary. */
+/* oxlint-disable typescript/promise-function-async -- esbuild Promise boundary. */
 NodeRuntime.runMain(
   Effect.gen(function* buildCli() {
     const output = yield* Config.String("RAT_KING_CLI_OUTPUT");

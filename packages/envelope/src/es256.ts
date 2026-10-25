@@ -1,4 +1,4 @@
-/* oxlint-disable typescript/promise-function-async, promise/prefer-await-to-callbacks -- Effect's lazy WebCrypto Promise adapters do not need redundant async wrappers. */
+/* oxlint-disable typescript/promise-function-async -- Effect's lazy WebCrypto Promise adapters do not need redundant async wrappers. */
 import { Effect } from "effect";
 
 import { concatenate } from "./bytes.ts";

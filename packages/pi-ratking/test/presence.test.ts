@@ -1,5 +1,4 @@
 // @effect-diagnostics asyncFunction:off -- fast-check async commands drive the real RatKing send with its captured TestClock.
-/* oxlint-disable promise/prefer-await-to-callbacks -- Effect HttpClient test adapter. */
 import { NodeServices } from "@effect/platform-node";
 import { it } from "@effect/vitest";
 import * as Defs from "@rat-king/lexicon/defs";

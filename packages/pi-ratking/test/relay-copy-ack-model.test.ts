@@ -1,4 +1,3 @@
-/* oxlint-disable typescript/promise-function-async, promise/prefer-await-to-callbacks -- Pi's extension API and fast-check are Promise boundaries. */
 // @effect-diagnostics asyncFunction:off -- Pi's extension API is the Promise boundary under test.
 import { NodeServices } from "@effect/platform-node";
 import { it } from "@effect/vitest";

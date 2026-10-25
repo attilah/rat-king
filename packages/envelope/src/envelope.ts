@@ -1,4 +1,4 @@
-/* oxlint-disable typescript/promise-function-async, promise/prefer-await-to-callbacks -- Effect's lazy HPKE Promise adapters do not need redundant async wrappers. */
+/* oxlint-disable typescript/promise-function-async -- Effect's lazy HPKE Promise adapters do not need redundant async wrappers. */
 import { Aes128Gcm, CipherSuite, HkdfSha256 } from "@hpke/core";
 import * as Defs from "@rat-king/lexicon/defs";
 import { Effect, Schema } from "effect";

@@ -60,7 +60,7 @@ class Command implements fc.AsyncCommand<Model, Real> {
     return this.step.length > 0;
   }
 
-  // @effect-diagnostics-next-line asyncFunction:off
+  // @effect-diagnostics-next-line asyncFunction:off -- fast-check AsyncCommand.run requires a Promise.
   async run(model: Model, real: Real) {
     if (this.step === "unblock") {
       model.blocked = false;
@@ -305,15 +305,15 @@ it.live.prop(
             });
 
           yield* Effect.promise(
-            // @effect-diagnostics-next-line asyncFunction:off
+            // @effect-diagnostics-next-line asyncFunction:off -- fast-check asyncModelRun is the Promise model boundary.
             async () => {
               await fc.asyncModelRun(
                 () => ({
                   model: { attempts: 1, blocked: true, live: false },
                   real: {
-                    // @effect-diagnostics-next-line asyncFunction:off
+                    // @effect-diagnostics-next-line asyncFunction:off -- The model command awaits the real Effect step before comparing state.
                     step: async (action, expected) => {
-                      // oxlint-disable-next-line effect-tests/no-manual-effect-runtime-in-tests
+                      // oxlint-disable-next-line effect-tests/no-manual-effect-runtime-in-tests -- fast-check reuses the owning Effect test context for each command.
                       await Effect.runPromiseWith(context)(
                         step(action).pipe(
                           Effect.tap((actual) =>

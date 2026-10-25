@@ -1,5 +1,4 @@
 // @effect-diagnostics nodeBuiltinImport:off asyncFunction:off -- Node HTTP and subprocesses are the CLI integration test boundary.
-/* oxlint-disable typescript/promise-function-async, promise/prefer-await-to-callbacks -- Node HTTP callbacks and acquire/release Promises are fixture adapters. */
 import { createServer } from "node:http";
 
 import { NodeServices } from "@effect/platform-node";

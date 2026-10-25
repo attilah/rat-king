@@ -1,4 +1,4 @@
-/* oxlint-disable typescript/promise-function-async, promise/prefer-await-to-callbacks -- Test Worker RPC and fetch boundaries return Effect-run promises directly. */
+/* oxlint-disable typescript/promise-function-async -- Test Worker RPC and fetch boundaries return Effect-run promises directly. */
 import { Effect, Schema } from "effect";
 
 import type { Bindings } from "../src/bindings.ts";

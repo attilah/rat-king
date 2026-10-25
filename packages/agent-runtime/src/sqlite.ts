@@ -1,4 +1,4 @@
-/* oxlint-disable typescript/promise-function-async, promise/prefer-await-to-callbacks, promise/prefer-await-to-then, eslint/require-await, eslint/arrow-body-style -- The upstream async SQLite facade requires Promise callbacks, ordered queue tails and generic row delivery. */
+/* oxlint-disable typescript/promise-function-async, promise/prefer-await-to-then, eslint/require-await, eslint/arrow-body-style -- The upstream async SQLite facade requires Promise callbacks, ordered queue tails and generic row delivery. */
 // @effect-diagnostics newPromise:off -- Promise sequencing implements the upstream transaction queue, outside the Effect port.
 // @effect-diagnostics asyncFunction:off -- This is pi-durable's asynchronous database interface.
 import type {

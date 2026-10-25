@@ -1,4 +1,4 @@
-/* oxlint-disable typescript/promise-function-async, promise/prefer-await-to-callbacks -- Node HTTP callbacks and SDK transport. */
+/* oxlint-disable typescript/promise-function-async -- Node HTTP callbacks and SDK transport. */
 // @effect-diagnostics nodeBuiltinImport:off -- Loopback-only host HTTP endpoint.
 // @effect-diagnostics asyncFunction:off globalDate:off -- Node HTTP boundary and OpenAI transport timestamp.
 import { Buffer } from "node:buffer";

@@ -1,4 +1,4 @@
-/* oxlint-disable promise/prefer-await-to-callbacks, typescript/promise-function-async -- Effect adapters require lazy Promise thunks, not callback-style control flow. */
+/* oxlint-disable typescript/promise-function-async -- Effect adapters require lazy Promise thunks, not callback-style control flow. */
 // @effect-diagnostics nodeBuiltinImport:off -- Node SQLite is the test adapter for the Durable Object SQL port.
 import { DatabaseSync } from "node:sqlite";
 
