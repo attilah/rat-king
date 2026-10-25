@@ -363,7 +363,7 @@ export const notDeliveredText = (error: NotDelivered | QuietAsk) =>
 export const description = (tool: string) =>
   `Rat King messaging: signed mail between named agents on any machine. Every message goes to a name's durable mailbox; whoever holds that name's lease reads it. A failed send is an error, never a silent fallback.
 
-Messages are signed plaintext by default, readable by operators and observers such as Joel's phone feed. Pass encrypt: true on send, ask or reply to end-to-end encrypt anything containing secrets, credentials, customer data or private transcripts.
+Messages are signed plaintext by default, readable by operators and observers such as Joel's phone feed. Pass encrypt: true on send, ask or reply to end-to-end encrypt anything containing secrets, credentials, customer data or private transcripts. With encrypt: true, summary and attachments are sealed with the body; only the sender's local sent record stays readable.
 
 Address agents by Rat King name (for example switchboard, or project/row). list shows at most 50 names, hides session/probe/canary names, and stays under 4 KB. match filters names (a trailing / means prefix); all includes ephemeral names and DIDs. Page with limit (1–200, default 50) and offset, following the returned offset.
 
