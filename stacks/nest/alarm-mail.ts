@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect";
+import { Data, Effect, Schema } from "effect";
 
 import { SendOutcomes } from "../../packages/mailbox-client/src/index.ts";
 import type { AlarmKeyValue } from "./alarm-config.ts";
@@ -7,6 +7,34 @@ import { ShipSettings } from "./ship-config.ts";
 import { prepareShipNotification } from "./ship-notify.ts";
 import { FleetError } from "./stage-config.ts";
 import type { StageConfigValue } from "./stage-config.ts";
+
+export class AlarmRefused extends Data.TaggedError("AlarmRefused")<{
+  readonly code: "Retired" | "UnknownName";
+  readonly successor?: string;
+}> {}
+
+const successorOf = (reason: string) =>
+  /current row is (?<successor>\S+)$/u.exec(reason)?.groups?.successor;
+
+export const terminalRefusal = (error: {
+  readonly error?: string;
+  readonly reason: string;
+  readonly status?: number;
+}) => {
+  if (error.error === "Retired" || error.status === 410) {
+    const successor = successorOf(error.reason);
+
+    return new AlarmRefused(
+      successor === undefined
+        ? { code: "Retired" }
+        : { code: "Retired", successor }
+    );
+  }
+
+  return error.error === "UnknownName"
+    ? new AlarmRefused({ code: "UnknownName" })
+    : undefined;
+};
 
 export const prepareAlarmMail = Effect.fn("Alarm.prepareMail")(
   function* prepareAlarmMail(
@@ -89,6 +117,14 @@ export const sendAlarmDelivery = Effect.fn("Alarm.sendDelivery")(
   ) {
     const prepared = yield* prepareAlarmMail(config, [delivery.recipient], "");
     const result = yield* prepared.client.send(delivery.envelope);
+
+    if (SendOutcomes.$is("Rejected")(result)) {
+      const refusal = terminalRefusal(result.error);
+
+      if (refusal !== undefined) {
+        return yield* refusal;
+      }
+    }
 
     if (!SendOutcomes.$is("Accepted")(result)) {
       return yield* new FleetError({
