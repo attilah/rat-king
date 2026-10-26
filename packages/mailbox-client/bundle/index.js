@@ -4796,8 +4796,9 @@ var consume = (mailbox, did, handler, options) => Effect29.scoped(
         ),
         Effect29.retry(
           Schedule2.spaced("1 second").pipe(
+            Schedule2.setInputType(),
             Schedule2.modifyDelay(
-              () => Clock5.currentTimeMillis.pipe(
+              ({ input }) => input.reason === TIMED_OUT ? Effect29.succeed(0) : Clock5.currentTimeMillis.pipe(
                 Effect29.flatMap(
                   (time) => Random.nextBetween(
                     0,

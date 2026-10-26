@@ -18,9 +18,13 @@ import { MailboxClientError } from "../src/error.ts";
 import { RatKingMailbox } from "../src/mailbox.ts";
 
 it.effect.prop(
-  "held acquisition and failed or timed-out renewal spread first retries over the full window",
-  [Schema.String, Schema.Literals(["held", "renew", "timeout"])],
-  ([seed, mode]) =>
+  "timed-out renewals retry immediately; other renewals and held acquisitions spread within their remaining window",
+  [
+    Schema.String,
+    Schema.Literals(["held", "renew", "timeout"]),
+    Schema.Int.check(Schema.isBetween({ maximum: 1000, minimum: 16 })),
+  ],
+  ([seed, mode, headroom]) =>
     Effect.gen(function* proof() {
       const base = yield* Clock.currentTimeMillis;
       const retries: number[] = [];
@@ -28,10 +32,10 @@ it.effect.prop(
       const floor = Match.value(mode).pipe(
         Match.when("held", () => 1000),
         Match.when("timeout", () => 8000),
-        Match.orElse(() => 5000)
+        Match.orElse(() => 6000 - headroom)
       );
 
-      const window = mode === "held" ? 2000 : 1000;
+      const window = mode === "held" ? 2000 : headroom;
 
       yield* Effect.forEach(
         Array.from({ length: 64 }),
@@ -62,6 +66,10 @@ it.effect.prop(
                   return yield* Effect.never;
                 }
 
+                if (mode === "renew") {
+                  yield* Effect.sleep(3000 - headroom);
+                }
+
                 return yield* new MailboxClientError({
                   error: mode === "held" ? "LeaseHeld" : "MailboxUnavailable",
                   reason: "simulated outage",
@@ -82,7 +90,9 @@ it.effect.prop(
                     acquire: () =>
                       mode === "held"
                         ? attempt
-                        : Effect.succeed(lease(base + 10_000)),
+                        : Effect.succeed(
+                            lease(base + (mode === "renew" ? 6000 : 10_000))
+                          ),
                     release: () => Effect.void,
                     renew: () => (mode === "held" ? Effect.never : attempt),
                     resolve: () => Effect.succeed(lease(base + 1000)),
@@ -106,8 +116,17 @@ it.effect.prop(
 
       yield* TestClock.adjust(floor + window);
       expect(retries).toHaveLength(64);
-      expect(retries.every((delay) => delay >= 0 && delay < window)).toBe(true);
-      expect(Math.min(...retries)).toBeLessThan(window * 0.25);
-      expect(Math.max(...retries)).toBeGreaterThan(window * 0.75);
+
+      if (mode === "timeout") {
+        expect(retries.every((delay) => delay === 0)).toBe(true);
+      } else {
+        const minimum = mode === "renew" ? 1 : 0;
+
+        expect(
+          retries.every((delay) => delay >= minimum && delay <= window)
+        ).toBe(true);
+        expect(Math.min(...retries)).toBeLessThan(window * 0.25);
+        expect(Math.max(...retries)).toBeGreaterThan(window * 0.75);
+      }
     }).pipe(Random.withSeed(seed), Effect.scoped)
 );

@@ -367,18 +367,21 @@ export const consume = <E, R>(
           ),
           Effect.retry(
             Schedule.spaced("1 second").pipe(
-              Schedule.modifyDelay(() =>
-                Clock.currentTimeMillis.pipe(
-                  Effect.flatMap((time) =>
-                    Random.nextBetween(
-                      0,
-                      Math.max(
-                        0,
-                        Math.min(1000, Date.parse(current.expiresAt) - time)
+              Schedule.setInputType<MailboxClientError>(),
+              Schedule.modifyDelay(({ input }) =>
+                input.reason === TIMED_OUT
+                  ? Effect.succeed(0)
+                  : Clock.currentTimeMillis.pipe(
+                      Effect.flatMap((time) =>
+                        Random.nextBetween(
+                          0,
+                          Math.max(
+                            0,
+                            Math.min(1000, Date.parse(current.expiresAt) - time)
+                          )
+                        ).pipe(Effect.map((delay) => Math.max(1, delay)))
                       )
-                    ).pipe(Effect.map((delay) => Math.max(1, delay)))
-                  )
-                )
+                    )
               ),
               Schedule.while(
                 ({ input }: { readonly input: MailboxClientError }) =>
