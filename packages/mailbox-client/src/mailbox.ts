@@ -42,6 +42,7 @@ import { importSigning, importAgreement } from "./identity.ts";
 import type { IdentityValue } from "./identity.ts";
 import { PayloadJson } from "./payload.ts";
 import { lookupPresence, readerCannotRender } from "./record-visibility.ts";
+import type { RetryObserver } from "./retry-metrics.ts";
 import { randomTid } from "./tid.ts";
 import { transportLayer } from "./transport.ts";
 import { watch } from "./watch.ts";
@@ -108,6 +109,7 @@ interface SealedSendInput {
 }
 
 export interface ClientConfig {
+  readonly onRetryMetric?: RetryObserver;
   readonly endpoint: string;
   readonly serviceDid: string;
   readonly identity: IdentityValue;
