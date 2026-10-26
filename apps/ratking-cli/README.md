@@ -31,6 +31,14 @@ ratking resolve --names <file> --out <new-file>
 
 Client commands take `--as <name>` (default `RATKING_NAME`) and `--json`. `health` defaults its signer to `operator`, not the inspected name.
 
+## Exit codes
+
+- `0`: success, including `--help` and `--version`.
+- `2`: usage errors, including unknown commands or flags, missing required inputs and invalid flag values. Parser failures print a JSON object with `failed`, `why` and `next` on stderr. Run the suggested `--help` command to see accepted inputs. Commands with no required inputs still accept an empty argument list.
+- `1`: unhandled runtime failures, such as an unreadable resolve input or failed operator configuration.
+
+Existing client refusal codes remain unchanged: `2` for rejected requests, `3` for partial or uncertain delivery, and `4` for a held reader lease. Exit `2` is therefore not exclusive to parser errors. The standalone `apps/mailbox/cli/main.ts` uses the same parser exit rule.
+
 ## Identity
 
 Config is the Pi tool's: `RATKING_CONFIG`, else `~/.config/rat-king/pi.json`, with the name's key in the host secret store. `--as` is accepted only for names whose key this machine holds. `whoami` prints the name, DID, key source and the current lease holder.

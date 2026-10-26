@@ -34,6 +34,7 @@ import type { LeaseFence, OpenedMessage, SendOptions } from "./mailbox.ts";
 import { PayloadJson } from "./payload.ts";
 import type { PayloadValue } from "./payload.ts";
 import { lookupPresence } from "./record-visibility.ts";
+import type { RetryObserver } from "./retry-metrics.ts";
 import { randomTid } from "./tid.ts";
 import { transportLayer } from "./transport.ts";
 import { readTurnHealth } from "./turn-health.ts";
@@ -123,6 +124,7 @@ export const sendSealed = Effect.fn("Mailbox.sendSealed")(function* sendSealed(
 });
 
 export interface PrepareOptions {
+  readonly onRetryMetric?: RetryObserver;
   readonly own: OwnIdentity;
   readonly names?: {
     readonly from: string;
@@ -177,6 +179,10 @@ export const prepare = Effect.fn("Mailbox.prepare")(function* prepare(
     identity,
     serviceDid: options.serviceDid,
   };
+
+  if (options.onRetryMetric !== undefined) {
+    Object.assign(config, { onRetryMetric: options.onRetryMetric });
+  }
 
   const authLayer = transportLayer(
     options.endpoint,
@@ -535,7 +541,18 @@ export const prepare = Effect.fn("Mailbox.prepare")(function* prepare(
 
         consuming = true;
 
-        return consume(mailbox, identity.did, handler, opts).pipe(
+        const consumeOptions = { ...opts };
+
+        if (
+          consumeOptions.onRetryMetric === undefined &&
+          options.onRetryMetric !== undefined
+        ) {
+          Object.assign(consumeOptions, {
+            onRetryMetric: options.onRetryMetric,
+          });
+        }
+
+        return consume(mailbox, identity.did, handler, consumeOptions).pipe(
           Effect.ensuring(
             Effect.sync(() => {
               consuming = false;

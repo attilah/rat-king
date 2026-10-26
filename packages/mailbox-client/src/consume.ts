@@ -16,12 +16,15 @@ import {
 import { createMachine, initialTransition, transition } from "xstate";
 
 import { MailboxClientError } from "./error.ts";
+import { handoffHistory } from "./handoff-history.ts";
 import type {
   AcquireRequest,
   LeaseFence,
   OpenedMessage,
   RatKingMailbox,
 } from "./mailbox.ts";
+import { retryFailure } from "./retry-metrics.ts";
+import type { RetryObserver } from "./retry-metrics.ts";
 
 export const consumerMachine = createMachine({
   context: {},
@@ -79,6 +82,7 @@ export interface Skipped {
 }
 
 export interface ConsumeOptions {
+  readonly onRetryMetric?: RetryObserver;
   readonly onAttentionReceipt?: (
     receipt: AttentionReceipt.MainValue
   ) => Effect.Effect<void>;
@@ -151,6 +155,12 @@ export const consume = <E, R>(
             orElse: () =>
               Effect.fail(attemptTimedOut("Acquire attempt timed out")),
           }),
+          Effect.tap(() => options.onRetryMetric?.("acquireOk") ?? Effect.void),
+          Effect.tapError(
+            (error) =>
+              options.onRetryMetric?.(retryFailure("acquire", error)) ??
+              Effect.void
+          ),
           Effect.tapError((error) =>
             Effect.logInfo(
               `lease acquire-failed name=${options.leaseName ?? did} generation=${input.generation ?? "new"} expiresAt=${input.expiresAt} reason=${JSON.stringify(error.error ?? error.reason)}`
@@ -362,6 +372,11 @@ export const consume = <E, R>(
             })
           )
         ).pipe(
+          Effect.tapError(
+            (error) =>
+              options.onRetryMetric?.(retryFailure("renew", error)) ??
+              Effect.void
+          ),
           Effect.tapError((error) =>
             logLease("renew-failed", current, error.reason)
           ),
@@ -405,7 +420,7 @@ export const consume = <E, R>(
         return yield* Effect.void;
       }).pipe(Effect.repeat(Schedule.spaced("0 millis")), Effect.catch(lost));
 
-      const handed = new Set<string>();
+      const handed = handoffHistory();
 
       const intake = mailbox.watch(options.afterSeq ?? 0, fence()).pipe(
         Stream.runForEach((batch) =>
@@ -499,13 +514,9 @@ export const consume = <E, R>(
                       )
                     : Effect.void;
 
-                const displayAck = ack.pipe(
-                  Effect.tap(() => Effect.sync(() => handed.delete(key)))
-                );
-
                 handed.add(key);
                 yield* handler(message, {
-                  ack: displayAck,
+                  ack,
                   redelivered: event.receipt.state === "delivered",
                   seq: event.seq,
                 }).pipe(
@@ -513,7 +524,7 @@ export const consume = <E, R>(
                 );
 
                 if (options.ackOnReturn !== false) {
-                  yield* displayAck;
+                  yield* ack;
                 }
               }),
             { discard: true }

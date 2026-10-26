@@ -48,6 +48,7 @@ import {
 import type { Scope } from "effect";
 import { HttpClient } from "effect/http";
 
+import type { RetryEvent } from "../../mailbox-client/src/retry-metrics.ts";
 import { AskJournal, askAge, openAsks } from "./asks.ts";
 import type { AsksApi, PendingAskValue } from "./asks.ts";
 import { forwardNames } from "./attend.ts";
@@ -124,6 +125,7 @@ import {
   transferCustody,
 } from "./relay.ts";
 import type { RelayOutboundValue } from "./relay.ts";
+import { countRetry, emptyRetries } from "./retry-counters.ts";
 import { SecretStore } from "./secrets.ts";
 import { replyRecipients, Threads, threadsLayer } from "./threads.ts";
 import type { Received, Reply } from "./threads.ts";
@@ -639,6 +641,15 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
     Option.none<{ readonly name: string; readonly startedAt: number }>()
   );
 
+  const retries = yield* Ref.make(emptyRetries());
+
+  const retryMetric = (name: string) => (event: RetryEvent) =>
+    Clock.currentTimeMillis.pipe(
+      Effect.flatMap((now) =>
+        Ref.update(retries, (current) => countRetry(current, name, event, now))
+      )
+    );
+
   const beatLock = yield* Semaphore.make(1);
   let closing = false;
 
@@ -724,6 +735,9 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
   const heartbeatFile = (name: string) =>
     path.join(settings.state, "readers", `${provisionLabel(name)}.json`);
 
+  const retryHeartbeatFile = (pid: number) =>
+    path.join(settings.state, "readers", "retries", `${pid}.json`);
+
   const readHeartbeat = (name: string) =>
     fs
       .readFileString(heartbeatFile(name))
@@ -766,6 +780,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
           ),
           name: beat.value.name,
           pid: facts.value.pid,
+          retries: yield* Ref.get(retries),
           session: facts.value.session,
           startedAt: instant(beat.value.startedAt),
           state: reader._tag,
@@ -781,19 +796,23 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
         }
 
         const json = yield* Schema.encodeEffect(HeartbeatJson)(value);
-        const file = heartbeatFile(beat.value.name);
 
-        const temp = path.join(
-          path.dirname(file),
-          `.${path.basename(file)}.${facts.value.pid}.tmp`
-        );
+        for (const file of [
+          heartbeatFile(beat.value.name),
+          retryHeartbeatFile(facts.value.pid),
+        ]) {
+          const temp = path.join(
+            path.dirname(file),
+            `.${path.basename(file)}.${facts.value.pid}.tmp`
+          );
 
-        yield* fs.makeDirectory(path.dirname(file), {
-          mode: 0o700,
-          recursive: true,
-        });
-        yield* fs.writeFileString(temp, json, { mode: 0o600 });
-        yield* fs.rename(temp, file);
+          yield* fs.makeDirectory(path.dirname(file), {
+            mode: 0o700,
+            recursive: true,
+          });
+          yield* fs.writeFileString(temp, json, { mode: 0o600 });
+          yield* fs.rename(temp, file);
+        }
       })
     )
     .pipe(
@@ -826,6 +845,8 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       if (Option.exists(written, (saved) => saved.pid === facts.value.pid)) {
         yield* fs.remove(file).pipe(Effect.ignore);
       }
+
+      yield* fs.remove(retryHeartbeatFile(facts.value.pid)).pipe(Effect.ignore);
     })
   );
 
@@ -1092,6 +1113,8 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
         )
       );
 
+  let consumerStarts = 0;
+
   const consumeOnce = (
     own: Self,
     facts: SessionFacts,
@@ -1099,6 +1122,11 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
     refreshAttention: AttentionApi["refresh"]
   ) =>
     Effect.gen(function* consumeLease() {
+      if (consumerStarts > 0) {
+        yield* retryMetric(own.name)("consumeReconnect");
+      }
+
+      consumerStarts += 1;
       const acquisitionSince = yield* Clock.currentTimeMillis;
       yield* Ref.update(leaseHealth, (current) => ({
         ...current,
@@ -1110,6 +1138,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
 
       const client = yield* prepare({
         endpoint: settings.endpoint,
+        onRetryMetric: retryMetric(own.name),
         own: handle,
         peers: peersOf(yield* directory.documents),
         serviceDid: settings.serviceDid,
@@ -1646,14 +1675,18 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
 
             return Option.isNone(resolved)
               ? outcome
-              : yield* client.send(envelope, {
-                  ...intent,
-                  fence: {
-                    did: own.did,
-                    generation: resolved.value.generation,
-                    leaseId: resolved.value.leaseId,
-                  },
-                });
+              : yield* retryMetric(own.name)("sendRetry").pipe(
+                  Effect.andThen(
+                    client.send(envelope, {
+                      ...intent,
+                      fence: {
+                        did: own.did,
+                        generation: resolved.value.generation,
+                        leaseId: resolved.value.leaseId,
+                      },
+                    })
+                  )
+                );
           });
 
         const attempt = (count: number): Effect.Effect<SendOutcome> =>
@@ -1684,6 +1717,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
                       })
                     );
                     yield* Effect.sleep(delay(count));
+                    yield* retryMetric(own.name)("sendRetry");
 
                     return yield* attempt(count + 1);
                   })

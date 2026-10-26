@@ -112,8 +112,8 @@ it.effect.prop(
           ),
         { ackOnReturn: !manual, harness: lease.harness }
       );
-      expect(meta.length).toBe(manual && !immediate ? 1 : 2);
-      expect(acknowledgments).toBe(manual && !immediate ? 0 : 2);
+      expect(meta.length).toBe(manual ? 1 : 2);
+      expect(acknowledgments).toBe(manual ? Number(immediate) : 2);
 
       if (manual && !immediate) {
         yield* Effect.all(meta.map((received) => received.ack));

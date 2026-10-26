@@ -55,9 +55,16 @@ export const watch = (
 ): Stream.Stream<Batch, MailboxClientError> =>
   Stream.suspend(() => {
     let checkpoint = afterSeq;
+    let connections = 0;
 
     const connection = Stream.unwrap(
       Effect.gen(function* connect() {
+        if (connections > 0) {
+          yield* config.onRetryMetric?.("consumeReconnect") ?? Effect.void;
+        }
+
+        connections += 1;
+
         if (fence.did !== config.identity.did) {
           return yield* new MailboxClientError({
             reason: "Watch fence DID differs from recipient",

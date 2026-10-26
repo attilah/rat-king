@@ -75,6 +75,22 @@ A message that cannot be opened (unknown sender, bad signature, undecryptable or
 
 A decrypted JSON object with a string `$type` that is not a Rat King message payload is delivered on `ratking/record` only, never injected into the model, except a verified desk relay received by its configured EA. Records use the same sender verification, checkpoint and ack path as messages. Other decrypted bodies still follow the raw-text message path.
 
+### Retry measurement
+
+The private `state/readers/<name-label>.json` heartbeat includes an optional `retries` object. The same publish writes `state/readers/retries/<pid>.json`, so processes contesting one name cannot overwrite each other's measurements. Normal shutdown removes this process snapshot; a crash can leave it behind. The retry report reads this subdirectory, while the existing alarm collector still reads only the top-level name heartbeats. It holds at most 60 name/window buckets per process, each aligned to a 60-second epoch boundary. Counts never reset inside a bucket. Crossing a boundary preserves the previous bucket. Capacity eviction increments `evictedEvents`; process exit or reader shutdown can lose unpublished counts, so this is measurement, not an audit log.
+
+The closed counter vocabulary records acquire outcomes (`Ok`, `LeaseHeld`, `MailboxUnavailable`, `Timeout`, `Other`), renew failures (`LeaseHeld`, `MailboxUnavailable`, `Timeout`, `LeaseExpired`, `LeaseMismatch`, `Other`), consume reconnects and send retries. Consume reconnects include both reader supervision restarts and socket reconnect attempts, excluding each initial start. Send retries count additional envelope submissions, including lease-fence adoption, not user tool calls. Counters contain no message content or arbitrary error text. They publish with the existing heartbeat, normally every minute and on reader state changes. No flag, endpoint or server update is needed; clients adopt the change on their next start.
+
+Read collected heartbeat directories or JSONL emitted by `reader-heartbeats.py`:
+
+```sh
+python3 stacks/nest/reader-retries.py ./host-a-readers ./host-b-readers \
+  --since 2026-01-01T00:00:00Z --until 2026-01-01T00:10:00Z --top 20
+python3 -B -m unittest stacks/nest/test_reader_retries.py
+```
+
+Each input directory identifies a host. For merged JSONL, add an invented or private `host` identifier to each outer record before merging. Repeated snapshots are deduplicated by host, PID and process start, using the newest heartbeat. The report sums only retained, complete buckets inside the requested interval, ranks process/name rows by total events, and shows interval-average and peak one-minute rates. Missing old clients, deleted heartbeats, partial boundary buckets and evicted history are not zero activity. Keep a snapshot shortly after the restart window; this command is not a historical archive merger. Rollback is the prior client bundle on the next Pi start; old readers ignore the optional heartbeat field.
+
 ## Staff relay
 
 Opt in at reader start with this `pi.json` field:
