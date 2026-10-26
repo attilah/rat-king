@@ -41,6 +41,20 @@ it.effect(
 
       for (const entry of exemptions) {
         expect(blobHash(yield* fs.readFile(entry.path))).toBe(entry.sha256);
+
+        for (const alias of entry.alsoAt ?? []) {
+          for (const rule of entry.rules) {
+            expect(isExempt(alias, entry.sha256, rule)).toBe(true);
+            expect(isExempt(alias, blobHash(`${entry.sha256} `), rule)).toBe(
+              false
+            );
+            expect(isExempt(`x/${alias}`, entry.sha256, rule)).toBe(false);
+          }
+
+          expect(isExempt(alias, entry.sha256, "gitleaks:private-key")).toBe(
+            false
+          );
+        }
       }
     }).pipe(Effect.provide(NodeServices.layer))
 );

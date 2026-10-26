@@ -6,6 +6,7 @@ import { Schema } from "effect";
 import data from "./exemptions.json" with { type: "json" };
 
 const Entry = Schema.Struct({
+  alsoAt: Schema.optionalKey(Schema.Array(Schema.String)),
   path: Schema.String,
   reason: Schema.String,
   rules: Schema.Array(
@@ -22,7 +23,7 @@ export const blobHash = (bytes: Uint8Array | string) =>
 export const isExempt = (path: string, sha256: string, rule: string) =>
   exemptions.some(
     (entry) =>
-      entry.path === path &&
+      (entry.path === path || (entry.alsoAt ?? []).includes(path)) &&
       entry.sha256 === sha256 &&
       entry.rules.some((approved) => approved === rule)
   );
