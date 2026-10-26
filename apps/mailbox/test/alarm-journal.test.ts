@@ -21,7 +21,7 @@ it.effect.prop(
   ([prior, latest]) =>
     Effect.gen(function* restore() {
       const fs = yield* FileSystem.FileSystem;
-      const directory = yield* fs.makeTempDirectoryScoped();
+      const directory = yield* fs.realPath(yield* fs.makeTempDirectoryScoped());
 
       const before = yield* Schema.encodeEffect(
         Schema.fromJsonString(AlarmJournal)
@@ -47,7 +47,7 @@ it.effect.prop(
   ([prior, suffix]) =>
     Effect.gen(function* corrupt() {
       const fs = yield* FileSystem.FileSystem;
-      const directory = yield* fs.makeTempDirectoryScoped();
+      const directory = yield* fs.realPath(yield* fs.makeTempDirectoryScoped());
 
       const before = yield* Schema.encodeEffect(
         Schema.fromJsonString(AlarmJournal)
@@ -80,7 +80,7 @@ it.effect.prop(
   ([input]) =>
     Effect.gen(function* ownership() {
       const fs = yield* FileSystem.FileSystem;
-      const directory = yield* fs.makeTempDirectoryScoped();
+      const directory = yield* fs.realPath(yield* fs.makeTempDirectoryScoped());
       const file = `${directory}/alarms.jsonl`;
 
       if (input.exists) {
