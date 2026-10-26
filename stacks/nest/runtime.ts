@@ -528,7 +528,7 @@ export const run = (action: Action) =>
     )
   );
 
-export const readAlarmDeployMarker = Effect.fn("Alarm.readDeployMarker")(
+export const deploymentMarker = Effect.fn("Alarm.readDeployMarker")(
   function* readAlarmDeployMarker(path: string) {
     const bytes = yield* (yield* HostShell).read(path);
 
@@ -539,16 +539,17 @@ export const readAlarmDeployMarker = Effect.fn("Alarm.readDeployMarker")(
     return yield* Schema.decodeEffect(Schema.fromJsonString(DeployMarker))(
       new TextDecoder().decode(bytes)
     );
-  },
-  (effect) =>
-    effect.pipe(
-      Effect.provide(connection.pipe(Layer.provide(NodeServices.layer))),
-      Effect.timeout("10 seconds"),
-      Effect.mapError(
-        () => new FleetError({ reason: "Live deployment marker unavailable" })
-      )
-    )
+  }
 );
+
+export const readAlarmDeployMarker = (path: string) =>
+  deploymentMarker(path).pipe(
+    Effect.provide(connection.pipe(Layer.provide(NodeServices.layer))),
+    Effect.timeout("10 seconds"),
+    Effect.mapError(
+      () => new FleetError({ reason: "Live deployment marker unavailable" })
+    )
+  );
 
 export const readAlarmWindowReceipts = (markerPath: string) =>
   Effect.gen(function* liveWindowReceipts() {
