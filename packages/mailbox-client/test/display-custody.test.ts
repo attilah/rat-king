@@ -19,8 +19,8 @@ import { RatKingMailbox } from "../src/mailbox.ts";
 
 it.effect.prop(
   "manual custody acknowledges only explicit display, dedupes replay and keeps legacy handler acknowledgments",
-  [Arbitrary.schema(Schema.Boolean)],
-  ([manual]) =>
+  [Arbitrary.schema(Schema.Boolean), Arbitrary.schema(Schema.Boolean)],
+  ([manual, immediate]) =>
     Effect.gen(function* proof() {
       const sample = yield* sealed();
       const now = yield* Clock.currentTimeMillis;
@@ -107,13 +107,15 @@ it.effect.prop(
         (_message, received) =>
           Effect.sync(() => {
             meta.push(received);
-          }),
+          }).pipe(
+            Effect.andThen(manual && immediate ? received.ack : Effect.void)
+          ),
         { ackOnReturn: !manual, harness: lease.harness }
       );
       expect(meta.length).toBe(manual ? 1 : 2);
-      expect(acknowledgments).toBe(manual ? 0 : 2);
+      expect(acknowledgments).toBe(manual ? Number(immediate) : 2);
 
-      if (manual) {
+      if (manual && !immediate) {
         yield* Effect.all(meta.map((received) => received.ack));
         expect(acknowledgments).toBe(1);
       }

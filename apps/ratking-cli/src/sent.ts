@@ -1,6 +1,8 @@
 import { Settings } from "@rat-king/ratking-client/config";
+import { withLock } from "@rat-king/ratking-client/lock";
+import { appendLog, LOG_ARCHIVES } from "@rat-king/ratking-client/log";
 import { provisionLabel } from "@rat-king/ratking-client/name";
-import { Effect, FileSystem, Option, Path, Schema } from "effect";
+import { Effect, FileSystem, Option, Path, Predicate, Schema } from "effect";
 
 export const SentRecord = Schema.Struct({
   body: Schema.String,
@@ -14,6 +16,8 @@ export const SentRecord = Schema.Struct({
 });
 
 export type SentRecordValue = typeof SentRecord.Type;
+
+export const SENT_RESULT_LIMIT = 2000;
 
 const fileFor = Effect.fn("RatkingCli.sentFile")(function* fileFor(
   name: string
@@ -37,12 +41,9 @@ const append = Effect.fn("RatkingCli.recordSent")(function* append(
   });
   yield* fs.chmod(path.dirname(file), 0o700);
 
-  yield* fs.writeFileString(
-    file,
-    `${yield* Schema.encodeEffect(Schema.fromJsonString(SentRecord))(record)}\n`,
-    { flag: "a", mode: 0o600 }
-  );
-  yield* fs.chmod(file, 0o600);
+  yield* appendLog(file, [
+    yield* Schema.encodeEffect(Schema.fromJsonString(SentRecord))(record),
+  ]);
 });
 
 export const recordSent = (record: SentRecordValue) =>
@@ -52,16 +53,42 @@ const readSent = Effect.fn("RatkingCli.sentBy")(function* readSent(
   name: string
 ) {
   const fs = yield* FileSystem.FileSystem;
-  const text = yield* fs.readFileString(yield* fileFor(name));
+  const file = yield* fileFor(name);
+  const path = yield* Path.Path;
 
-  return text
-    .split("\n")
-    .flatMap((line) =>
-      Option.match(
-        Schema.decodeUnknownOption(Schema.fromJsonString(SentRecord))(line),
-        { onNone: () => [], onSome: (record) => [record] }
-      )
-    );
+  return yield* withLock(
+    path.join(path.dirname(file), "locks"),
+    "client-log",
+    Effect.gen(function* read() {
+      const text = (yield* Effect.forEach(
+        Array.from({ length: LOG_ARCHIVES + 1 }, (_, index) => {
+          const archive = LOG_ARCHIVES - index;
+
+          return archive === 0 ? file : `${file}.${archive}`;
+        }),
+        (entry) =>
+          fs
+            .readFileString(entry)
+            .pipe(
+              Effect.catchTag("PlatformError", (error) =>
+                Predicate.isTagged(error.reason, "NotFound")
+                  ? Effect.succeed("")
+                  : Effect.fail(error)
+              )
+            )
+      )).join("\n");
+
+      return text
+        .split("\n")
+        .flatMap((line) =>
+          Option.match(
+            Schema.decodeUnknownOption(Schema.fromJsonString(SentRecord))(line),
+            { onNone: () => [], onSome: (record) => [record] }
+          )
+        )
+        .slice(-SENT_RESULT_LIMIT);
+    })
+  );
 });
 
 export const sentBy = (name: string) =>

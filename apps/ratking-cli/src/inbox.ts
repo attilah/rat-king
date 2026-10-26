@@ -110,6 +110,7 @@ export const inboxCommand = Command.make(
 
         return {
           document: {
+            hasMore: peeked.hasMore === true,
             messages: peeked.messages.map(entryDocument),
             name: me.name,
             throughSeq: peeked.throughSeq,
@@ -118,6 +119,11 @@ export const inboxCommand = Command.make(
           lines: [
             `🐀 inbox ${me.name} · ${peeked.messages.length} ${args.all ? "messages" : "unread"}${peeked.unreadable.length === 0 ? "" : ` · ${peeked.unreadable.length} unreadable`}`,
             ...peeked.messages.map(inboxLine),
+            ...(peeked.hasMore === true
+              ? [
+                  `More events remain; continue with --after ${peeked.throughSeq}`,
+                ]
+              : []),
           ],
         } satisfies Report;
       })

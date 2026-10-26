@@ -33,7 +33,9 @@ export interface LeaseFence {
     readonly leaseId: string;
     readonly generation: number;
 }
+export declare const POLL_MAX_PAGES = 10;
 export interface Batch {
+    readonly hasMore?: boolean;
     readonly events: List.OutputValue["events"];
     readonly throughSeq: number;
 }

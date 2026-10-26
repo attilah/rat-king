@@ -11,7 +11,7 @@ export interface CommandResult {
   readonly stdout: string;
 }
 
-const limit = 1_048_576;
+export const COMMAND_OUTPUT_BYTES = 1_048_576;
 
 export const runCommand = Effect.fn("RatKing.runCommand")(function* runCommand(
   argv: readonly [string, ...string[]],
@@ -31,16 +31,30 @@ export const runCommand = Effect.fn("RatKing.runCommand")(function* runCommand(
       })
     );
 
-    const [code, chunks] = yield* Effect.all(
-      [handle.exitCode, Stream.runCollect(Stream.take(handle.stdout, 4096))],
+    const chunks: Uint8Array[] = [];
+    let bytes = 0;
+
+    const [code] = yield* Effect.all(
+      [
+        handle.exitCode,
+        Stream.runForEach(handle.stdout, (chunk) =>
+          Effect.suspend(() => {
+            if (bytes + chunk.length > COMMAND_OUTPUT_BYTES) {
+              return Effect.fail(failed("Command output too large")());
+            }
+
+            bytes += chunk.length;
+
+            if (chunk.length > 0) {
+              chunks.push(chunk);
+            }
+
+            return Effect.void;
+          })
+        ),
+      ],
       { concurrency: "unbounded" }
     );
-
-    const bytes = chunks.reduce((total, chunk) => total + chunk.length, 0);
-
-    if (bytes > limit) {
-      return yield* failed("Command output too large")();
-    }
 
     const output = new Uint8Array(bytes);
     let offset = 0;

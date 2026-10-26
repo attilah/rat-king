@@ -4104,11 +4104,16 @@ var watch = (config, poll, afterSeq, fence) => Stream.suspend(() => {
         }
       });
       yield* receiveNotice;
-      const notices = Stream.fromEffectRepeat(
-        receiveNotice.pipe(Effect26.flatMap(() => poll(checkpoint)))
-      );
-      return Stream.fromEffect(Effect26.suspend(() => poll(checkpoint))).pipe(
-        Stream.concat(notices)
+      let catchUp = true;
+      return Stream.fromEffectRepeat(
+        Effect26.suspend(() => catchUp ? Effect26.void : receiveNotice).pipe(
+          Effect26.flatMap(() => poll(checkpoint)),
+          Effect26.tap(
+            (batch) => Effect26.sync(() => {
+              catchUp = batch.hasMore === true;
+            })
+          )
+        )
       );
     })
   );
@@ -4134,6 +4139,7 @@ var watch = (config, poll, afterSeq, fence) => Stream.suspend(() => {
 });
 
 // packages/mailbox-client/src/mailbox.ts
+var POLL_MAX_PAGES = 10;
 var decodeBody = (body) => Effect27.try({
   catch: () => new MailboxClientError({ reason: "Invalid UTF-8 body" }),
   try: () => new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(body)
@@ -4260,11 +4266,20 @@ var layer = (config, resolverLayer = staticResolver(config.documents)) => Layer5
       }).pipe(Effect27.flatMap(client.list), Effect27.mapError(clientError))
     );
     const poll = Effect27.fn("RatKingMailbox.poll")(function* poll2(afterSeq) {
-      const first = yield* list({ afterSeq });
+      const first = yield* list({ afterSeq, limit: 100 });
       const events = [...first.events];
       let { cursor } = first;
-      while (cursor !== void 0) {
-        const page = yield* list({ afterSeq, cursor });
+      let pages = 1;
+      const cursors = /* @__PURE__ */ new Set();
+      while (cursor !== void 0 && pages < POLL_MAX_PAGES) {
+        if (cursors.has(cursor)) {
+          return yield* new MailboxClientError({
+            reason: "Repeated mailbox page cursor"
+          });
+        }
+        cursors.add(cursor);
+        const page = yield* list({ afterSeq, cursor, limit: 100 });
+        pages += 1;
         if (page.throughSeq !== first.throughSeq) {
           return yield* new MailboxClientError({
             reason: "Snapshot watermark changed during pagination"
@@ -4272,6 +4287,15 @@ var layer = (config, resolverLayer = staticResolver(config.documents)) => Layer5
         }
         events.push(...page.events);
         ({ cursor } = page);
+      }
+      if (cursor !== void 0) {
+        const last = events.at(-1)?.seq;
+        if (!Schema47.is(Schema47.Int)(last) || !Number.isSafeInteger(last) || last <= afterSeq) {
+          return yield* new MailboxClientError({
+            reason: "Mailbox page did not advance its sequence"
+          });
+        }
+        return { events, hasMore: true, throughSeq: last };
       }
       return { events, throughSeq: first.throughSeq };
     });
@@ -4574,6 +4598,34 @@ import {
   Stream as Stream2
 } from "effect";
 import { createMachine, initialTransition, transition } from "xstate";
+
+// packages/mailbox-client/src/handoff-history.ts
+var HANDOFF_HISTORY_CAPACITY = 2048;
+var handoffHistory = () => {
+  const keys = /* @__PURE__ */ new Set();
+  const remember = (key) => {
+    keys.delete(key);
+    keys.add(key);
+    if (keys.size > HANDOFF_HISTORY_CAPACITY) {
+      const oldest = keys.values().next();
+      if (oldest.done !== true) {
+        keys.delete(oldest.value);
+      }
+    }
+  };
+  return {
+    add: remember,
+    delete: (key) => keys.delete(key),
+    has: (key) => {
+      if (!keys.has(key)) {
+        return false;
+      }
+      remember(key);
+      return true;
+    },
+    size: () => keys.size
+  };
+};
 
 // packages/mailbox-client/src/retry-metrics.ts
 import { Match as Match2, Schema as Schema50 } from "effect";
@@ -4880,7 +4932,7 @@ var consume = (mailbox, did, handler, options) => Effect29.scoped(
       }
       return yield* Effect29.void;
     }).pipe(Effect29.repeat(Schedule2.spaced("0 millis")), Effect29.catch(lost));
-    const handed = /* @__PURE__ */ new Set();
+    const handed = handoffHistory();
     const intake = mailbox.watch(options.afterSeq ?? 0, fence()).pipe(
       Stream2.runForEach(
         (batch) => Effect29.forEach(
@@ -4949,12 +5001,14 @@ var consume = (mailbox, did, handler, options) => Effect29.scoped(
               Effect29.catchIf(settledRefusal, () => Effect29.void),
               Effect29.asVoid
             ) : Effect29.void;
+            handed.add(key);
             yield* handler(message, {
               ack,
               redelivered: event.receipt.state === "delivered",
               seq: event.seq
-            });
-            handed.add(key);
+            }).pipe(
+              Effect29.onError(() => Effect29.sync(() => handed.delete(key)))
+            );
             if (options.ackOnReturn !== false) {
               yield* ack;
             }
