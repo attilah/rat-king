@@ -2,6 +2,7 @@ import { NodeServices } from "@effect/platform-node";
 import { Effect, Layer, Logger } from "effect";
 import { Command } from "effect/cli";
 
+import { isUsageError, refuseUsage } from "../../mailbox/cli/usage.ts";
 import { attentionCommand } from "./attention.ts";
 import { filterCommand } from "./filter.ts";
 import { healthCommand } from "./health.ts";
@@ -41,7 +42,9 @@ export const command = Command.make("ratking").pipe(
 );
 
 export const runRatking = (args: readonly string[]) =>
-  Command.runWith(command, { version: "0.1.0" })(args);
+  Command.runWith(command, { renderErrors: false, version: "0.1.0" })(
+    args
+  ).pipe(Effect.catchIf(isUsageError, refuseUsage(command, args)));
 
 export const cliLogger = Logger.layer([
   Logger.withConsoleError(Logger.formatLogFmt),
