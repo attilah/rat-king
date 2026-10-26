@@ -1,6 +1,7 @@
 import { DateTime, Option, Predicate, Schema } from "effect";
 
 import { AgentName } from "./name.ts";
+import { RetrySnapshot } from "./retry-counters.ts";
 
 export const READER_STUCK_MS = 300_000;
 
@@ -23,6 +24,7 @@ export const ReaderHeartbeat = Schema.Struct({
   name: AgentName,
   owner: Schema.optionalKey(AgentName),
   pid: Schema.Int,
+  retries: Schema.optionalKey(RetrySnapshot),
   session: Schema.optionalKey(Schema.String),
   startedAt: At,
   state: Schema.Literals([

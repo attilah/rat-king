@@ -5,6 +5,7 @@ import { Document } from "./auth.js";
 import type { ConsumeOptions, MessageMeta } from "./consume.js";
 import { MailboxClientError } from "./error.js";
 import type { LeaseFence, OpenedMessage, SendOptions } from "./mailbox.js";
+import type { RetryObserver } from "./retry-metrics.js";
 declare const ownBrand: unique symbol;
 export interface OwnIdentity {
     readonly [ownBrand]: true;
@@ -128,6 +129,7 @@ export declare const sendSealed: (envelope: {
     readonly version: number;
 }, fence?: LeaseFence | undefined) => Effect.Effect<SendOutcome, never, PreparedMailbox>;
 export interface PrepareOptions {
+    readonly onRetryMetric?: RetryObserver;
     readonly own: OwnIdentity;
     readonly names?: {
         readonly from: string;

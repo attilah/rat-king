@@ -4,6 +4,7 @@ import type * as Lease from "../lexicon/runtime.lease.js";
 import { Effect, Option } from "effect";
 import { MailboxClientError } from "./error.js";
 import type { LeaseFence, OpenedMessage, RatKingMailbox } from "./mailbox.js";
+import type { RetryObserver } from "./retry-metrics.js";
 export declare const consumerMachine: import("xstate").StateMachine<{}, {
     type: string;
 }, {
@@ -123,6 +124,7 @@ export interface Skipped {
     readonly seq: number;
 }
 export interface ConsumeOptions {
+    readonly onRetryMetric?: RetryObserver;
     readonly onAttentionReceipt?: (receipt: AttentionReceipt.MainValue) => Effect.Effect<void>;
     readonly ackOnReturn?: boolean;
     readonly harness: Lease.MainValue["harness"];
