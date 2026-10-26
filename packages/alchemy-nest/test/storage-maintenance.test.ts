@@ -159,16 +159,17 @@ master = 'http://127.0.0.1:19333'
 def build(free, writable, grown):
     def call(url, method='GET'):
         calls.append((url, method))
-        if url.endswith('/vol/grow?count=8&replication=000'):
+        if '/vol/grow?count=' in url:
             if case.get('error'): raise RuntimeError('storage request failed: boom')
             if case.get('response') is not None: return case['response']
-            state['writable'] += 8
-            state['free'] -= 8
-            return {'count': 8}
+            count = int(url.split('count=')[1].split('&')[0])
+            state['writable'] += count
+            state['free'] -= count
+            return {'count': count}
         if url.endswith('/vol/status'):
             volumes = [dict(Id=i, Collection='', ReplicaPlacement={}, Ttl=dict(Count=0, Unit=0), ReadOnly=False, Size=100) for i in range(1, max(1, state['writable']) + 1)]
-            return {'Version': '4.48', 'Volumes': {'Max': 2048, 'Free': state['free'], 'DataCenters': {'dc1': {'rack1': {'node1': volumes}}}}}
-        return {'Topology': {'Free': state['free'], 'Max': 2048, 'Layouts': [
+            return {'Version': '4.48', 'Volumes': {'Max': case.get('max', 2048), 'Free': state['free'], 'DataCenters': {'dc1': {'rack1': {'node1': volumes}}}}}
+        return {'Topology': {'Free': state['free'], 'Max': case.get('max', 2048), 'Layouts': [
             dict(collection='', replication='000', ttl='', writables=list(range(1, state['writable'] + 1)))]}}
     calls = []
     state = {'free': free, 'writable': writable}
@@ -217,6 +218,7 @@ const runGrow = (
   input: {
     readonly error?: boolean;
     readonly free: number;
+    readonly max?: number;
     readonly mode: string;
     readonly response?: unknown;
     readonly writable: number;
@@ -240,10 +242,13 @@ const runGrow = (
       })
     );
 
-const growUrl = "http://127.0.0.1:19333/vol/grow?count=8&replication=000";
+const growUrlFor = (count: number) =>
+  `http://127.0.0.1:19333/vol/grow?count=${count}&replication=000`;
+
+const growUrl = growUrlFor(8);
 
 it.effect(
-  "grow fires only below 4 writable volumes with more than 64 free slots",
+  "grow fires only below 4 writable volumes with more than 64 free slots, never past the floor",
   () =>
     Effect.gen(function* growEdges() {
       const shell = yield* localExec;
@@ -256,19 +261,22 @@ it.effect(
         [0, 65, true],
       ] as const) {
         const result = yield* runGrow(shell, { free, mode: "grow", writable });
+        const wanted = Math.min(8, free - 64);
 
-        expect(result.posts).toEqual(grows ? [growUrl] : []);
+        expect(result.posts).toEqual(grows ? [growUrlFor(wanted)] : []);
 
         const { after, before, grew } = result.first;
 
-        expect(grew).toBe(grows ? 8 : 0);
+        expect(grew).toBe(grows ? wanted : 0);
         expect(result.code).toBe(!grows && free <= 64 ? 1 : 0);
         expect(result.err.includes("shortfall")).toBe(!grows && free <= 64);
         expect(before?.defaultCollectionWritableVolumes).toBe(writable);
 
         if (grows) {
-          expect(after?.defaultCollectionWritableVolumes).toBe(writable + 8);
-          expect(after?.freeVolumeSlots).toBe(free - 8);
+          expect(after?.defaultCollectionWritableVolumes).toBe(
+            writable + wanted
+          );
+          expect(after?.freeVolumeSlots).toBe(free - wanted);
         }
       }
     }).pipe(Effect.provide(NodeServices.layer))
@@ -326,6 +334,41 @@ it.effect(
         expect(result.posts).toEqual([]);
         expect(result.code).toBe(alarm ? 1 : 0);
         expect(result.first.alarm).toBe(alarm);
+      }
+    }).pipe(Effect.provide(NodeServices.layer))
+);
+
+it.effect(
+  "small instances scale the floor to max/8 and the critical level to max/32",
+  () =>
+    Effect.gen(function* smallFloor() {
+      const shell = yield* localExec;
+
+      for (const [max, free, writable, mode, alarm, grows] of [
+        [64, 14, 0, "diagnose", false, 0],
+        [64, 8, 0, "diagnose", true, 0],
+        [64, 9, 5, "diagnose", false, 0],
+        [64, 1, 0, "diagnose", true, 0],
+        [64, 14, 0, "grow", false, 6],
+        [64, 20, 1, "grow", false, 8],
+        [64, 8, 0, "grow", false, 0],
+        [64, 9, 4, "grow", false, 0],
+        [8, 3, 0, "grow", false, 1],
+        [8, 2, 0, "grow", false, 0],
+        [2048, 64, 0, "diagnose", true, 0],
+        [2048, 65, 0, "grow", false, 1],
+      ] as const) {
+        const result = yield* runGrow(shell, { free, max, mode, writable });
+
+        expect(result.posts).toEqual(grows > 0 ? [growUrlFor(grows)] : []);
+
+        if (mode === "diagnose") {
+          expect(result.first.alarm).toBe(alarm);
+          expect(result.code).toBe(alarm ? 1 : 0);
+        } else {
+          expect(result.first.grew).toBe(grows);
+          expect(result.first.after?.freeVolumeSlots).toBe(free - grows);
+        }
       }
     }).pipe(Effect.provide(NodeServices.layer))
 );

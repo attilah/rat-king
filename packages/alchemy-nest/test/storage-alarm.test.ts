@@ -68,8 +68,8 @@ cases = [
     ('empty-layout', 100, 128, 0, 0, True, False),
     ('foreign-only', 100, 128, 0, 0, True, False),
     ('cliff', 0, 128, 0, 0, False, True),
-    ('low-free-writable', 64, 128, 1, 1, True, True),
-    ('threshold', 65, 128, 0, 0, True, False),
+    ('low-free-writable', 16, 128, 1, 1, True, True),
+    ('threshold', 17, 128, 0, 0, True, False),
     ('mature', free, 256, 8, 4, True, False),
     ('blocked', free, 256, 8, 0, True, False),
     ('mailbox', 153, 256, 32, 4, True, False)]
