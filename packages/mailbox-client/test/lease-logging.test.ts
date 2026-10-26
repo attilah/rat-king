@@ -22,9 +22,10 @@ import { RatKingMailbox } from "../src/mailbox.ts";
 
 it.effect.prop(
   "lease lifecycle logs carry the name, generation, expiry and reason on one line",
-  [Arbitrary.schema(Schema.Literals(["renew", "loss", "lapse"]))],
+  [Arbitrary.schema(Schema.Literals(["renew", "loss", "lapse", "budget"]))],
   ([outcome]) => {
     const lines: string[] = [];
+    let renewalAttempts = 0;
 
     const logger = Logger.layer([
       Logger.make(({ message }) => {
@@ -62,6 +63,21 @@ it.effect.prop(
                     return yield* Effect.never;
                   }
 
+                  if (outcome === "budget") {
+                    renewalAttempts += 1;
+
+                    if (renewalAttempts === 1) {
+                      return yield* Effect.never;
+                    }
+
+                    yield* Effect.sleep(1751);
+
+                    return yield* new MailboxClientError({
+                      error: "MailboxUnavailable",
+                      reason: "transient renewal failure",
+                    });
+                  }
+
                   if (outcome !== "renew") {
                     return yield* new MailboxClientError({
                       error: "LeaseMismatch",
@@ -93,7 +109,9 @@ it.effect.prop(
       }).pipe(Effect.result, Effect.forkScoped);
 
       yield* Deferred.await(acquired);
-      yield* TestClock.adjust(outcome === "lapse" ? 10_001 : 5000);
+      yield* TestClock.adjust(
+        outcome === "lapse" || outcome === "budget" ? 10_001 : 5000
+      );
 
       if (outcome === "renew") {
         yield* Deferred.await(renewed);
@@ -107,12 +125,22 @@ it.effect.prop(
       for (const event of [
         "acquire",
         "renew-attempt",
-        outcome === "lapse" ? "loss" : outcome,
+        outcome === "budget" ? "lapse" : outcome,
         "release",
       ]) {
         expect(events.some((line) => line.startsWith(`lease ${event} `))).toBe(
           true
         );
+      }
+
+      if (outcome === "budget") {
+        expect(
+          events.some(
+            (line) =>
+              line.startsWith("lease lapse ") &&
+              line.includes('reason="LeaseRenewalFailed:')
+          )
+        ).toBe(true);
       }
 
       expect(

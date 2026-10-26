@@ -54,6 +54,8 @@ export interface MessageMeta {
 
 const ATTEMPT_MS = Deadline.LEASE_MS;
 
+const RENEW_FLOOR_MS = 250;
+
 const attemptTimedOut = (reason: string) =>
   new MailboxClientError({ error: "MailboxUnavailable", reason });
 
@@ -307,7 +309,10 @@ export const consume = <E, R>(
           }
 
           yield* logLease(
-            reason === "LeaseExpired" ? "lapse" : "loss",
+            reason === "LeaseExpired" ||
+              (reason === "LeaseRenewalFailed" && unavailable(error))
+              ? "lapse"
+              : "loss",
             current,
             `${reason}: ${error.reason}`
           );
@@ -391,7 +396,9 @@ export const consume = <E, R>(
                             0,
                             Math.min(
                               1000,
-                              Date.parse(current.expiresAt) - time - ATTEMPT_MS
+                              Date.parse(current.expiresAt) -
+                                time -
+                                RENEW_FLOOR_MS
                             )
                           )
                         ).pipe(Effect.map((delay) => Math.max(1, delay)))
@@ -406,7 +413,7 @@ export const consume = <E, R>(
                   Clock.currentTimeMillis.pipe(
                     Effect.flatMap((time) =>
                       Deadline.canAttempt(
-                        ATTEMPT_MS,
+                        RENEW_FLOOR_MS,
                         Duration.toMillis(duration)
                       ).pipe(
                         Effect.map(
@@ -414,7 +421,7 @@ export const consume = <E, R>(
                             fits &&
                             unavailable(input) &&
                             Date.parse(current.expiresAt) - time >=
-                              ATTEMPT_MS + Duration.toMillis(duration)
+                              RENEW_FLOOR_MS + Duration.toMillis(duration)
                         )
                       )
                     )

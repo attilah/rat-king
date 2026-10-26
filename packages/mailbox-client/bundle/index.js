@@ -4667,6 +4667,7 @@ var consumerMachine = createMachine({
   }
 });
 var ATTEMPT_MS = LEASE_MS;
+var RENEW_FLOOR_MS = 250;
 var attemptTimedOut = (reason) => new MailboxClientError({ error: "MailboxUnavailable", reason });
 var TIMED_OUT = "Renewal attempt timed out";
 var unavailable = (error) => error.status === void 0 ? error.error === void 0 || error.error === "MailboxUnavailable" : error.status >= 500 || error.status === 429;
@@ -4820,7 +4821,7 @@ var consume = (mailbox, did, handler, options) => Effect30.scoped(
         reason = "LeaseTakenOver";
       }
       yield* logLease(
-        reason === "LeaseExpired" ? "lapse" : "loss",
+        reason === "LeaseExpired" || reason === "LeaseRenewalFailed" && unavailable(error) ? "lapse" : "loss",
         current,
         `${reason}: ${error.reason}`
       );
@@ -4890,7 +4891,7 @@ var consume = (mailbox, did, handler, options) => Effect30.scoped(
                       0,
                       Math.min(
                         1e3,
-                        Date.parse(current.expiresAt) - time - ATTEMPT_MS
+                        Date.parse(current.expiresAt) - time - RENEW_FLOOR_MS
                       )
                     )
                   ).pipe(Effect30.map((delay) => Math.max(1, delay)))
@@ -4904,11 +4905,11 @@ var consume = (mailbox, did, handler, options) => Effect30.scoped(
               }) => Clock6.currentTimeMillis.pipe(
                 Effect30.flatMap(
                   (time) => canAttempt(
-                    ATTEMPT_MS,
+                    RENEW_FLOOR_MS,
                     Duration3.toMillis(duration)
                   ).pipe(
                     Effect30.map(
-                      (fits) => fits && unavailable(input) && Date.parse(current.expiresAt) - time >= ATTEMPT_MS + Duration3.toMillis(duration)
+                      (fits) => fits && unavailable(input) && Date.parse(current.expiresAt) - time >= RENEW_FLOOR_MS + Duration3.toMillis(duration)
                     )
                   )
                 )
