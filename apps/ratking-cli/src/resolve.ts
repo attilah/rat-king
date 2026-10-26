@@ -1,4 +1,5 @@
 /* oxlint-disable promise/prefer-await-to-callbacks -- Effect error mapping is not a Promise callback. */
+import * as Deadline from "@rat-king/mailbox-client/deadline";
 import type {
   Resolution,
   UnresolvedReason,
@@ -38,7 +39,7 @@ export const collectResolutions = Effect.fn("Resolve.collect")(
       names,
       (name) =>
         Effect.suspend(() => lookup(name)).pipe(
-          Effect.timeout("10 seconds"),
+          Deadline.timeout("10 seconds"),
           Effect.map((value) => ({ name, value })),
           Effect.catchCause((cause) => {
             const error = Option.getOrUndefined(Cause.findErrorOption(cause));

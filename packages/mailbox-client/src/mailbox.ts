@@ -36,6 +36,7 @@ import type { HttpClient } from "effect/http";
 import { attentionClient } from "./attention.ts";
 import type { AttentionClient } from "./attention.ts";
 import { DidResolver, staticResolver } from "./auth.ts";
+import * as Deadline from "./deadline.ts";
 import { openDelegated } from "./delegation.ts";
 import { clientError, MailboxClientError } from "./error.ts";
 import { importSigning, importAgreement } from "./identity.ts";
@@ -432,54 +433,59 @@ export const layer = (
           }).pipe(Effect.flatMap(client.list), Effect.mapError(clientError))
       );
 
-      const poll = Effect.fn("RatKingMailbox.poll")(function* poll(
-        afterSeq: number
-      ) {
-        const first = yield* list({ afterSeq, limit: 100 });
-        const events = [...first.events];
-        let { cursor } = first;
-        let pages = 1;
-        const cursors = new Set<string>();
+      const poll = Effect.fn("RatKingMailbox.poll")(
+        function* poll(afterSeq: number) {
+          const first = yield* list({ afterSeq, limit: 100 });
+          const events = [...first.events];
+          let { cursor } = first;
+          let pages = 1;
+          const cursors = new Set<string>();
 
-        while (cursor !== undefined && pages < POLL_MAX_PAGES) {
-          if (cursors.has(cursor)) {
-            return yield* new MailboxClientError({
-              reason: "Repeated mailbox page cursor",
-            });
+          while (cursor !== undefined && pages < POLL_MAX_PAGES) {
+            if (cursors.has(cursor)) {
+              return yield* new MailboxClientError({
+                reason: "Repeated mailbox page cursor",
+              });
+            }
+
+            cursors.add(cursor);
+            const page = yield* list({ afterSeq, cursor, limit: 100 });
+            pages += 1;
+
+            if (page.throughSeq !== first.throughSeq) {
+              return yield* new MailboxClientError({
+                reason: "Snapshot watermark changed during pagination",
+              });
+            }
+
+            events.push(...page.events);
+            ({ cursor } = page);
           }
 
-          cursors.add(cursor);
-          const page = yield* list({ afterSeq, cursor, limit: 100 });
-          pages += 1;
+          if (cursor !== undefined) {
+            const last = events.at(-1)?.seq;
 
-          if (page.throughSeq !== first.throughSeq) {
-            return yield* new MailboxClientError({
-              reason: "Snapshot watermark changed during pagination",
-            });
+            if (
+              !Schema.is(Schema.Int)(last) ||
+              !Number.isSafeInteger(last) ||
+              last <= afterSeq
+            ) {
+              return yield* new MailboxClientError({
+                reason: "Mailbox page did not advance its sequence",
+              });
+            }
+
+            return { events, hasMore: true, throughSeq: last };
           }
 
-          events.push(...page.events);
-          ({ cursor } = page);
-        }
-
-        if (cursor !== undefined) {
-          const last = events.at(-1)?.seq;
-
-          if (
-            !Schema.is(Schema.Int)(last) ||
-            !Number.isSafeInteger(last) ||
-            last <= afterSeq
-          ) {
-            return yield* new MailboxClientError({
-              reason: "Mailbox page did not advance its sequence",
-            });
-          }
-
-          return { events, hasMore: true, throughSeq: last };
-        }
-
-        return { events, throughSeq: first.throughSeq };
-      });
+          return { events, throughSeq: first.throughSeq };
+        },
+        (effect) =>
+          effect.pipe(
+            Deadline.timeout(Deadline.OPERATION_MS),
+            Effect.mapError(clientError)
+          )
+      );
 
       return RatKingMailbox.of({
         ...attentionClient(client, identity),
@@ -620,91 +626,100 @@ export const layer = (
             Effect.mapError(clientError)
           )
         ),
-        send: Effect.fn("RatKingMailbox.send")(function* send(to, body, opts) {
-          if (opts?.recordType !== undefined) {
-            const presence = yield* lookupPresence(to).pipe(
-              Effect.provideService(Transport, transport),
-              Effect.timeoutOption("2 seconds"),
-              Effect.orElseSucceed(() => Option.none())
-            );
+        send: Effect.fn("RatKingMailbox.send")(
+          function* send(to, body, opts) {
+            if (opts?.recordType !== undefined) {
+              const presence = yield* lookupPresence(to).pipe(
+                Effect.provideService(Transport, transport),
+                Deadline.timeoutOption("2 seconds"),
+                Effect.orElseSucceed(() => Option.none())
+              );
 
-            const reason = readerCannotRender(
-              to,
-              opts.recordType,
-              Option.getOrUndefined(presence)
-            );
+              const reason = readerCannotRender(
+                to,
+                opts.recordType,
+                Option.getOrUndefined(presence)
+              );
 
-            if (reason !== undefined) {
-              return yield* new MailboxClientError({ reason });
+              if (reason !== undefined) {
+                return yield* new MailboxClientError({ reason });
+              }
             }
-          }
 
-          if (opts?.fence !== undefined && opts.fence.did !== identity.did) {
-            return yield* new MailboxClientError({
-              reason: "Send fence DID differs from sender",
+            if (opts?.fence !== undefined && opts.fence.did !== identity.did) {
+              return yield* new MailboxClientError({
+                reason: "Send fence DID differs from sender",
+              });
+            }
+
+            const now = yield* Clock.currentTimeMillis;
+
+            const messageId = yield* Effect.sync(() => randomTid(now));
+
+            const aad: RawAad = {
+              messageId,
+              recipientDid: to,
+              recipientKeyId: `${to}#encryption`,
+              senderDid: identity.did,
+            };
+
+            if (opts?.expiresAt !== undefined) {
+              aad.expiresAt = opts.expiresAt;
+            }
+
+            const raw: RawSigningPayload = {
+              aad,
+              body: new TextEncoder().encode(body),
+              suite: opts?.encrypt === false ? plaintextSuite : suite,
+              version: 1,
+            };
+
+            if (opts?.replyTo !== undefined) {
+              raw.replyTo = opts.replyTo;
+            }
+
+            if (opts?.urgent !== undefined) {
+              raw.urgent = opts.urgent;
+            }
+
+            const payload = yield* Schema.decodeUnknownEffect(
+              Schema.toType(Defs.SigningPayload)
+            )(raw);
+
+            const envelope = yield* seal({
+              payload,
+              recipientKey: yield* resolver.resolve(
+                to,
+                payload.aad.recipientKeyId,
+                "keyAgreement"
+              ),
+              recipientKeyId: payload.aad.recipientKeyId,
+              signingKey: yield* importSigning(identity),
+              signingKeyId: `${identity.did}#atproto`,
             });
-          }
 
-          const now = yield* Clock.currentTimeMillis;
+            const input: SealedSendInput = {
+              envelope,
+              ...sendIntent(opts),
+            };
 
-          const messageId = yield* Effect.sync(() => randomTid(now));
+            if (opts?.fence !== undefined) {
+              input.generation = opts.fence.generation;
+              input.leaseId = opts.fence.leaseId;
+            }
 
-          const aad: RawAad = {
-            messageId,
-            recipientDid: to,
-            recipientKeyId: `${to}#encryption`,
-            senderDid: identity.did,
-          };
-
-          if (opts?.expiresAt !== undefined) {
-            aad.expiresAt = opts.expiresAt;
-          }
-
-          const raw: RawSigningPayload = {
-            aad,
-            body: new TextEncoder().encode(body),
-            suite: opts?.encrypt === false ? plaintextSuite : suite,
-            version: 1,
-          };
-
-          if (opts?.replyTo !== undefined) {
-            raw.replyTo = opts.replyTo;
-          }
-
-          if (opts?.urgent !== undefined) {
-            raw.urgent = opts.urgent;
-          }
-
-          const payload = yield* Schema.decodeUnknownEffect(
-            Schema.toType(Defs.SigningPayload)
-          )(raw);
-
-          const envelope = yield* seal({
-            payload,
-            recipientKey: yield* resolver.resolve(
-              to,
-              payload.aad.recipientKeyId,
-              "keyAgreement"
-            ),
-            recipientKeyId: payload.aad.recipientKeyId,
-            signingKey: yield* importSigning(identity),
-            signingKeyId: `${identity.did}#atproto`,
-          });
-
-          const input: SealedSendInput = {
-            envelope,
-            ...sendIntent(opts),
-          };
-
-          if (opts?.fence !== undefined) {
-            input.generation = opts.fence.generation;
-            input.leaseId = opts.fence.leaseId;
-          }
-
-          return yield* client.send(
-            yield* Schema.decodeUnknownEffect(Schema.toType(Send.Input))(input)
-          );
-        }, Effect.mapError(clientError)),
+            return yield* client.send(
+              yield* Schema.decodeUnknownEffect(Schema.toType(Send.Input))(
+                input
+              )
+            );
+          },
+          (effect) =>
+            effect.pipe(
+              Deadline.timeout(Deadline.OPERATION_MS),
+              Effect.mapError(clientError)
+            )
+        ),
         watch: (afterSeq, fence) => watch(config, poll, afterSeq, fence),
       });
     })

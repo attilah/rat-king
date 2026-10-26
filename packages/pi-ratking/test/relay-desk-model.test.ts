@@ -477,14 +477,18 @@ it.live.prop(
                 ),
                 Match.when("ask", () =>
                   ratking
-                    .ask(step.to, body, "1 millis", {
+                    .ask(step.to, body, "500 millis", {
                       cc: step.cc,
                       encrypt: step.encrypt,
                       summary,
                       wait: true,
                     })
                     .pipe(
-                      Effect.asVoid,
+                      Effect.andThen(
+                        Effect.die(
+                          "Model has no reply producer: waiting ask must end in NoReply"
+                        )
+                      ),
                       Effect.catchTag("AskFailed", (error) =>
                         error.code === "NoReply"
                           ? Effect.void

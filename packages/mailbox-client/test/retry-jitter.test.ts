@@ -19,7 +19,7 @@ import { RatKingMailbox } from "../src/mailbox.ts";
 import type { RetryEvent } from "../src/retry-metrics.ts";
 
 it.effect.prop(
-  "timed-out renewals retry immediately; other renewals and held acquisitions spread within their remaining window",
+  "timed-out renewals retry immediately; other retries spread while preserving the 250 ms renewal floor",
   [
     Schema.String,
     Schema.Literals(["held", "renew", "timeout"]),
@@ -34,7 +34,7 @@ it.effect.prop(
       const floor = Match.value(mode).pipe(
         Match.when("held", () => 1000),
         Match.when("timeout", () => 8000),
-        Match.orElse(() => 6000 - headroom)
+        Match.orElse(() => 5750 - headroom)
       );
 
       const window = mode === "held" ? 2000 : headroom;
@@ -69,7 +69,7 @@ it.effect.prop(
                 }
 
                 if (mode === "renew") {
-                  yield* Effect.sleep(3000 - headroom);
+                  yield* Effect.sleep(2750 - headroom);
                 }
 
                 return yield* new MailboxClientError({

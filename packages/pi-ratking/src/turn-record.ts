@@ -1,5 +1,6 @@
 import type { TurnValue } from "@rat-king/lexicon/turns";
 import { Turn } from "@rat-king/lexicon/turns";
+import * as Deadline from "@rat-king/mailbox-client/deadline";
 import { Settings } from "@rat-king/ratking-client/config";
 import type { SessionFacts } from "@rat-king/ratking-client/identity";
 import { LexiconRecord } from "@rat-king/ratking-client/payload";
@@ -86,7 +87,7 @@ export const turnReporter = (
     },
     (effect) =>
       effect.pipe(
-        Effect.timeout("10 seconds"),
+        Deadline.timeout("10 seconds"),
         Effect.catchCause((cause) =>
           Effect.logWarning("Rat King turn record failed", cause)
         )

@@ -204,68 +204,74 @@ export const askCommand = Command.make(
     wait: toggle("wait"),
   },
   (args) =>
-    named("ask", args, (me) =>
-      Effect.gen(function* ask() {
-        const ratking = yield* RatKing;
+    named(
+      "ask",
+      args,
+      (me) =>
+        Effect.gen(function* ask() {
+          const ratking = yield* RatKing;
 
-        const { clamp, options } = sendingOptions({
-          ccOnPurpose: args.ccOnPurpose ? true : undefined,
-          encrypt: args.encrypt ? true : undefined,
-          quiet: args.quiet ? true : undefined,
-          summary: Option.getOrUndefined(args.summary),
-        });
+          const { clamp, options } = sendingOptions({
+            ccOnPurpose: args.ccOnPurpose ? true : undefined,
+            encrypt: args.encrypt ? true : undefined,
+            quiet: args.quiet ? true : undefined,
+            summary: Option.getOrUndefined(args.summary),
+          });
 
-        const message = yield* messageText(args.body, clamp?.full);
-        const asking: AskOptions = { ...options, cc: args.cc };
+          const message = yield* messageText(args.body, clamp?.full);
+          const asking: AskOptions = { ...options, cc: args.cc };
 
-        if (Option.isSome(args.dueBy)) {
-          Object.assign(asking, { dueBy: args.dueBy.value });
-        }
+          if (Option.isSome(args.dueBy)) {
+            Object.assign(asking, { dueBy: args.dueBy.value });
+          }
 
-        if (args.wait) {
-          Object.assign(asking, { wait: true });
-        }
+          if (args.wait) {
+            Object.assign(asking, { wait: true });
+          }
 
-        const { delivered, reply } = yield* ratking.ask(
-          args.to.trim(),
-          message,
-          args.wait ? `${args.timeout} seconds` : ASK_WINDOW,
-          asking
-        );
+          const { delivered, reply } = yield* ratking.ask(
+            args.to.trim(),
+            message,
+            args.wait ? `${args.timeout} seconds` : ASK_WINDOW,
+            asking
+          );
 
-        yield* recordSent({
-          body: message,
-          from: me.name,
-          id: delivered.id,
-          seq: delivered.seq,
-          summary: Option.getOrElse(args.summary, () => message),
-          thread: delivered.id,
-          to: delivered.to,
-        });
+          yield* recordSent({
+            body: message,
+            from: me.name,
+            id: delivered.id,
+            seq: delivered.seq,
+            summary: Option.getOrElse(args.summary, () => message),
+            thread: delivered.id,
+            to: delivered.to,
+          });
 
-        return {
-          document: withField(
-            { delivered: deliveredDocument(delivered) },
-            "reply",
-            reply === undefined
-              ? undefined
-              : { body: reply.body, from: reply.from, id: reply.id }
-          ),
-          lines:
-            reply === undefined
-              ? [
-                  sentLine("asked", delivered),
-                  ...presenceLines(delivered),
-                  "The reply arrives as a message: ratking inbox",
-                ]
-              : [
-                  sentLine("asked", delivered),
-                  `🐀 reply from ${reply.from} · ${short(reply.id)}`,
-                  "",
-                  reply.body,
-                ],
-        } satisfies Report;
-      })
+          return {
+            document: withField(
+              { delivered: deliveredDocument(delivered) },
+              "reply",
+              reply === undefined
+                ? undefined
+                : { body: reply.body, from: reply.from, id: reply.id }
+            ),
+            lines:
+              reply === undefined
+                ? [
+                    sentLine("asked", delivered),
+                    ...presenceLines(delivered),
+                    "The reply arrives as a message: ratking inbox",
+                  ]
+                : [
+                    sentLine("asked", delivered),
+                    `🐀 reply from ${reply.from} · ${short(reply.id)}`,
+                    "",
+                    reply.body,
+                  ],
+          } satisfies Report;
+        }),
+      args.wait
+        ? Math.min(600_000, Math.max(1, args.timeout * 1000))
+        : undefined
     )
 ).pipe(
   Command.withDescription(

@@ -8,6 +8,7 @@ import {
   Effect,
   Fiber,
   Layer,
+  Random,
   Result,
   Schema,
   Stream,
@@ -92,7 +93,7 @@ it.effect.prop(
 );
 
 it.effect.prop(
-  "renew retries and hung requests never run past expiresAt",
+  "renew retries never start at or after expiresAt and hung requests never run past it",
   [Arbitrary.schema(Schema.Boolean)],
   ([hang]) =>
     Effect.gen(function* proof() {
@@ -146,6 +147,80 @@ it.effect.prop(
         true
       );
     }).pipe(Effect.scoped)
+);
+
+it.effect.prop(
+  "a transient renewal failure with 1 s left still retries and can succeed before expiry",
+  [
+    Schema.String,
+    Schema.Int.check(Schema.isBetween({ maximum: 200, minimum: 0 })),
+  ],
+  ([seed, delay]) =>
+    Effect.gen(function* proof() {
+      const acquired = yield* Deferred.make<boolean>();
+      const renewed = yield* Deferred.make<boolean>();
+      const base = yield* Clock.currentTimeMillis;
+      const expiresAt = base + 4000;
+
+      const current = yield* Schema.decodeUnknownEffect(Lease.Main)({
+        ...lease(base),
+        expiresAt: DateTime.formatIso(DateTime.makeUnsafe(expiresAt)),
+      });
+
+      const remaining: number[] = [];
+
+      const mailbox = yield* RatKingMailbox.pipe(
+        Effect.provide(
+          Layer.mock(RatKingMailbox, {
+            lease: {
+              acquire: () =>
+                Deferred.succeed(acquired, true).pipe(Effect.as(current)),
+              release: () => Effect.void,
+              renew: () =>
+                Effect.gen(function* renew() {
+                  const now = yield* Clock.currentTimeMillis;
+                  remaining.push(expiresAt - now);
+
+                  if (remaining.length === 1) {
+                    yield* Effect.sleep(1000);
+                    expect(expiresAt - (yield* Clock.currentTimeMillis)).toBe(
+                      1000
+                    );
+
+                    return yield* new MailboxClientError({
+                      error: "MailboxUnavailable",
+                      reason: "transient",
+                      status: 503,
+                    });
+                  }
+
+                  yield* Effect.sleep(delay);
+                  expect(yield* Clock.currentTimeMillis).toBeLessThan(
+                    expiresAt
+                  );
+                  yield* Deferred.succeed(renewed, true);
+
+                  return lease(yield* Clock.currentTimeMillis);
+                }),
+              resolve: () => Effect.succeed(current),
+            },
+            watch: () => Stream.never,
+          })
+        )
+      );
+
+      const fiber = yield* consume(mailbox, current.did, () => Effect.void, {
+        harness: current.harness,
+      }).pipe(Effect.forkScoped);
+
+      yield* Deferred.await(acquired);
+      yield* TestClock.adjust(4000);
+      expect(remaining).toHaveLength(2);
+      expect(remaining[1]).toBeGreaterThanOrEqual(250);
+      expect(remaining[1]).toBeLessThan(1000);
+      yield* Deferred.await(renewed);
+      yield* Fiber.interrupt(fiber);
+    }).pipe(Random.withSeed(seed), Effect.scoped)
 );
 
 it.effect.prop(

@@ -3,6 +3,7 @@ import type { Transport } from "@rat-king/lexicon/transport";
 import { Turn } from "@rat-king/lexicon/turns";
 import { Effect, Option, Schema } from "effect";
 
+import * as Deadline from "./deadline.ts";
 import { MailboxClientError, clientError } from "./error.ts";
 import { PayloadJson } from "./payload.ts";
 
@@ -80,5 +81,5 @@ export const readTurnHealth = Effect.fn("Mailbox.readTurnHealth")(
     });
   },
   (effect) =>
-    effect.pipe(Effect.timeout("10 seconds"), Effect.mapError(clientError))
+    effect.pipe(Deadline.timeout("10 seconds"), Effect.mapError(clientError))
 );

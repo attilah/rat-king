@@ -1,3 +1,4 @@
+import * as Deadline from "@rat-king/mailbox-client/deadline";
 import {
   invalidRecordText,
   recordSummary,
@@ -842,6 +843,21 @@ export const runAction = Effect.fn("RatKing.runAction")(function* runAction(
       })
     ),
     Match.exhaustive,
+    Deadline.timeoutOrElse({
+      duration:
+        params.action === "ask" && params.wait === true
+          ? Math.min(
+              600_000,
+              Math.max(1, (params.timeoutSeconds ?? 600) * 1000)
+            )
+          : Deadline.OPERATION_MS,
+      orElse: () =>
+        Effect.succeed(
+          loud(
+            "Caller deadline exceeded. A dispatched message may have reached the mailbox; check pending/inbox before resending."
+          )
+        ),
+    }),
     Effect.map((result) =>
       clamp === undefined || result.isError
         ? result
