@@ -118,7 +118,7 @@ it.effect.prop(
               renew: () =>
                 Effect.gen(function* renew() {
                   if (kind === "expired") {
-                    yield* TestClock.adjust(300_000);
+                    return yield* Effect.never;
                   }
 
                   return yield* new MailboxClientError({
@@ -149,7 +149,7 @@ it.effect.prop(
       ).pipe(Effect.result, Effect.forkScoped);
 
       yield* Deferred.await(acquired);
-      yield* TestClock.adjust(150_000);
+      yield* TestClock.adjust(kind === "expired" ? 300_001 : 150_000);
       const result = yield* Fiber.join(fiber);
       expect(Result.isFailure(result)).toBe(true);
 
@@ -226,7 +226,7 @@ it.effect.prop(
       yield* Deferred.await(attempted);
       yield* TestClock.adjust(ttl - 1);
       expect(attempts).toBe(1);
-      yield* TestClock.adjust(2);
+      yield* TestClock.adjust(2001);
       yield* Deferred.await(acquired);
       yield* Fiber.interrupt(fiber);
       expect(attempts).toBe(2);

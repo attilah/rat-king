@@ -5,10 +5,10 @@ import type * as Lease from "@rat-king/lexicon/runtime.lease";
 import {
   Clock,
   DateTime,
-  Duration,
   Effect,
   Match,
   Option,
+  Random,
   Schedule,
   Schema,
   Stream,
@@ -194,6 +194,7 @@ export const consume = <E, R>(
       }).pipe(
         Effect.retry(
           Schedule.spaced("1 millis").pipe(
+            Schedule.modifyDelay(() => Random.nextBetween(0, 2000)),
             Schedule.while(
               ({ input }: { readonly input: MailboxClientError }) =>
                 input.error === "LeaseHeld" && options.failOnHeld !== true
@@ -278,7 +279,10 @@ export const consume = <E, R>(
 
           let reason = "LeaseRenewalFailed";
 
-          if (Date.parse(current.expiresAt) <= now) {
+          if (
+            error.error === "LeaseExpired" ||
+            Date.parse(current.expiresAt) <= now
+          ) {
             reason = "LeaseExpired";
           }
 
@@ -300,8 +304,6 @@ export const consume = <E, R>(
             new MailboxClientError({ error: reason, reason: error.reason })
           );
         });
-
-      let timedOut = false;
 
       const renew = Effect.gen(function* renew() {
         const now = yield* Clock.currentTimeMillis;
@@ -361,25 +363,20 @@ export const consume = <E, R>(
           )
         ).pipe(
           Effect.tapError((error) =>
-            Effect.sync(() => {
-              timedOut = error.reason === TIMED_OUT;
-            }).pipe(
-              Effect.andThen(logLease("renew-failed", current, error.reason))
-            )
+            logLease("renew-failed", current, error.reason)
           ),
           Effect.retry(
             Schedule.spaced("1 second").pipe(
               Schedule.modifyDelay(() =>
                 Clock.currentTimeMillis.pipe(
-                  Effect.map((time) =>
-                    Duration.millis(
-                      timedOut
-                        ? 0
-                        : Math.max(
-                            1,
-                            Math.min(1000, Date.parse(current.expiresAt) - time)
-                          )
-                    )
+                  Effect.flatMap((time) =>
+                    Random.nextBetween(
+                      0,
+                      Math.max(
+                        0,
+                        Math.min(1000, Date.parse(current.expiresAt) - time)
+                      )
+                    ).pipe(Effect.map((delay) => Math.max(1, delay)))
                   )
                 )
               ),

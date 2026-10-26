@@ -70,7 +70,11 @@ import type { QuietAsk } from "./errors.ts";
 import { claimName, ensureIdentity } from "./identity.ts";
 import type { SessionFacts } from "./identity.ts";
 import { Issuer } from "./issuer.ts";
-import { recoverHeld } from "./lease-recovery.ts";
+import {
+  readerRetryDelay,
+  recoverHeld,
+  successionRetryDelay,
+} from "./lease-recovery.ts";
 import {
   AgentName,
   addressedElsewhere,
@@ -544,9 +548,6 @@ const peersOf = (documents: readonly PeerDocument[]) => [
 
 const instant = (millis: number) => DateTime.makeUnsafe(millis);
 
-const backoff = (attempt: number) =>
-  Duration.millis(Math.min(5000, 1000 * 2 ** Math.min(attempt, 5)));
-
 const unsettled = (event: Defs.MessageEventValue) =>
   event.receipt.state !== "acked" &&
   event.receipt.state !== "expired" &&
@@ -886,7 +887,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
         })
       );
 
-      yield* Effect.sleep(backoff(attempt));
+      yield* readerRetryDelay(attempt).pipe(Effect.flatMap(Effect.sleep));
 
       return yield* supervise(name, effect);
     });
@@ -2056,7 +2057,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
         })
       );
 
-      return yield* Effect.sleep("5 seconds");
+      return yield* successionRetryDelay.pipe(Effect.flatMap(Effect.sleep));
     });
 
   const locate = Effect.fn("RatKing.locate")(function* locate(
