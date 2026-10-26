@@ -59,7 +59,7 @@ it.effect.prop(
               renew: () =>
                 Effect.gen(function* renewLease() {
                   if (outcome === "lapse") {
-                    yield* TestClock.adjust(10_000);
+                    return yield* Effect.never;
                   }
 
                   if (outcome !== "renew") {
@@ -93,7 +93,7 @@ it.effect.prop(
       }).pipe(Effect.result, Effect.forkScoped);
 
       yield* Deferred.await(acquired);
-      yield* TestClock.adjust(5000);
+      yield* TestClock.adjust(outcome === "lapse" ? 10_001 : 5000);
 
       if (outcome === "renew") {
         yield* Deferred.await(renewed);

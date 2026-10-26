@@ -7,6 +7,11 @@ export interface HeldHolder {
 
 export const RECOVERY_JITTER_MS = 2000;
 
+export const readerRetryDelay = (attempt: number) =>
+  Random.nextBetween(0, Math.min(5000, 1000 * 2 ** Math.min(attempt, 5)));
+
+export const successionRetryDelay = Random.nextBetween(0, 5000);
+
 export type Verdict = Data.TaggedEnum<{
   Wait: { readonly delayMs: number };
   Park: { readonly holder: string };

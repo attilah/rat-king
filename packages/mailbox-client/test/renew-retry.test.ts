@@ -194,3 +194,56 @@ it.effect.prop(
       expect(attempts).toBe(1);
     }).pipe(Effect.scoped)
 );
+
+it.effect.prop(
+  "a typed lease-expiry refusal remains expired even before the local deadline",
+  [Schema.Int.check(Schema.isBetween({ maximum: 300_000, minimum: 2 }))],
+  ([ttl]) =>
+    Effect.gen(function* proof() {
+      const acquired = yield* Deferred.make<boolean>();
+      const base = yield* Clock.currentTimeMillis;
+
+      const current = yield* Schema.decodeUnknownEffect(Lease.Main)({
+        ...lease(base),
+        expiresAt: DateTime.formatIso(DateTime.makeUnsafe(base + ttl)),
+      });
+
+      const mailbox = yield* RatKingMailbox.pipe(
+        Effect.provide(
+          Layer.mock(RatKingMailbox, {
+            lease: {
+              acquire: () =>
+                Deferred.succeed(acquired, true).pipe(Effect.as(current)),
+              release: () => Effect.void,
+              renew: () =>
+                Effect.fail(
+                  new MailboxClientError({
+                    error: "LeaseExpired",
+                    reason: "Renewal exceeded lease expiry",
+                  })
+                ),
+              resolve: () => Effect.succeed(current),
+            },
+            watch: () => Stream.never,
+          })
+        )
+      );
+
+      const fiber = yield* consume(mailbox, current.did, () => Effect.void, {
+        harness: current.harness,
+      }).pipe(Effect.result, Effect.forkScoped);
+
+      yield* Deferred.await(acquired);
+      yield* TestClock.adjust(Math.ceil(ttl / 2));
+      const result = yield* Fiber.join(fiber);
+
+      expect(yield* Clock.currentTimeMillis).toBeLessThan(
+        Date.parse(current.expiresAt)
+      );
+      expect(Result.isFailure(result)).toBe(true);
+
+      if (Result.isFailure(result)) {
+        expect(result.failure.error).toBe("LeaseExpired");
+      }
+    }).pipe(Effect.scoped)
+);

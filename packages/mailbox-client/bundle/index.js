@@ -4560,10 +4560,10 @@ var Main9 = Schema49.StructWithRest(
 import {
   Clock as Clock5,
   DateTime as DateTime2,
-  Duration as Duration2,
   Effect as Effect29,
   Match as Match2,
   Option as Option4,
+  Random,
   Schedule as Schedule2,
   Schema as Schema50,
   Stream as Stream2
@@ -4666,6 +4666,7 @@ var consume = (mailbox, did, handler, options) => Effect29.scoped(
     }).pipe(
       Effect29.retry(
         Schedule2.spaced("1 millis").pipe(
+          Schedule2.modifyDelay(() => Random.nextBetween(0, 2e3)),
           Schedule2.while(
             ({ input }) => input.error === "LeaseHeld" && options.failOnHeld !== true
           )
@@ -4728,7 +4729,7 @@ var consume = (mailbox, did, handler, options) => Effect29.scoped(
       );
       const now = yield* Clock5.currentTimeMillis;
       let reason = "LeaseRenewalFailed";
-      if (Date.parse(current.expiresAt) <= now) {
+      if (error.error === "LeaseExpired" || Date.parse(current.expiresAt) <= now) {
         reason = "LeaseExpired";
       }
       if (actual !== void 0 && (actual.leaseId !== current.leaseId || actual.generation !== current.generation)) {
@@ -4743,7 +4744,6 @@ var consume = (mailbox, did, handler, options) => Effect29.scoped(
         new MailboxClientError({ error: reason, reason: error.reason })
       );
     });
-    let timedOut = false;
     const renew = Effect29.gen(function* renew2() {
       const now = yield* Clock5.currentTimeMillis;
       const remaining = Date.parse(current.expiresAt) - now;
@@ -4792,23 +4792,21 @@ var consume = (mailbox, did, handler, options) => Effect29.scoped(
         )
       ).pipe(
         Effect29.tapError(
-          (error) => Effect29.sync(() => {
-            timedOut = error.reason === TIMED_OUT;
-          }).pipe(
-            Effect29.andThen(logLease("renew-failed", current, error.reason))
-          )
+          (error) => logLease("renew-failed", current, error.reason)
         ),
         Effect29.retry(
           Schedule2.spaced("1 second").pipe(
+            Schedule2.setInputType(),
             Schedule2.modifyDelay(
-              () => Clock5.currentTimeMillis.pipe(
-                Effect29.map(
-                  (time) => Duration2.millis(
-                    timedOut ? 0 : Math.max(
-                      1,
+              ({ input }) => input.reason === TIMED_OUT ? Effect29.succeed(0) : Clock5.currentTimeMillis.pipe(
+                Effect29.flatMap(
+                  (time) => Random.nextBetween(
+                    0,
+                    Math.max(
+                      0,
                       Math.min(1e3, Date.parse(current.expiresAt) - time)
                     )
-                  )
+                  ).pipe(Effect29.map((delay) => Math.max(1, delay)))
                 )
               )
             ),
