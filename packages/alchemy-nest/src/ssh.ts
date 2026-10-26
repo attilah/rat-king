@@ -23,8 +23,14 @@ export const shellQuote = (value: string): string =>
 
 const argvText = (argv: readonly string[]) => argv.map(shellQuote).join(" ");
 
+export const commandStarted = "\u001Ehostshell-started\n";
+
+const announceStart = "printf '\\036hostshell-started\\n' >&2; ";
+
 export const refusedBeforeCommand = (code: number, stderr: string) =>
-  code === 255 && /\b(?:kex|ssh)_exchange_identification:/u.test(stderr);
+  code === 255 &&
+  !stderr.includes(commandStarted) &&
+  /\b(?:kex|ssh)_exchange_identification:/u.test(stderr);
 
 export const handshakeRetry = Schedule.exponential("250 millis").pipe(
   Schedule.jittered,
@@ -106,7 +112,7 @@ export const layer = (
                     "ConnectTimeout=10",
                     "--",
                     validated.ssh,
-                    `sh -c ${shellQuote(script)}`,
+                    `sh -c ${shellQuote(announceStart + script)}`,
                   ],
                   { stdin }
                 )
@@ -129,12 +135,11 @@ export const layer = (
             { concurrency: "unbounded" }
           );
 
+          const errorText = Buffer.concat(errorChunks).toString("utf-8");
+
           if (
             transport === "ssh" &&
-            refusedBeforeCommand(
-              Number(result.code),
-              Buffer.concat(errorChunks).toString("utf-8")
-            )
+            refusedBeforeCommand(Number(result.code), errorText)
           ) {
             return yield* new HostError({
               operation: "ssh-handshake",
@@ -176,7 +181,7 @@ export const layer = (
 
           return {
             code: Number(result.code),
-            stderr: scrub(Buffer.concat(errorChunks).toString("utf-8")),
+            stderr: scrub(errorText.replace(commandStarted, "")),
             stdout: scrub(stdout.slice(0, 32_768)),
           } satisfies Result;
         },

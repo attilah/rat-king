@@ -4,7 +4,11 @@ import { Effect, FileSystem, Layer, Result } from "effect";
 import { expect } from "vitest";
 
 import { HostShell } from "../src/host-shell.ts";
-import { layer as shellLayer, refusedBeforeCommand } from "../src/ssh.ts";
+import {
+  commandStarted,
+  layer as shellLayer,
+  refusedBeforeCommand,
+} from "../src/ssh.ts";
 
 const refused = "kex_exchange_identification: Connection closed by remote host";
 
@@ -18,10 +22,15 @@ if [ "$n" -le "$FAKE_SSH_REFUSE" ]; then
   printf '%s\\n' "$FAKE_SSH_STDERR" >&2
   exit 255
 fi
+eval "$last"
 printf ok
+if [ "$FAKE_SSH_LATE" = 1 ]; then
+  printf '%s\\n' "$FAKE_SSH_STDERR" >&2
+  exit 255
+fi
 `;
 
-const withFakeSsh = (refuse: number, stderr: string) =>
+const withFakeSsh = (refuse: number, stderr: string, late = false) =>
   Effect.gen(function* fake() {
     const fs = yield* FileSystem.FileSystem;
     const dir = yield* fs.makeTempDirectoryScoped();
@@ -36,6 +45,7 @@ const withFakeSsh = (refuse: number, stderr: string) =>
         process.env.FAKE_SSH_DIR = dir;
         process.env.FAKE_SSH_REFUSE = String(refuse);
         process.env.FAKE_SSH_STDERR = stderr;
+        process.env.FAKE_SSH_LATE = late ? "1" : "0";
 
         return saved;
       }),
@@ -45,6 +55,7 @@ const withFakeSsh = (refuse: number, stderr: string) =>
           delete process.env.FAKE_SSH_DIR;
           delete process.env.FAKE_SSH_REFUSE;
           delete process.env.FAKE_SSH_STDERR;
+          delete process.env.FAKE_SSH_LATE;
         })
     );
 
@@ -76,6 +87,9 @@ it("only a refusal before the command ran counts as retryable", () => {
     )
   ).toBe(true);
   expect(refusedBeforeCommand(1, refused)).toBe(false);
+  expect(refusedBeforeCommand(255, `${commandStarted}${refused}\n`)).toBe(
+    false
+  );
   expect(
     refusedBeforeCommand(255, "Connection to host closed by remote host.")
   ).toBe(false);
@@ -105,6 +119,17 @@ it.live("other ssh failures are not retried", () =>
     expect(Result.isFailure(outcome)).toBe(true);
     expect(calls).toBe(1);
   })
+);
+
+it.live(
+  "a command that started and then failed a nested ssh handshake runs once",
+  () =>
+    Effect.gen(function* late() {
+      const { calls, outcome } = yield* withFakeSsh(0, refused, true);
+
+      expect(Result.isFailure(outcome)).toBe(true);
+      expect(calls).toBe(1);
+    })
 );
 
 it.live("a server that keeps refusing gives up after four retries", () =>
