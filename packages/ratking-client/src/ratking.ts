@@ -113,6 +113,7 @@ import {
   HeartbeatJson,
 } from "./reader-health.ts";
 import type { ReaderHeartbeatValue } from "./reader-health.ts";
+import { recentMap } from "./recent.ts";
 import { RENDERS } from "./record-visibility.ts";
 import {
   copiesOutbound,
@@ -210,6 +211,7 @@ export interface Unreadable {
 }
 
 export interface Peek {
+  readonly hasMore?: boolean;
   readonly messages: readonly Peeked[];
   readonly throughSeq: number;
   readonly unreadable: readonly Unreadable[];
@@ -650,7 +652,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
   const lastLease = yield* Ref.make(Option.none<LeaseFence>());
 
   const front = yield* Ref.make(Option.none<FrontLoops>());
-  const seen = new Set<string>();
+  const seen = recentMap<string, true>(4096);
   const acknowledgments = new Map<string, MessageMeta["ack"]>();
 
   const displayAck = (id: string) =>
@@ -670,10 +672,10 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
   const consumeAck = (id: string) =>
     (displayAck(id) ?? Effect.void).pipe(Effect.forkIn(lifetime));
 
-  const presences = new Map<
+  const presences = recentMap<
     string,
     { readonly at: number; readonly value: Option.Option<PresenceValue> }
-  >();
+  >(1024);
 
   const services = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     effect.pipe(
@@ -1009,7 +1011,10 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       Effect.gen(function* takeIn() {
         const checkpoint = yield* Deferred.make<boolean>();
 
-        if (!seen.has(message.tid)) {
+        if (
+          seen.get(message.tid) === undefined &&
+          !acknowledgments.has(message.tid)
+        ) {
           acknowledgments.set(
             message.tid,
             Deferred.await(checkpoint).pipe(Effect.andThen(meta.ack))
@@ -1075,13 +1080,17 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
             );
           }
 
-          seen.add(message.tid);
+          seen.set(message.tid, true);
         }
 
         yield* writeCursor(own.name, meta.seq);
         yield* consumed;
         yield* Deferred.succeed(checkpoint, true);
-      });
+      }).pipe(
+        Effect.onError(() =>
+          Effect.sync(() => acknowledgments.delete(message.tid))
+        )
+      );
 
   const consumeOnce = (
     own: Self,
@@ -2453,7 +2462,17 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
             });
           }
 
-          return { messages, throughSeq: batch.throughSeq, unreadable };
+          const result: Peek = {
+            messages,
+            throughSeq: batch.throughSeq,
+            unreadable,
+          };
+
+          if (batch.hasMore === true) {
+            Object.assign(result, { hasMore: true });
+          }
+
+          return result;
         })
     ).pipe(
       Effect.mapError((error) =>

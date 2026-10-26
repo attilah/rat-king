@@ -149,12 +149,17 @@ export const watch = (
 
         yield* receiveNotice;
 
-        const notices = Stream.fromEffectRepeat(
-          receiveNotice.pipe(Effect.flatMap(() => poll(checkpoint)))
-        );
+        let catchUp = true;
 
-        return Stream.fromEffect(Effect.suspend(() => poll(checkpoint))).pipe(
-          Stream.concat(notices)
+        return Stream.fromEffectRepeat(
+          Effect.suspend(() => (catchUp ? Effect.void : receiveNotice)).pipe(
+            Effect.flatMap(() => poll(checkpoint)),
+            Effect.tap((batch) =>
+              Effect.sync(() => {
+                catchUp = batch.hasMore === true;
+              })
+            )
+          )
         );
       })
     );

@@ -37,6 +37,17 @@ export type PendingAskValue = typeof PendingAsk.Type;
 
 export const AskJournal = Schema.Array(PendingAsk);
 
+export const CLOSED_ASK_HISTORY = 200;
+
+const compact = (entries: readonly PendingAskValue[]) => {
+  const closed = entries.filter((entry) => entry.state === "closed");
+  const retained = new Set(closed.slice(-CLOSED_ASK_HISTORY));
+
+  return entries.filter(
+    (entry) => entry.state !== "closed" || retained.has(entry)
+  );
+};
+
 export interface AskPorts<E> {
   readonly load: Effect.Effect<readonly PendingAskValue[], E>;
   readonly now: Effect.Effect<number>;
@@ -56,10 +67,18 @@ export interface AsksApi<E> {
 export const openAsks = <E>(ports: AskPorts<E>) =>
   Effect.gen(function* openAskJournal() {
     const lock = yield* Semaphore.make(1);
-    let entries = yield* ports.load;
+    const loaded = yield* ports.load;
+    let entries = compact(loaded);
+
+    if (entries.length !== loaded.length) {
+      yield* ports.save(entries);
+    }
 
     const record = (ask: PendingAskValue) => {
-      const next = [...entries.filter((entry) => entry.id !== ask.id), ask];
+      const next = compact([
+        ...entries.filter((entry) => entry.id !== ask.id),
+        ask,
+      ]);
 
       return ports.save(next).pipe(
         Effect.andThen(

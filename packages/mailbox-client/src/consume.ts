@@ -499,15 +499,21 @@ export const consume = <E, R>(
                       )
                     : Effect.void;
 
+                const displayAck = ack.pipe(
+                  Effect.tap(() => Effect.sync(() => handed.delete(key)))
+                );
+
+                handed.add(key);
                 yield* handler(message, {
-                  ack,
+                  ack: displayAck,
                   redelivered: event.receipt.state === "delivered",
                   seq: event.seq,
-                });
-                handed.add(key);
+                }).pipe(
+                  Effect.onError(() => Effect.sync(() => handed.delete(key)))
+                );
 
                 if (options.ackOnReturn !== false) {
-                  yield* ack;
+                  yield* displayAck;
                 }
               }),
             { discard: true }

@@ -120,7 +120,10 @@ export interface LeaseFence {
   readonly generation: number;
 }
 
+export const POLL_MAX_PAGES = 10;
+
 export interface Batch {
+  readonly hasMore?: boolean;
   readonly events: List.OutputValue["events"];
   readonly throughSeq: number;
 }
@@ -430,12 +433,22 @@ export const layer = (
       const poll = Effect.fn("RatKingMailbox.poll")(function* poll(
         afterSeq: number
       ) {
-        const first = yield* list({ afterSeq });
+        const first = yield* list({ afterSeq, limit: 100 });
         const events = [...first.events];
         let { cursor } = first;
+        let pages = 1;
+        const cursors = new Set<string>();
 
-        while (cursor !== undefined) {
-          const page = yield* list({ afterSeq, cursor });
+        while (cursor !== undefined && pages < POLL_MAX_PAGES) {
+          if (cursors.has(cursor)) {
+            return yield* new MailboxClientError({
+              reason: "Repeated mailbox page cursor",
+            });
+          }
+
+          cursors.add(cursor);
+          const page = yield* list({ afterSeq, cursor, limit: 100 });
+          pages += 1;
 
           if (page.throughSeq !== first.throughSeq) {
             return yield* new MailboxClientError({
@@ -445,6 +458,22 @@ export const layer = (
 
           events.push(...page.events);
           ({ cursor } = page);
+        }
+
+        if (cursor !== undefined) {
+          const last = events.at(-1)?.seq;
+
+          if (
+            !Schema.is(Schema.Int)(last) ||
+            !Number.isSafeInteger(last) ||
+            last <= afterSeq
+          ) {
+            return yield* new MailboxClientError({
+              reason: "Mailbox page did not advance its sequence",
+            });
+          }
+
+          return { events, hasMore: true, throughSeq: last };
         }
 
         return { events, throughSeq: first.throughSeq };

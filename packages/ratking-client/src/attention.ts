@@ -128,6 +128,19 @@ export class FilterError extends Schema.TaggedError<FilterError>()(
 
 const filterLock = Semaphore.makeUnsafe(1);
 
+export const FILTER_HIT_HISTORY = 1024;
+
+export const nextFilterHits = (
+  hits: Readonly<Record<string, number>>,
+  id: string
+) =>
+  Object.fromEntries([
+    ...Object.entries(hits)
+      .filter(([key]) => key !== id)
+      .slice(-(FILTER_HIT_HISTORY - 1)),
+    [id, Math.min(Number.MAX_SAFE_INTEGER, (hits[id] ?? 0) + 1)],
+  ]);
+
 const Hits = Schema.Record(
   Schema.String,
   Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
@@ -182,7 +195,7 @@ export const countFilterHit = Effect.fn("Attention.countFilterHit")(
         yield* fs.chmod(directory, 0o700);
         yield* fs.writeFileString(
           temp,
-          JSON.stringify({ ...hits, [id]: (hits[id] ?? 0) + 1 }),
+          JSON.stringify(nextFilterHits(hits, id)),
           { mode: 0o600 }
         );
         yield* fs.chmod(temp, 0o600);

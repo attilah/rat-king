@@ -4099,11 +4099,16 @@ var watch = (config, poll, afterSeq, fence) => Stream.suspend(() => {
         }
       });
       yield* receiveNotice;
-      const notices = Stream.fromEffectRepeat(
-        receiveNotice.pipe(Effect26.flatMap(() => poll(checkpoint)))
-      );
-      return Stream.fromEffect(Effect26.suspend(() => poll(checkpoint))).pipe(
-        Stream.concat(notices)
+      let catchUp = true;
+      return Stream.fromEffectRepeat(
+        Effect26.suspend(() => catchUp ? Effect26.void : receiveNotice).pipe(
+          Effect26.flatMap(() => poll(checkpoint)),
+          Effect26.tap(
+            (batch) => Effect26.sync(() => {
+              catchUp = batch.hasMore === true;
+            })
+          )
+        )
       );
     })
   );
@@ -4129,6 +4134,7 @@ var watch = (config, poll, afterSeq, fence) => Stream.suspend(() => {
 });
 
 // packages/mailbox-client/src/mailbox.ts
+var POLL_MAX_PAGES = 10;
 var decodeBody = (body) => Effect27.try({
   catch: () => new MailboxClientError({ reason: "Invalid UTF-8 body" }),
   try: () => new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(body)
@@ -4255,11 +4261,20 @@ var layer = (config, resolverLayer = staticResolver(config.documents)) => Layer5
       }).pipe(Effect27.flatMap(client.list), Effect27.mapError(clientError))
     );
     const poll = Effect27.fn("RatKingMailbox.poll")(function* poll2(afterSeq) {
-      const first = yield* list({ afterSeq });
+      const first = yield* list({ afterSeq, limit: 100 });
       const events = [...first.events];
       let { cursor } = first;
-      while (cursor !== void 0) {
-        const page = yield* list({ afterSeq, cursor });
+      let pages = 1;
+      const cursors = /* @__PURE__ */ new Set();
+      while (cursor !== void 0 && pages < POLL_MAX_PAGES) {
+        if (cursors.has(cursor)) {
+          return yield* new MailboxClientError({
+            reason: "Repeated mailbox page cursor"
+          });
+        }
+        cursors.add(cursor);
+        const page = yield* list({ afterSeq, cursor, limit: 100 });
+        pages += 1;
         if (page.throughSeq !== first.throughSeq) {
           return yield* new MailboxClientError({
             reason: "Snapshot watermark changed during pagination"
@@ -4267,6 +4282,15 @@ var layer = (config, resolverLayer = staticResolver(config.documents)) => Layer5
         }
         events.push(...page.events);
         ({ cursor } = page);
+      }
+      if (cursor !== void 0) {
+        const last = events.at(-1)?.seq;
+        if (!Schema47.is(Schema47.Int)(last) || !Number.isSafeInteger(last) || last <= afterSeq) {
+          return yield* new MailboxClientError({
+            reason: "Mailbox page did not advance its sequence"
+          });
+        }
+        return { events, hasMore: true, throughSeq: last };
       }
       return { events, throughSeq: first.throughSeq };
     });
@@ -4895,14 +4919,19 @@ var consume = (mailbox, did, handler, options) => Effect29.scoped(
               Effect29.catchIf(settledRefusal, () => Effect29.void),
               Effect29.asVoid
             ) : Effect29.void;
+            const displayAck = ack.pipe(
+              Effect29.tap(() => Effect29.sync(() => handed.delete(key)))
+            );
+            handed.add(key);
             yield* handler(message, {
-              ack,
+              ack: displayAck,
               redelivered: event.receipt.state === "delivered",
               seq: event.seq
-            });
-            handed.add(key);
+            }).pipe(
+              Effect29.onError(() => Effect29.sync(() => handed.delete(key)))
+            );
             if (options.ackOnReturn !== false) {
-              yield* ack;
+              yield* displayAck;
             }
           }),
           { discard: true }
