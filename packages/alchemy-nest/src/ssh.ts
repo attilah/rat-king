@@ -1,4 +1,12 @@
-import { Effect, Layer, Redacted, Schema, Semaphore, Stream } from "effect";
+import {
+  Effect,
+  Layer,
+  Redacted,
+  Schedule,
+  Schema,
+  Semaphore,
+  Stream,
+} from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { absent } from "./absent.ts";
@@ -14,6 +22,14 @@ export const shellQuote = (value: string): string =>
   `'${value.replaceAll("'", "'\\''")}'`;
 
 const argvText = (argv: readonly string[]) => argv.map(shellQuote).join(" ");
+
+export const refusedBeforeCommand = (code: number, stderr: string) =>
+  code === 255 && /\b(?:kex|ssh)_exchange_identification:/u.test(stderr);
+
+export const handshakeRetry = Schedule.exponential("250 millis").pipe(
+  Schedule.jittered,
+  Schedule.upTo({ times: 4 })
+);
 
 export interface ShellTransport {
   readonly transport: "ssh" | "local";
@@ -102,7 +118,7 @@ export const layer = (
               output: Stream.runCollect(handle.stdout),
               stderr: Stream.runForEach(handle.stderr, (chunk) =>
                 Effect.sync(() => {
-                  if (diagnostics !== undefined && errorBytes < 16_384) {
+                  if (errorBytes < 16_384) {
                     const prefix = chunk.subarray(0, 16_384 - errorBytes);
                     errorChunks.push(prefix);
                     errorBytes += prefix.length;
@@ -112,6 +128,19 @@ export const layer = (
             },
             { concurrency: "unbounded" }
           );
+
+          if (
+            transport === "ssh" &&
+            refusedBeforeCommand(
+              Number(result.code),
+              Buffer.concat(errorChunks).toString("utf-8")
+            )
+          ) {
+            return yield* new HostError({
+              operation: "ssh-handshake",
+              reason: "SSH server refused before the command ran.",
+            });
+          }
 
           if (transport === "ssh" && result.code === 255) {
             return yield* new HostError({
@@ -154,6 +183,12 @@ export const layer = (
         Effect.scoped,
         (effect) =>
           effect.pipe(
+            Effect.retry({
+              schedule: handshakeRetry,
+              while: (error) =>
+                Schema.is(HostError)(error) &&
+                error.operation === "ssh-handshake",
+            }),
             permits.withPermits(1),
             Effect.timeoutOrElse({
               duration: "2 minutes",
