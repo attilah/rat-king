@@ -104,7 +104,12 @@ it.effect.prop(
 
       const events = lines.filter((line) => line.startsWith("lease "));
 
-      for (const event of ["acquire", "renew-attempt", outcome, "release"]) {
+      for (const event of [
+        "acquire",
+        "renew-attempt",
+        outcome === "lapse" ? "loss" : outcome,
+        "release",
+      ]) {
         expect(events.some((line) => line.startsWith(`lease ${event} `))).toBe(
           true
         );

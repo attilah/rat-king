@@ -1,12 +1,18 @@
 import { NodeServices } from "@effect/platform-node";
+import * as Deadline from "@rat-king/mailbox-client/deadline";
 import { settingsLayer } from "@rat-king/ratking-client/config";
 import type { NotConfigured } from "@rat-king/ratking-client/config";
 import { directoryLayer } from "@rat-king/ratking-client/directory";
 import { issuerLayer } from "@rat-king/ratking-client/issuer";
-import { Inbox, ratKingLayer } from "@rat-king/ratking-client/ratking";
+import {
+  Inbox,
+  NotDelivered,
+  ratKingLayer,
+} from "@rat-king/ratking-client/ratking";
 import type { Attached } from "@rat-king/ratking-client/ratking";
 import { secretStoreLayer } from "@rat-king/ratking-client/secrets";
 import { Config, Context, Effect, Layer, Option } from "effect";
+import type { Duration } from "effect";
 import { Flag } from "effect/cli";
 import { FetchHttpClient } from "effect/http";
 
@@ -72,10 +78,24 @@ export const groundOf = (common: Common) => ({
 export const conclude = (
   command: string,
   common: Common,
-  program: Effect.Effect<Report, Fault, ClientServices>
+  program: Effect.Effect<Report, Fault, ClientServices>,
+  duration: Duration.Input = Deadline.OPERATION_MS
 ) =>
   Effect.gen(function* wired() {
-    return yield* program.pipe(Effect.provide(yield* Wiring));
+    return yield* program.pipe(
+      Effect.provide(yield* Wiring),
+      Deadline.timeoutOrElse({
+        duration,
+        orElse: () =>
+          Effect.fail(
+            new NotDelivered({
+              code: "Uncertain",
+              reason:
+                "Caller deadline exceeded; check pending/inbox before resending a dispatched message.",
+            })
+          ),
+      })
+    );
   }).pipe(
     Effect.matchEffect({
       onFailure: (fault) =>
@@ -87,7 +107,8 @@ export const conclude = (
 export const named = (
   command: string,
   common: Common,
-  body: (me: Attached) => Effect.Effect<Report, Fault, ClientServices>
+  body: (me: Attached) => Effect.Effect<Report, Fault, ClientServices>,
+  duration: Duration.Input = Deadline.OPERATION_MS
 ) =>
   conclude(
     command,
@@ -97,5 +118,6 @@ export const named = (
       const me = yield* inbox.attach(yield* resolveName(common.as));
 
       return yield* body(me);
-    })
+    }),
+    duration
   );

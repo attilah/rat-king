@@ -5,6 +5,7 @@ import { Clock, Effect, Layer, Result, Schema } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/http";
 
 import { base64url, serviceToken } from "./auth.ts";
+import * as Deadline from "./deadline.ts";
 import { importSigning } from "./identity.ts";
 import type { IdentityValue } from "./identity.ts";
 
@@ -86,6 +87,18 @@ export const transportLayer = (
               status: response.status,
             } as const;
           },
+          (effect, request) =>
+            effect.pipe(
+              Deadline.timeout(
+                [
+                  "sh.mschf.ratking.runtime.acquireLease",
+                  "sh.mschf.ratking.runtime.renewLease",
+                  "sh.mschf.ratking.runtime.releaseLease",
+                ].includes(request.nsid)
+                  ? Deadline.LEASE_MS
+                  : Deadline.REQUEST_MS
+              )
+            ),
           Effect.mapError(
             () =>
               new TransportFailure({

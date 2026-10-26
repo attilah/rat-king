@@ -5,6 +5,7 @@ import type * as Lease from "@rat-king/lexicon/runtime.lease";
 import {
   Clock,
   DateTime,
+  Duration,
   Effect,
   Match,
   Option,
@@ -15,7 +16,8 @@ import {
 } from "effect";
 import { createMachine, initialTransition, transition } from "xstate";
 
-import { MailboxClientError } from "./error.ts";
+import * as Deadline from "./deadline.ts";
+import { MailboxClientError, clientError } from "./error.ts";
 import type {
   AcquireRequest,
   LeaseFence,
@@ -50,7 +52,7 @@ export interface MessageMeta {
   readonly seq: number;
 }
 
-const ATTEMPT_MS = 3000;
+const ATTEMPT_MS = Deadline.LEASE_MS;
 
 const attemptTimedOut = (reason: string) =>
   new MailboxClientError({ error: "MailboxUnavailable", reason });
@@ -146,7 +148,7 @@ export const consume = <E, R>(
         );
 
         return yield* mailbox.lease.acquire(input).pipe(
-          Effect.timeoutOrElse({
+          Deadline.timeoutOrElse({
             duration: ATTEMPT_MS,
             orElse: () =>
               Effect.fail(attemptTimedOut("Acquire attempt timed out")),
@@ -169,6 +171,8 @@ export const consume = <E, R>(
                 yield* step("HELD");
 
                 const holder = yield* mailbox.lease.resolve(did).pipe(
+                  Deadline.timeout(ATTEMPT_MS),
+                  Effect.mapError(clientError),
                   Effect.catchIf(
                     (failure) => failure.error === "LeaseNotFound",
                     () => Effect.void
@@ -197,8 +201,16 @@ export const consume = <E, R>(
             Schedule.modifyDelay(() => Random.nextBetween(0, 2000)),
             Schedule.while(
               ({ input }: { readonly input: MailboxClientError }) =>
-                input.error === "LeaseHeld" && options.failOnHeld !== true
-            )
+                Deadline.canAttempt(ATTEMPT_MS).pipe(
+                  Effect.map(
+                    (fits) =>
+                      fits &&
+                      input.error === "LeaseHeld" &&
+                      options.failOnHeld !== true
+                  )
+                )
+            ),
+            Deadline.retryBudget(ATTEMPT_MS)
           )
         )
       );
@@ -226,7 +238,7 @@ export const consume = <E, R>(
                 leaseId: current.leaseId,
               })
               .pipe(
-                Effect.timeoutOrElse({
+                Deadline.timeoutOrElse({
                   duration: ATTEMPT_MS,
                   orElse: () =>
                     Effect.fail(attemptTimedOut("Release attempt timed out")),
@@ -270,7 +282,7 @@ export const consume = <E, R>(
           const actual = yield* mailbox.lease
             .resolve(did)
             .pipe(
-              Effect.timeout("2 seconds"),
+              Deadline.timeout("2 seconds"),
               Effect.option,
               Effect.map(Option.getOrUndefined)
             );
@@ -346,7 +358,7 @@ export const consume = <E, R>(
 
               return logLease("renew-attempt", current, "renew requested").pipe(
                 Effect.andThen(mailbox.lease.renew(renewal)),
-                Effect.timeoutOrElse({
+                Deadline.timeoutOrElse({
                   duration: Math.min(left, ATTEMPT_MS),
                   orElse: () =>
                     Effect.fail(
@@ -377,19 +389,34 @@ export const consume = <E, R>(
                           0,
                           Math.max(
                             0,
-                            Math.min(1000, Date.parse(current.expiresAt) - time)
+                            Math.min(
+                              1000,
+                              Date.parse(current.expiresAt) - time - ATTEMPT_MS
+                            )
                           )
                         ).pipe(Effect.map((delay) => Math.max(1, delay)))
                       )
                     )
               ),
               Schedule.while(
-                ({ input }: { readonly input: MailboxClientError }) =>
+                ({
+                  input,
+                  duration,
+                }: Schedule.Metadata<unknown, MailboxClientError>) =>
                   Clock.currentTimeMillis.pipe(
-                    Effect.map(
-                      (time) =>
-                        unavailable(input) &&
-                        Date.parse(current.expiresAt) > time
+                    Effect.flatMap((time) =>
+                      Deadline.canAttempt(
+                        ATTEMPT_MS,
+                        Duration.toMillis(duration)
+                      ).pipe(
+                        Effect.map(
+                          (fits) =>
+                            fits &&
+                            unavailable(input) &&
+                            Date.parse(current.expiresAt) - time >=
+                              ATTEMPT_MS + Duration.toMillis(duration)
+                        )
+                      )
                     )
                   )
               )

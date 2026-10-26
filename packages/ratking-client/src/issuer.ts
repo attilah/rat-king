@@ -6,6 +6,7 @@ import { Transport } from "@rat-king/lexicon/transport";
 import type { Request as XrpcRequest } from "@rat-king/lexicon/transport";
 import { Identity, transportLayer } from "@rat-king/mailbox-client";
 import type { PeerDocument } from "@rat-king/mailbox-client";
+import * as Deadline from "@rat-king/mailbox-client/deadline";
 import {
   Context,
   Effect,
@@ -218,7 +219,12 @@ export const issuerLayer = Layer.effect(
         }
 
         return found;
-      }
+      },
+      (effect) =>
+        effect.pipe(
+          Deadline.timeout(Deadline.OPERATION_MS),
+          Effect.mapError(fail("Issuer directory deadline exceeded"))
+        )
     );
 
     const configured = Option.match(settings.issuer, {
@@ -249,7 +255,16 @@ export const issuerLayer = Layer.effect(
             );
 
           return did;
-        }
+        },
+        (effect) =>
+          effect.pipe(
+            Deadline.timeout(Deadline.OPERATION_MS),
+            Effect.mapError((error) =>
+              Schema.is(IssuerError)(error)
+                ? error
+                : new IssuerError({ reason: "Issuer deadline exceeded" })
+            )
+          )
       ),
       names: Option.match(settings.issuer, {
         onNone: () => Effect.succeed([]),

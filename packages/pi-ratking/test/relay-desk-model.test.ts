@@ -481,7 +481,7 @@ it.live.prop(
                       cc: step.cc,
                       encrypt: step.encrypt,
                       summary,
-                      wait: true,
+                      wait: false,
                     })
                     .pipe(
                       Effect.asVoid,

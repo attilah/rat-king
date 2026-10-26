@@ -18,7 +18,7 @@ import { MailboxClientError } from "../src/error.ts";
 import { RatKingMailbox } from "../src/mailbox.ts";
 
 it.effect.prop(
-  "timed-out renewals retry immediately; other renewals and held acquisitions spread within their remaining window",
+  "timed-out renewals retry immediately; other retries spread within the window that leaves a full attempt",
   [
     Schema.String,
     Schema.Literals(["held", "renew", "timeout"]),
@@ -31,8 +31,8 @@ it.effect.prop(
 
       const floor = Match.value(mode).pipe(
         Match.when("held", () => 1000),
-        Match.when("timeout", () => 8000),
-        Match.orElse(() => 6000 - headroom)
+        Match.when("timeout", () => 11_000),
+        Match.orElse(() => 7000 - headroom)
       );
 
       const window = mode === "held" ? 2000 : headroom;
@@ -67,7 +67,7 @@ it.effect.prop(
                 }
 
                 if (mode === "renew") {
-                  yield* Effect.sleep(3000 - headroom);
+                  yield* Effect.sleep(2000 - headroom);
                 }
 
                 return yield* new MailboxClientError({
@@ -91,7 +91,7 @@ it.effect.prop(
                       mode === "held"
                         ? attempt
                         : Effect.succeed(
-                            lease(base + (mode === "renew" ? 6000 : 10_000))
+                            lease(base + (mode === "timeout" ? 16_000 : 10_000))
                           ),
                     release: () => Effect.void,
                     renew: () => (mode === "held" ? Effect.never : attempt),

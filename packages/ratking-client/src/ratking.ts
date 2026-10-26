@@ -26,6 +26,7 @@ import type {
   PeerDocument,
   SendOutcome,
 } from "@rat-king/mailbox-client";
+import * as Deadline from "@rat-king/mailbox-client/deadline";
 import {
   Clock,
   Context,
@@ -1125,7 +1126,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
         leaseName: own.name,
         onAttentionReceipt: () =>
           refreshAttention.pipe(
-            Effect.timeout("2 seconds"),
+            Deadline.timeout("2 seconds"),
             Effect.catchCause((cause) =>
               Effect.logWarning(
                 "Rat King attention refresh failed; retained current levers",
@@ -1256,7 +1257,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
     );
 
   const awaitSelf = Deferred.await(self).pipe(
-    Effect.timeoutOrElse({
+    Deadline.timeoutOrElse({
       duration: "20 seconds",
       orElse: () =>
         Ref.get(state).pipe(
@@ -1299,6 +1300,16 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
   const refused = (code: typeof NotDeliveredCode.Type) => (reason: string) =>
     new NotDelivered({ code, reason });
 
+  const foreground = Deadline.timeoutOrElse({
+    duration: Deadline.OPERATION_MS,
+    orElse: () =>
+      Effect.fail(
+        refused("Uncertain")(
+          "Caller deadline exceeded; admission may have reached the mailbox. Check pending/inbox before resending."
+        )
+      ),
+  });
+
   const presenceOf = (
     did: string,
     lookup: Effect.Effect<PresenceValue, MailboxClientError>
@@ -1311,7 +1322,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
         cached !== undefined && now - cached.at < PRESENCE_TTL_MS
           ? cached.value
           : yield* lookup.pipe(
-              Effect.timeoutOption(yield* PresenceTimeout),
+              Deadline.timeoutOption(yield* PresenceTimeout),
               Effect.orElseSucceed(() => Option.none<PresenceValue>()),
               Effect.tap((fresh) =>
                 Effect.sync(() => {
@@ -1667,6 +1678,17 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
                 ? Effect.gen(function* retryAdmission() {
                     const delay = yield* AdmissionBackoff;
 
+                    const pause = delay(count);
+
+                    if (
+                      !(yield* Deadline.canAttempt(
+                        Deadline.REQUEST_MS,
+                        Duration.toMillis(pause)
+                      ))
+                    ) {
+                      return outcome;
+                    }
+
                     yield* reportPhase(
                       options,
                       SendPhase.Retrying({
@@ -1674,7 +1696,11 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
                         reason: outcome.error.error ?? outcome._tag,
                       })
                     );
-                    yield* Effect.sleep(delay(count));
+                    yield* Effect.sleep(pause);
+
+                    if (!(yield* Deadline.canAttempt(Deadline.REQUEST_MS))) {
+                      return outcome;
+                    }
 
                     return yield* attempt(count + 1);
                   })
@@ -1702,7 +1728,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
           Uncertain: ({ error }) =>
             Effect.fail(
               refused("Uncertain")(
-                `Admission not confirmed after ${ADMISSION_TRIES} tries over about 90 s: ${error.reason}`
+                `Admission not confirmed before the retry limit or caller deadline: ${error.reason}`
               )
             ),
         });
@@ -1758,6 +1784,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
     }).pipe(
       Effect.scoped,
       Effect.provideService(HttpClient.HttpClient, http),
+      foreground,
       Effect.mapError((error) => {
         if (accepted.length > 0) {
           return refused("Partial")(
@@ -2001,7 +2028,11 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       });
 
       return yield* use(client);
-    }).pipe(Effect.scoped, Effect.provideService(HttpClient.HttpClient, http));
+    }).pipe(
+      Effect.scoped,
+      Effect.provideService(HttpClient.HttpClient, http),
+      foreground
+    );
 
   const holderOf = (client: Prepared, did: string) =>
     Effect.gen(function* resolveHolder() {
@@ -2187,7 +2218,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
     yield* Ref.set(established, Option.some(own));
     yield* Deferred.succeed(self, own);
     yield* attention.refresh.pipe(
-      Effect.timeout("2 seconds"),
+      Deadline.timeout("2 seconds"),
       Effect.catchCause((cause) =>
         Effect.logWarning(
           "Rat King attention unavailable; retained current levers",
@@ -2832,134 +2863,155 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
 
   const ratking = RatKing.of({
     ask: Effect.fn("RatKing.ask")(function* ask(to, body, timeout, options) {
-      yield* unlessBarred;
+      const bound = Duration.millis(
+        Math.min(
+          600_000,
+          Math.max(
+            1,
+            Duration.toMillis(Duration.fromInputUnsafe(timeout ?? "10 minutes"))
+          )
+        )
+      );
 
-      if (options?.quiet === true) {
-        return yield* quietAsk();
-      }
+      let receipt: Delivered | undefined;
 
-      if (!(yield* Ref.get(attached))) {
-        yield* reportPhase(options, SendPhase.Reader());
-      }
+      return yield* Effect.gen(function* askWithinBudget() {
+        yield* unlessBarred;
 
-      yield* awaitLive;
-
-      const pending = yield* Ref.make(Option.none<string>());
-      const journal = yield* Deferred.await(asks);
-
-      return yield* Effect.gen(function* askAndWait() {
-        const { delivered, extra, sent } = yield* transmit(
-          to,
-          body,
-          { ...options, kind: "ask" },
-          (id, did) =>
-            Effect.gen(function* registerAsk() {
-              const entry: PendingAskValue = {
-                did,
-                id,
-                sentAt: yield* Clock.currentTimeMillis,
-                state: "pending",
-                summary: oneLineSummary(options?.summary ?? body),
-                to: canonicalName(settings.reserved, to),
-              };
-
-              if (options?.dueBy !== undefined) {
-                Object.assign(entry, { dueBy: options.dueBy });
-              }
-
-              yield* journal.record(entry);
-              yield* Ref.set(pending, Option.some(id));
-
-              if (options?.wait !== true) {
-                return Option.none<Deferred.Deferred<Reply>>();
-              }
-
-              return Option.some(yield* threads.wait(id, did));
-            })
-        );
-
-        yield* observed("delivery", options?.onDelivered);
-
-        yield* copyOut(delivered, sent);
-        yield* closeLoops(sent);
-
-        if (Option.isNone(extra)) {
-          return { delivered };
+        if (options?.quiet === true) {
+          return yield* quietAsk();
         }
 
-        yield* reportPhase(
-          options,
-          SendPhase.AwaitingReply({ from: delivered.to })
-        );
+        if (!(yield* Ref.get(attached))) {
+          yield* reportPhase(options, SendPhase.Reader());
+        }
 
-        const bound = Duration.millis(
-          Math.min(
-            600_000,
-            Math.max(
-              1,
-              Duration.toMillis(
-                Duration.fromInputUnsafe(timeout ?? "10 minutes")
+        yield* awaitLive;
+
+        const pending = yield* Ref.make(Option.none<string>());
+        const journal = yield* Deferred.await(asks);
+
+        return yield* Effect.gen(function* askAndWait() {
+          const { delivered, extra, sent } = yield* transmit(
+            to,
+            body,
+            { ...options, kind: "ask" },
+            (id, did) =>
+              Effect.gen(function* registerAsk() {
+                const entry: PendingAskValue = {
+                  did,
+                  id,
+                  sentAt: yield* Clock.currentTimeMillis,
+                  state: "pending",
+                  summary: oneLineSummary(options?.summary ?? body),
+                  to: canonicalName(settings.reserved, to),
+                };
+
+                if (options?.dueBy !== undefined) {
+                  Object.assign(entry, { dueBy: options.dueBy });
+                }
+
+                yield* journal.record(entry);
+                yield* Ref.set(pending, Option.some(id));
+
+                if (options?.wait !== true) {
+                  return Option.none<Deferred.Deferred<Reply>>();
+                }
+
+                return Option.some(yield* threads.wait(id, did));
+              })
+          );
+
+          receipt = delivered;
+          yield* observed("delivery", options?.onDelivered);
+
+          yield* copyOut(delivered, sent);
+          yield* closeLoops(sent);
+
+          if (Option.isNone(extra)) {
+            return { delivered };
+          }
+
+          yield* reportPhase(
+            options,
+            SendPhase.AwaitingReply({ from: delivered.to })
+          );
+
+          const reply = yield* Deferred.await(extra.value).pipe(
+            Deadline.timeoutOrElse({
+              duration: bound,
+              orElse: () =>
+                Effect.fail(
+                  new AskFailed({
+                    code: "NoReply",
+                    reason: `No reply from ${delivered.to} to ${delivered.id} within ${Duration.format(Duration.fromInputUnsafe(bound))}. The ask was delivered; a late answer arrives as a normal message.${delivered.presence === undefined ? "" : ` ${delivered.presence}`}`,
+                  })
+                ),
+            })
+          );
+
+          return { delivered, reply };
+        }).pipe(
+          Effect.tapError((failure) => {
+            if (
+              !Schema.is(NotDelivered)(failure) ||
+              failure.code === "Partial" ||
+              failure.code === "Uncertain"
+            ) {
+              return Effect.void;
+            }
+
+            return Ref.get(pending).pipe(
+              Effect.flatMap((id) =>
+                Option.match(id, {
+                  onNone: () => Effect.void,
+                  onSome: (value) =>
+                    journal.ack(value).pipe(
+                      Effect.tapError((error) =>
+                        Effect.logWarning(
+                          "Rat King rejected ask not closed",
+                          error
+                        )
+                      ),
+                      Effect.ignore
+                    ),
+                })
+              )
+            );
+          }),
+          Effect.ensuring(
+            Ref.get(pending).pipe(
+              Effect.flatMap((id) =>
+                Option.match(id, {
+                  onNone: () => Effect.void,
+                  onSome: threads.forget,
+                })
               )
             )
           )
         );
-
-        const reply = yield* Deferred.await(extra.value).pipe(
-          Effect.timeoutOrElse({
-            duration: bound,
-            orElse: () =>
-              Effect.fail(
-                new AskFailed({
-                  code: "NoReply",
-                  reason: `No reply from ${delivered.to} to ${delivered.id} within ${Duration.format(Duration.fromInputUnsafe(bound))}. The ask was delivered; a late answer arrives as a normal message.${delivered.presence === undefined ? "" : ` ${delivered.presence}`}`,
-                })
-              ),
-          })
-        );
-
-        return { delivered, reply };
       }).pipe(
-        Effect.tapError((failure) => {
-          if (
-            !Schema.is(NotDelivered)(failure) ||
-            failure.code === "Partial" ||
-            failure.code === "Uncertain"
-          ) {
-            return Effect.void;
-          }
-
-          return Ref.get(pending).pipe(
-            Effect.flatMap((id) =>
-              Option.match(id, {
-                onNone: () => Effect.void,
-                onSome: (value) =>
-                  journal.ack(value).pipe(
-                    Effect.tapError((error) =>
-                      Effect.logWarning(
-                        "Rat King rejected ask not closed",
-                        error
-                      )
-                    ),
-                    Effect.ignore
-                  ),
-              })
-            )
-          );
-        }),
-        Effect.ensuring(
-          Ref.get(pending).pipe(
-            Effect.flatMap((id) =>
-              Option.match(id, {
-                onNone: () => Effect.void,
-                onSome: threads.forget,
-              })
-            )
-          )
-        )
+        Deadline.timeoutOrElse({
+          duration: options?.wait === true ? bound : Deadline.OPERATION_MS,
+          orElse: (): Effect.Effect<never, AskFailed | NotDelivered> =>
+            receipt === undefined
+              ? Effect.fail(
+                  refused("Uncertain")(
+                    "Ask deadline exceeded before delivery was confirmed; check pending/inbox before resending."
+                  )
+                )
+              : Effect.fail(
+                  new AskFailed({
+                    code: "NoReply",
+                    reason: `No reply from ${receipt.to} to ${receipt.id} within ${Duration.format(bound)}. The ask was delivered; a late answer arrives as a normal message.`,
+                  })
+                ),
+        })
       );
     }),
-    attention: attention.change,
-    handled: (id) => unlessBarred.pipe(Effect.andThen(confirmHandled(id))),
+    attention: (input) => attention.change(input).pipe(foreground),
+    handled: (id) =>
+      unlessBarred.pipe(Effect.andThen(confirmHandled(id)), foreground),
     list: Effect.gen(function* list() {
       const remote = yield* issuer.names.pipe(
         Effect.tapError(() =>
@@ -2988,7 +3040,12 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       }
 
       return yield* directory.list;
-    }),
+    }).pipe(
+      Deadline.timeoutOrElse({
+        duration: Deadline.OPERATION_MS,
+        orElse: () => directory.list,
+      })
+    ),
     pending: Effect.gen(function* pendingAsks() {
       if (Option.isNone(yield* Ref.get(established))) {
         return yield* threads.pending;
@@ -3099,7 +3156,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       }
 
       return delivered;
-    }),
+    }, foreground),
     retire: Effect.fn("RatKing.retire")(function* retire(successor) {
       const own = yield* awaitSelf;
 
@@ -3161,7 +3218,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
           refused("Uncertain")("Name authority answered with an invalid body")
         )
       );
-    }),
+    }, foreground),
     run,
     send: Effect.fn("RatKing.send")(function* send(to, body, options) {
       if (options?.quiet === true && options.kind === "ask") {
@@ -3179,7 +3236,7 @@ export const makeRatKing = Effect.gen(function* makeRatKing() {
       yield* closeLoops(sent);
 
       return delivered;
-    }),
+    }, foreground),
     status: Effect.gen(function* status() {
       const current = yield* Ref.get(established);
 

@@ -25,6 +25,7 @@ import {
 import { base64url, Document, DidResolver, documentResolver } from "./auth.ts";
 import { consume } from "./consume.ts";
 import type { ConsumeOptions, MessageMeta } from "./consume.ts";
+import * as Deadline from "./deadline.ts";
 import { clientError, MailboxClientError } from "./error.ts";
 import { readMailboxHealth } from "./health.ts";
 import { importSigning, Identity } from "./identity.ts";
@@ -330,103 +331,119 @@ export const prepare = Effect.fn("Mailbox.prepare")(function* prepare(
       : SendOutcomes.Uncertain({ error });
   });
 
-  const send = Effect.fn("Mailbox.send")(function* send(
-    envelope: Defs.EncryptedEnvelopeValue,
-    opts?: {
-      readonly cc?: string;
-      readonly critical?: boolean;
-      readonly fence?: LeaseFence;
-      readonly woke?: boolean;
-      readonly wakeReason?: Send.InputValue["wakeReason"];
-    }
-  ): Effect.fn.Return<SendResult> {
-    if (!peers.has(envelope.aad.recipientDid)) {
-      return SendOutcomes.NotAttempted({ reason: "Unknown primary peer" });
-    }
-
-    const intent = {
-      wakeReason: opts?.wakeReason ?? "to",
-      woke: opts?.woke ?? true,
-    };
-
-    if (opts?.critical !== undefined) {
-      Object.assign(intent, { critical: opts.critical });
-    }
-
-    const primary = yield* submit(envelope, opts?.fence, intent);
-
-    if (opts?.cc === undefined) {
-      return primary;
-    }
-
-    if (plaintext(envelope)) {
-      return {
-        ...primary,
-        cc: SendOutcomes.NotAttempted({
-          reason: "Plaintext primary is readable by observers without a CC",
-        }),
-      };
-    }
-
-    const payload = payloads.get(envelope);
-    const did = opts.cc;
-
-    if (
-      payload === undefined ||
-      !peers.has(did) ||
-      did === envelope.aad.recipientDid ||
-      !Predicate.isTagged(primary, "Accepted")
-    ) {
-      return {
-        ...primary,
-        cc: SendOutcomes.NotAttempted({
-          reason:
-            "CC requires an accepted locally sealed primary and a distinct known peer",
-        }),
-      };
-    }
-
-    const ccResult = yield* Effect.gen(function* carbonCopy() {
-      const cached =
-        copies.get(envelope) ?? new Map<string, Defs.EncryptedEnvelopeValue>();
-
-      let copy = cached.get(did);
-
-      if (copy === undefined) {
-        const body = JSON.stringify({
-          $type: "sh.mschf.ratking.mailbox.cc",
-          body: new TextDecoder().decode(payload.body),
-          primary: {
-            messageId: envelope.aad.messageId,
-            recipientDid: envelope.aad.recipientDid,
-            senderDid: identity.did,
-          },
-        });
-
-        const replyTo = yield* Schema.decodeUnknownEffect(
-          Schema.toType(Defs.MessageRef)
-        )({ messageId: envelope.aad.messageId, senderDid: identity.did }).pipe(
-          Effect.mapError(clientError)
-        );
-
-        copy = yield* sealEnvelopeForPeer(did, body, { replyTo });
-        cached.set(did, copy);
-        copies.set(envelope, cached);
+  const send = Effect.fn("Mailbox.send")(
+    function* send(
+      envelope: Defs.EncryptedEnvelopeValue,
+      opts?: {
+        readonly cc?: string;
+        readonly critical?: boolean;
+        readonly fence?: LeaseFence;
+        readonly woke?: boolean;
+        readonly wakeReason?: Send.InputValue["wakeReason"];
+      }
+    ): Effect.fn.Return<SendResult> {
+      if (!peers.has(envelope.aad.recipientDid)) {
+        return SendOutcomes.NotAttempted({ reason: "Unknown primary peer" });
       }
 
-      return yield* submit(copy, opts?.fence, {
-        wakeReason: "cc",
-        woke: false,
-      });
-    }).pipe(
-      Effect.mapError(clientError),
-      Effect.catch((error) =>
-        Effect.succeed(SendOutcomes.NotAttempted({ reason: error.reason }))
-      )
-    );
+      const intent = {
+        wakeReason: opts?.wakeReason ?? "to",
+        woke: opts?.woke ?? true,
+      };
 
-    return { ...primary, cc: ccResult };
-  });
+      if (opts?.critical !== undefined) {
+        Object.assign(intent, { critical: opts.critical });
+      }
+
+      const primary = yield* submit(envelope, opts?.fence, intent);
+
+      if (opts?.cc === undefined) {
+        return primary;
+      }
+
+      if (plaintext(envelope)) {
+        return {
+          ...primary,
+          cc: SendOutcomes.NotAttempted({
+            reason: "Plaintext primary is readable by observers without a CC",
+          }),
+        };
+      }
+
+      const payload = payloads.get(envelope);
+      const did = opts.cc;
+
+      if (
+        payload === undefined ||
+        !peers.has(did) ||
+        did === envelope.aad.recipientDid ||
+        !Predicate.isTagged(primary, "Accepted")
+      ) {
+        return {
+          ...primary,
+          cc: SendOutcomes.NotAttempted({
+            reason:
+              "CC requires an accepted locally sealed primary and a distinct known peer",
+          }),
+        };
+      }
+
+      const ccResult = yield* Effect.gen(function* carbonCopy() {
+        const cached =
+          copies.get(envelope) ??
+          new Map<string, Defs.EncryptedEnvelopeValue>();
+
+        let copy = cached.get(did);
+
+        if (copy === undefined) {
+          const body = JSON.stringify({
+            $type: "sh.mschf.ratking.mailbox.cc",
+            body: new TextDecoder().decode(payload.body),
+            primary: {
+              messageId: envelope.aad.messageId,
+              recipientDid: envelope.aad.recipientDid,
+              senderDid: identity.did,
+            },
+          });
+
+          const replyTo = yield* Schema.decodeUnknownEffect(
+            Schema.toType(Defs.MessageRef)
+          )({
+            messageId: envelope.aad.messageId,
+            senderDid: identity.did,
+          }).pipe(Effect.mapError(clientError));
+
+          copy = yield* sealEnvelopeForPeer(did, body, { replyTo });
+          cached.set(did, copy);
+          copies.set(envelope, cached);
+        }
+
+        return yield* submit(copy, opts?.fence, {
+          wakeReason: "cc",
+          woke: false,
+        });
+      }).pipe(
+        Effect.mapError(clientError),
+        Effect.catch((error) =>
+          Effect.succeed(SendOutcomes.NotAttempted({ reason: error.reason }))
+        )
+      );
+
+      return { ...primary, cc: ccResult };
+    },
+    Deadline.timeoutOrElse({
+      duration: Deadline.OPERATION_MS,
+      orElse: (): Effect.Effect<SendResult> =>
+        Effect.succeed(
+          SendOutcomes.Uncertain({
+            error: new MailboxClientError({
+              reason:
+                "Send deadline exceeded; admission may have reached the mailbox",
+            }),
+          })
+        ),
+    })
+  );
 
   const sealPayload = Effect.fn("Mailbox.sealPayload")(function* sealPayload(
     to: string,
@@ -470,52 +487,59 @@ export const prepare = Effect.fn("Mailbox.prepare")(function* prepare(
     return { envelope, messageId: envelope.aad.messageId };
   });
 
-  const refresh = Effect.fn("Mailbox.refresh")(function* refresh(did: string) {
-    const params = yield* Schema.decodeUnknownEffect(Peer.Params)({ did }).pipe(
-      Effect.mapError(clientError)
-    );
+  const refresh = Effect.fn("Mailbox.refresh")(
+    function* refresh(did: string) {
+      const params = yield* Schema.decodeUnknownEffect(Peer.Params)({
+        did,
+      }).pipe(Effect.mapError(clientError));
 
-    const response = yield* transport
-      .request({
-        input: undefined,
-        method: "GET",
-        nsid: Peer.Method.nsid,
-        params: yield* Schema.encodeEffect(Peer.Params)(params).pipe(
-          Effect.mapError(clientError)
-        ),
-      })
-      .pipe(Effect.mapError(clientError));
+      const response = yield* transport
+        .request({
+          input: undefined,
+          method: "GET",
+          nsid: Peer.Method.nsid,
+          params: yield* Schema.encodeEffect(Peer.Params)(params).pipe(
+            Effect.mapError(clientError)
+          ),
+        })
+        .pipe(Effect.mapError(clientError));
 
-    if (response.kind !== "json" || response.status !== 200) {
-      return yield* new MailboxClientError({
-        reason: "Peer directory request refused",
-        status: response.status,
-      });
-    }
+      if (response.kind !== "json" || response.status !== 200) {
+        return yield* new MailboxClientError({
+          reason: "Peer directory request refused",
+          status: response.status,
+        });
+      }
 
-    const output = yield* Schema.decodeUnknownEffect(Peer.Output)(
-      response.body
-    ).pipe(Effect.mapError(clientError));
+      const output = yield* Schema.decodeUnknownEffect(Peer.Output)(
+        response.body
+      ).pipe(Effect.mapError(clientError));
 
-    const peer = yield* Schema.decodeUnknownEffect(Document)(
-      output.document
-    ).pipe(Effect.mapError(clientError));
+      const peer = yield* Schema.decodeUnknownEffect(Document)(
+        output.document
+      ).pipe(Effect.mapError(clientError));
 
-    const existing = peers.get(did);
+      const existing = peers.get(did);
 
-    if (
-      peer.id !== did ||
-      (existing !== undefined && !sameDocument(existing, peer))
-    ) {
-      return yield* failure(
-        "Peer directory conflict; retained trusted document"
-      );
-    }
+      if (
+        peer.id !== did ||
+        (existing !== undefined && !sameDocument(existing, peer))
+      ) {
+        return yield* failure(
+          "Peer directory conflict; retained trusted document"
+        );
+      }
 
-    peers.set(did, peer);
+      peers.set(did, peer);
 
-    return peer;
-  });
+      return peer;
+    },
+    (effect) =>
+      effect.pipe(
+        Deadline.timeout(Deadline.REQUEST_MS),
+        Effect.mapError(clientError)
+      )
+  );
 
   const presence = (did: string) =>
     lookupPresence(did).pipe(Effect.provideService(Transport, transport));

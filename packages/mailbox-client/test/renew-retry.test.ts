@@ -92,7 +92,7 @@ it.effect.prop(
 );
 
 it.effect.prop(
-  "renew retries and hung requests never run past expiresAt",
+  "renew retries require a full 3 s attempt and hung requests never run past expiresAt",
   [Arbitrary.schema(Schema.Boolean)],
   ([hang]) =>
     Effect.gen(function* proof() {
@@ -142,9 +142,9 @@ it.effect.prop(
 
       expect(Result.isFailure(result)).toBe(true);
       expect(times.length).toBeGreaterThan(0);
-      expect(times.every((time) => time < Date.parse(current.expiresAt))).toBe(
-        true
-      );
+      expect(
+        times.every((time) => Date.parse(current.expiresAt) - time >= 3000)
+      ).toBe(true);
     }).pipe(Effect.scoped)
 );
 
