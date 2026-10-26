@@ -26,6 +26,7 @@ import { deliveryReason, injects } from "@rat-king/ratking-client/delivery";
 import { directoryLayer } from "@rat-king/ratking-client/directory";
 import type { SessionFacts } from "@rat-king/ratking-client/identity";
 import { issuerLayer } from "@rat-king/ratking-client/issuer";
+import { appendLog } from "@rat-king/ratking-client/log";
 import { canonicalName, secretName } from "@rat-king/ratking-client/name";
 import type { ReservedValue } from "@rat-king/ratking-client/name";
 import {
@@ -59,6 +60,7 @@ import type {
   ReaderState,
   SendOptions,
 } from "@rat-king/ratking-client/ratking";
+import { recentMap } from "@rat-king/ratking-client/recent";
 import {
   CONTROL_RECORD_TYPES,
   recordNotice,
@@ -77,6 +79,7 @@ import {
   DateTime,
   Effect,
   Exit,
+  FileSystem,
   Layer,
   Logger,
   ManagedRuntime,
@@ -308,11 +311,17 @@ const fileLog = Logger.layer([
   Effect.gen(function* fileLogger() {
     const settings = yield* Settings;
     const path = yield* Path.Path;
+    const fs = yield* FileSystem.FileSystem;
 
-    return yield* Logger.toFile(
-      Logger.formatJson,
-      path.join(settings.state, "pi-ratking.log")
-    ).pipe(Effect.orElseSucceed(() => Logger.make(() => null)));
+    return yield* Logger.batched(Logger.formatJson, {
+      flush: (output) =>
+        appendLog(path.join(settings.state, "pi-ratking.log"), output).pipe(
+          Effect.provideService(FileSystem.FileSystem, fs),
+          Effect.provideService(Path.Path, path),
+          Effect.ignore
+        ),
+      window: 1000,
+    });
   }),
 ]);
 
@@ -958,7 +967,7 @@ export const ratkingExtension = (options: ExtensionOptions) =>
   async function piRatking(pi: PiHost) {
     const tool = await Effect.runPromise(options.tool);
 
-    const knownLabels = new Map<string, string>();
+    const knownLabels = recentMap<string, string>(2048);
     let ownName: string | undefined;
     let ownLabel: () => Option.Option<string> = Option.none;
 

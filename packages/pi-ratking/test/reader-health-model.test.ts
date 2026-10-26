@@ -192,6 +192,22 @@ it.effect.prop(
 
         expect(Option.isSome(live)).toBe(true);
 
+        const processBeat = yield* fs
+          .readFileString(`${state}/readers/retries/${process.pid}.json`)
+          .pipe(Effect.flatMap(Schema.decodeUnknownEffect(HeartbeatJson)));
+
+        expect(processBeat.pid).toBe(process.pid);
+        expect(processBeat.retries?.windowMs).toBe(60_000);
+
+        if (Option.isSome(live)) {
+          expect(
+            live.value.retries?.buckets.some(
+              (bucket) =>
+                bucket.name === "tester" && bucket.counts.acquireOk === 1
+            )
+          ).toBe(true);
+        }
+
         const context = yield* Effect.context();
 
         const advance = (seconds: number) =>

@@ -22,6 +22,8 @@ export interface SnapshotIssuer {
 const failure = (code: string, reason: string) =>
   new SnapshotError({ code, reason });
 
+export const SNAPSHOT_MAX_PAGES = 1000;
+
 const pages = Effect.fn("Snapshot.pages")(function* pages<A>(
   label: string,
   list: string,
@@ -44,6 +46,13 @@ const pages = Effect.fn("Snapshot.pages")(function* pages<A>(
 
     if (page.cursor === undefined) {
       return { count, entries };
+    }
+
+    if (count >= SNAPSHOT_MAX_PAGES) {
+      return yield* failure(
+        "SnapshotTooLarge",
+        `${label} ${list} exceeded ${SNAPSHOT_MAX_PAGES} pages; no partial snapshot was written`
+      );
     }
 
     if (seen.has(page.cursor)) {

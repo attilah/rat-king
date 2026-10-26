@@ -16,6 +16,7 @@ import { expect } from "vitest";
 import { consume } from "../src/consume.ts";
 import { MailboxClientError } from "../src/error.ts";
 import { RatKingMailbox } from "../src/mailbox.ts";
+import type { RetryEvent } from "../src/retry-metrics.ts";
 
 it.effect.prop(
   "timed-out renewals retry immediately; other retries spread while preserving the 250 ms renewal floor",
@@ -28,6 +29,7 @@ it.effect.prop(
     Effect.gen(function* proof() {
       const base = yield* Clock.currentTimeMillis;
       const retries: number[] = [];
+      const metrics: RetryEvent[] = [];
 
       const floor = Match.value(mode).pipe(
         Match.when("held", () => 1000),
@@ -108,6 +110,10 @@ it.effect.prop(
               () => Effect.void,
               {
                 harness,
+                onRetryMetric: (event) =>
+                  Effect.sync(() => {
+                    metrics.push(event);
+                  }),
               }
             ).pipe(Effect.forkScoped);
           }),
@@ -116,6 +122,15 @@ it.effect.prop(
 
       yield* TestClock.adjust(floor + window);
       expect(retries).toHaveLength(64);
+      expect(metrics.filter((event) => event === "acquireOk")).toHaveLength(64);
+
+      const failure = Match.value(mode).pipe(
+        Match.when("held", () => "acquireLeaseHeld"),
+        Match.when("timeout", () => "renewTimeout"),
+        Match.orElse(() => "renewMailboxUnavailable")
+      );
+
+      expect(metrics.filter((event) => event === failure)).toHaveLength(64);
 
       if (mode === "timeout") {
         expect(retries.every((delay) => delay === 0)).toBe(true);
