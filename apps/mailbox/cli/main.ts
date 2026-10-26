@@ -33,6 +33,7 @@ import { listRetired, retireName, unretireName } from "./retire.ts";
 import { secretStoreLayer } from "./secrets.ts";
 import { sendBody } from "./send-body.ts";
 import { traffic } from "./traffic.ts";
+import { isUsageError, refuseUsage } from "./usage.ts";
 
 type MutableSendOptions = {
   -readonly [K in keyof SendOptions]: SendOptions[K];
@@ -553,7 +554,7 @@ export const trafficCommand = Command.make(
   })
 );
 
-const command = Command.make("mailbox").pipe(
+export const command = Command.make("mailbox").pipe(
   Command.withSubcommands([
     sendCommand,
     listCommand,
@@ -573,7 +574,10 @@ const command = Command.make("mailbox").pipe(
 );
 
 export const runMailbox = (args: readonly string[]) =>
-  Command.runWith(command, { version: "0.1.0" })(args).pipe(
+  Command.runWith(command, { renderErrors: false, version: "0.1.0" })(
+    args
+  ).pipe(
+    Effect.catchIf(isUsageError, refuseUsage(command, args)),
     Effect.provide(NodeServices.layer)
   );
 
