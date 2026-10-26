@@ -14,6 +14,7 @@ import { collectWakeHealth } from "./alarm-wake-collector.ts";
 import { AlarmJournal, alarmCycle, emptyJournal } from "./alarm.ts";
 import type { AlarmPorts, AlarmJournalValue } from "./alarm.ts";
 import type { HealthDigest } from "./health.ts";
+import { rotateLogs } from "./log-rotation.ts";
 import { execute, runnerDrift } from "./ship-command.ts";
 import { FleetError } from "./stage-config.ts";
 import type { StageConfigValue } from "./stage-config.ts";
@@ -129,9 +130,14 @@ export const alarmWorker = Effect.fn("Alarm.worker")(
       "Alarm operation unavailable; input values withheld"
     );
 
-    const drifted = yield* runnerDrift;
+    const drifted = yield* runnerDrift(config.ship?.checkpoint);
 
     for (;;) {
+      yield* rotateLogs(
+        [settings.launchd.outputLog, settings.launchd.errorLog],
+        yield* Clock.currentTimeMillis
+      );
+
       if (yield* drifted) {
         return yield* Console.log(
           JSON.stringify({

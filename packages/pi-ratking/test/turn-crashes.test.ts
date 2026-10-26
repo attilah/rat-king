@@ -1,6 +1,7 @@
 import { it } from "@effect/vitest";
 import type { ReaderHeartbeatValue } from "@rat-king/ratking-client/reader-health";
-import { Arbitrary, DateTime, Effect, Schema } from "effect";
+import { Arbitrary, DateTime, Duration, Effect, Schema } from "effect";
+import { TestClock } from "effect/testing";
 import { expect } from "vitest";
 
 import { crashedReader } from "../../../stacks/nest/turn-crash-record.ts";
@@ -71,6 +72,7 @@ it.effect.prop(
 
             return sealed;
           }),
+        readdress: () => Effect.fail("unused"),
         save: (next) =>
           Effect.gen(function* save() {
             if (sample.fault === "save" && !failed && next.sent.length > 0) {
@@ -120,6 +122,7 @@ it.effect.prop(
 
         const notice = { owner: reader.owner ?? "wrong-owner", record };
         yield* crashCycle([notice, notice], journal, ports).pipe(Effect.ignore);
+        yield* TestClock.adjust(Duration.minutes(11));
         yield* crashCycle([notice], journal, ports);
       }
 

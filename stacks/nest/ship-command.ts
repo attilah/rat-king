@@ -16,6 +16,7 @@ import {
   secretStoreLayer,
 } from "../../apps/mailbox/cli/secrets.ts";
 import { writePrivateJson } from "../../packages/ratking-client/src/directory.ts";
+import { readShippedSha, shippedDrift } from "./runner-drift.ts";
 import { RestartEvent, Sha, ShipCheckpoint } from "./ship-config.ts";
 import type { ShipAttempt } from "./ship-config.ts";
 import { sanitizeCandidateStderr } from "./ship-diagnostics.ts";
@@ -115,31 +116,8 @@ export const execute = Effect.fn("Ship.execute")(
     )
 );
 
-const runnerHead = execute(
-  "git",
-  ["rev-parse", "HEAD"],
-  import.meta.dirname
-).pipe(
-  Effect.map((result) =>
-    result.code === 0
-      ? Option.some(result.output.trim())
-      : Option.none<string>()
-  ),
-  Effect.orElseSucceed(() => Option.none<string>())
-);
-
-export const runnerDrift = runnerHead.pipe(
-  Effect.map((started) =>
-    runnerHead.pipe(
-      Effect.map(
-        (now) =>
-          Option.isSome(started) &&
-          Option.isSome(now) &&
-          now.value !== started.value
-      )
-    )
-  )
-);
+export const runnerDrift = (checkpoint: string | undefined) =>
+  shippedDrift(readShippedSha(checkpoint));
 
 const requireSuccess = Effect.fn("Ship.requireSuccess")(
   function* requireSuccess(
@@ -500,7 +478,7 @@ export const shipCommand = Effect.fn("Ship.command")(
       ports,
       saved,
       ship.intervalSeconds,
-      yield* runnerDrift
+      yield* runnerDrift(ship.checkpoint)
     );
   },
   (effect) =>
